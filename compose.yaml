@@ -112,9 +112,18 @@ services:
 
     networks:
       - mcp-internal
+      - tunnel-egress
 
     environment:
       MCP_SERVER_URL: http://mcp-server:8000/mcp
+      CONTROL_PLANE_TUNNEL_ID: ${CONTROL_PLANE_TUNNEL_ID:?CONTROL_PLANE_TUNNEL_ID is required}
+
+    entrypoint:
+      - tunnel-client
+
+    command:
+      - run
+      - --control-plane.api-key=file:/run/secrets/control_plane_api_key
 
     secrets:
       - control_plane_api_key
@@ -125,6 +134,8 @@ services:
 networks:
   mcp-internal:
     internal: true
+
+  tunnel-egress:
 
 secrets:
   control_plane_api_key:
