@@ -18,7 +18,7 @@ mcp = MCPServer(
     version="0.1.0",
 )
 
-ALLOWED_ROOT = Path(os.environ.get("ALLOWED_DATA_DIR", "/app/allowed_data")).resolve()
+ALLOWED_ROOT = Path(os.environ.get("workspace_DIR", "/app/workspace")).resolve()
 
 MAX_READ_BYTES = 1_000_000
 

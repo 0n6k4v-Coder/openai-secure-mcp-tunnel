@@ -20,11 +20,11 @@ services:
       - /tmp:rw,noexec,nosuid,nodev
 
     environment:
-      ALLOWED_DATA_DIR: /app/allowed_data
+      workspace_DIR: /app/workspace
       LOG_LEVEL: INFO
 
     volumes:
-      - ./allowed_data:/app/allowed_data:ro
+      - ./workspace:/app/workspace:ro
 
     networks:
       - mcp-internal

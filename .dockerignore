@@ -14,8 +14,8 @@ __pycache__
 .secrets/
 *.secret
 
-allowed_data/*
-!allowed_data/.gitkeep
+workspace/*
+!workspace/.gitkeep
 
 dist
 build

@@ -41,7 +41,7 @@
                             read-only mount
                                  │
                                  ▼
-                         ./allowed_data
+                         ./workspace
 ```
 
 There is no published MCP port to the Internet.
