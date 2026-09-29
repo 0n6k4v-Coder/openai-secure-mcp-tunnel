@@ -1,0 +1,20 @@
+[project]
+name = "local-mcp-server"
+version = "0.1.0"
+description = "Private local MCP server for OpenAI Secure MCP Tunnel"
+readme = "README.md"
+requires-python = ">=3.14,<3.15"
+dependencies = [
+    "mcp[cli]==2.2.0",
+    "starlette",
+]
+
+[dependency-groups]
+dev = [
+    "pytest>=9,<10",
+    "ruff>=0.13,<0.14",
+]
+
+[build-system]
+requires = ["uv_build>=0.12.19,<0.13"]
+build-backend = "uv_build"
