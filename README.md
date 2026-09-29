@@ -1,2 +1,4 @@
 # Open AI secure MCP Tunnel
-Securely connect a local Python MCP server to ChatGPT using OpenAI Secure MCP Tunnel.
+
+**Repository:** `0n6k4v-Coder/openai-secure-mcp-tunnel`     
+**Scope:** Private Python MCP server in Docker, connected to ChatGPT through OpenAI Secure MCP Tunnel.
