@@ -24,6 +24,14 @@ services:
     environment:
       WORKSPACE_DIR: /app/workspace
       LOG_LEVEL: INFO
+      TERMINAL_EXECUTOR_URL: http://host.docker.internal:8765
+      TERMINAL_EXECUTOR_TOKEN_FILE: /run/secrets/local_terminal_executor_token
+
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+
+    secrets:
+      - local_terminal_executor_token
 
     volumes:
       - ./workspace:/app/workspace:rw
@@ -81,3 +89,6 @@ networks:
 secrets:
   control_plane_api_key:
     file: .secrets/control-plane-api-key
+
+  local_terminal_executor_token:
+    file: .secrets/local-terminal-executor-token

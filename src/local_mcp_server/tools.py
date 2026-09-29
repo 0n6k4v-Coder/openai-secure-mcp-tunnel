@@ -6,6 +6,9 @@ import sys
 from mcp.server import MCPServer
 from mcp.types import ToolAnnotations
 
+from .terminal import (
+    execute_terminal_command_impl,
+)
 from .workspace import (
     create_workspace_directory as create_workspace_directory_impl,
     create_workspace_file as create_workspace_file_impl,
@@ -18,7 +21,7 @@ from .workspace import (
 
 
 def register_tools(mcp: MCPServer) -> None:
-    """Register MCP tools exposed by the local server."""
+    """Register all MCP tools exposed by the local server."""
 
     @mcp.tool(
         annotations=ToolAnnotations(
@@ -138,3 +141,26 @@ def register_tools(mcp: MCPServer) -> None:
     def delete_workspace_file(relative_path: str) -> str:
         """Delete a regular file inside the workspace."""
         return delete_workspace_file_impl(relative_path)
+
+    @mcp.tool(
+        annotations=ToolAnnotations(
+            readOnlyHint=False,
+            destructiveHint=True,
+            idempotentHint=False,
+            openWorldHint=True,
+        )
+    )
+    def execute_terminal_command(
+        command: str,
+        timeout_seconds: int = 30,
+    ) -> str:
+        """
+        Execute an arbitrary command on the host operating system.
+
+        This is a high-impact tool. The MCP client must be configured to
+        require user approval before each invocation.
+        """
+        return execute_terminal_command_impl(
+            command=command,
+            timeout_seconds=timeout_seconds,
+        )
