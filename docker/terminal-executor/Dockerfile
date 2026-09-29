@@ -1,6 +1,8 @@
 # syntax=docker/dockerfile:1.7
 
-FROM python:3.14.7-slim-trixie
+FROM node:lts-bookworm-slim AS node
+
+FROM mcr.microsoft.com/playwright/python:v1.63.0-noble
 
 WORKDIR /app
 
@@ -9,7 +11,10 @@ ENV PYTHONDONTWRITEBYTECODE=1 \
     LOCAL_TERMINAL_EXECUTOR_HOST=0.0.0.0 \
     LOCAL_TERMINAL_EXECUTOR_PORT=8765 \
     LOCAL_TERMINAL_EXECUTOR_TOKEN_FILE=/run/secrets/local_terminal_executor_token \
+    PLAYWRIGHT_BROWSERS_PATH=/ms-playwright \
     LOG_LEVEL=INFO
+
+COPY --from=node /usr/local /usr/local
 
 RUN apt-get update \
     && apt-get install -y --no-install-recommends \
@@ -22,6 +27,14 @@ RUN apt-get update \
         ripgrep \
         wget \
     && rm -rf /var/lib/apt/lists/*
+
+RUN npm install --global playwright@1.63.0 \
+    && npm cache clean --force
+
+RUN chromium_path="$(find /ms-playwright -type f -path '*/chrome-linux64/chrome' -print -quit)" \
+    && test -n "${chromium_path}" \
+    && ln -sf "${chromium_path}" /usr/local/bin/chromium \
+    && ln -sf "${chromium_path}" /usr/local/bin/chrome
 
 RUN groupadd \
         --gid 10001 \
