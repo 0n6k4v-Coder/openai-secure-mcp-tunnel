@@ -19,7 +19,9 @@ services:
 
     volumes:
       - ./workspace:/app/workspace:rw
-      - ./.secrets/terminal-agent-token:/run/secrets/local_terminal_executor_token:ro
+
+    secrets:
+      - local_terminal_executor_token
 
     networks:
       - mcp-internal
@@ -76,10 +78,13 @@ services:
 
     volumes:
       - ./workspace:/workspace:rw
-      - ./.secrets/terminal-agent-token:/run/secrets/local_terminal_executor_token:ro
+
+    secrets:
+      - local_terminal_executor_token
 
     networks:
       - mcp-internal
+      - dev-egress
 
     environment:
       LOCAL_TERMINAL_EXECUTOR_HOST: 0.0.0.0
@@ -102,6 +107,13 @@ services:
 
     expose:
       - "8765"
+
+    deploy:
+      resources:
+        limits:
+          cpus: "2.0"
+          memory: 2G
+          pids: 256
 
   tunnel-client:
     image: ghcr.io/openai/tunnel-client:v0.0.15
@@ -128,15 +140,17 @@ services:
     secrets:
       - control_plane_api_key
 
-    volumes:
-      - ./config:/config:ro
-
 networks:
   mcp-internal:
     internal: true
+
+  dev-egress:
 
   tunnel-egress:
 
 secrets:
   control_plane_api_key:
     file: .secrets/control-plane-api-key
+
+  local_terminal_executor_token:
+    file: .secrets/terminal-agent-token

@@ -11,6 +11,18 @@ ENV PYTHONDONTWRITEBYTECODE=1 \
     LOCAL_TERMINAL_EXECUTOR_TOKEN_FILE=/run/secrets/local_terminal_executor_token \
     LOG_LEVEL=INFO
 
+RUN apt-get update \
+    && apt-get install -y --no-install-recommends \
+        ca-certificates \
+        curl \
+        git \
+        jq \
+        openssh-client \
+        procps \
+        ripgrep \
+        wget \
+    && rm -rf /var/lib/apt/lists/*
+
 RUN groupadd \
         --gid 10001 \
         appgroup \
