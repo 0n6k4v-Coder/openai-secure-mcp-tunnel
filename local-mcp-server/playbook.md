@@ -1,370 +1,461 @@
-# Python Local MCP Server
+# Python Local MCP Server — Dockerized Research-to-Runbook
 
-## Research Findings and Complete Implementation Runbook
-
-**Research baseline:** September 29, 2026
-**Target:** Private/local MCP server on a user's computer
-**Primary language:** Python
-**Primary transport:** stdio
-**Primary MCP SDK:** Official MCP Python SDK v2.2.0
-**Python baseline:** 3.14.7
-**Project/dependency manager:** uv 0.12.19
-**Integration target:** OpenAI Secure MCP Tunnel
-
----
-
-# Part 1 — Research Findings
-
-| Finding ID | Area                     | Finding                                                                                                                                                                                                                            | Why It Matters                                                                                                                           | Version / Date                | Implementation Impact                                                       | Source / Standard                  |
-| ---------- | ------------------------ | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------- | ----------------------------- | --------------------------------------------------------------------------- | ---------------------------------- |
-| **F-001**  | MCP protocol             | The current stable MCP specification is **2026-07-28**.                                                                                                                                                                            | The implementation should target the current protocol rather than older tutorials/spec revisions.                                        | 2026-07-28                    | Use an SDK version supporting the 2026-07-28 spec.                          | Official MCP specification/release |
-| **F-002**  | MCP protocol             | MCP uses **JSON-RPC 2.0** as its message format.                                                                                                                                                                                   | We should not implement a custom RPC/message protocol. The SDK should handle it.                                                         | Current                       | Use the official SDK rather than writing JSON-RPC handling manually.        | MCP spec + JSON-RPC 2.0            |
-| **F-003**  | Transport                | MCP defines **stdio** as newline-delimited messages over a client-launched subprocess.                                                                                                                                             | This is specifically suited to a local MCP server.                                                                                       | 2026-07-28                    | Choose stdio for the first local implementation.                            | MCP Transports                     |
-| **F-004**  | Transport                | **Streamable HTTP** is the current HTTP transport; SSE is the older transport and should not be used for new implementations.                                                                                                      | Avoid building a new local server around obsolete SSE.                                                                                   | Current                       | Do not add FastAPI/HTTP initially.                                          | MCP Python SDK run guide           |
-| **F-005**  | Python SDK               | The official Python SDK is on **v2**, and **v2.2.0** is the current release as of this research.                                                                                                                                   | Older tutorials using v1 APIs can be misleading.                                                                                         | v2.2.0, Sep. 7, 2026          | Use `MCPServer`, not the old v1 `FastMCP` API.                              | Official SDK/PyPI/GitHub           |
-| **F-006**  | Python SDK               | The SDK requires **Python 3.10+** and the current package publishes for Python 3.14.                                                                                                                                               | Establishes the supported Python range.                                                                                                  | SDK v2.2.0                    | Python 3.14 is a supported implementation target.                           | Official SDK/PyPI                  |
-| **F-007**  | Python                   | Python **3.14.7** is the current stable maintenance release of Python 3.14.                                                                                                                                                        | Use a maintained stable interpreter rather than an EOL or preview version.                                                               | Aug. 5, 2026                  | Pin project development/runtime to Python 3.14.7.                           | Python.org                         |
-| **F-008**  | Project tooling          | uv currently gives Tier-1 support to Python 3.14 and CPython, and the current uv release is **0.12.19**.                                                                                                                           | Gives us a current, supported project/dependency toolchain.                                                                              | uv 0.12.19, Sep. 24, 2026     | Use uv for environment and dependency management.                           | Astral uv                          |
-| **F-009**  | Reproducibility          | uv maintains an `uv.lock` containing exact resolved dependency information and recommends checking it into version control.                                                                                                        | Prevents dependency drift between machines/runs.                                                                                         | Current                       | Commit `uv.lock`; use locked installs in CI/controlled deployments.         | uv project/lock documentation      |
-| **F-010**  | Tool design              | MCP tools are model-controlled capabilities; the MCP spec says applications should keep a human in the loop and provide clear authorization/confirmation.                                                                          | A tool should not be designed as unrestricted remote computer control.                                                                   | 2026-07-28                    | Start with narrowly scoped, read-only tools.                                | MCP Tools/Security                 |
-| **F-011**  | Tool schema              | Python SDK generates tool definitions from Python function names, docstrings, and type hints, including JSON Schema input definitions.                                                                                             | We can use normal typed Python functions instead of hand-writing MCP schemas.                                                            | SDK v2                        | Require typed parameters and useful docstrings.                             | Official Python SDK tools docs     |
-| **F-012**  | stdio reliability        | A stdio MCP server must **never write normal output to stdout**, because stdout carries MCP protocol messages. Logging should go to stderr.                                                                                        | A single stray `print()` can corrupt the protocol stream.                                                                                | Current                       | Use Python `logging`; do not use `print()` for diagnostics.                 | Official MCP build-server guide    |
-| **F-013**  | Authentication           | MCP authorization is primarily specified for HTTP transports; stdio implementations should not use the HTTP MCP authorization flow and should retrieve credentials from the environment instead.                                   | Avoid unnecessary OAuth infrastructure for a local stdio server.                                                                         | 2026-07-28                    | Keep local-server credentials in environment/secret storage.                | MCP Authorization specification    |
-| **F-014**  | OpenAI integration       | Secure MCP Tunnel provides an outbound-only path from a private host to OpenAI and can forward requests to a private MCP server; no inbound Internet access is required.                                                           | This is the intended bridge from ChatGPT to a private local MCP server.                                                                  | Current; tunnel-client 0.0.15 | Configure tunnel-client to launch the local stdio server.                   | OpenAI Secure MCP Tunnel           |
-| **F-015**  | MCP testing              | MCP Inspector v2 is the current Inspector line; the current release is **2.8.0** and v2 requires Node **22.19.0+**.                                                                                                                | Provides a supported interactive tool-discovery/testing path.                                                                            | v2.8.0, Sep. 23, 2026         | Use Inspector for local protocol/tool testing.                              | Official MCP Inspector             |
-| **F-016**  | JSON                     | JSON-RPC/JSON interoperability relies on standard JSON; RFC 8259 requires UTF-8 for JSON exchanged between systems outside a closed ecosystem.                                                                                     | Reinforces using the SDK/protocol implementation rather than custom encodings.                                                           | RFC 8259                      | Let the MCP SDK handle serialization.                                       | IETF RFC 8259                      |
-| **F-017**  | Python packaging         | `pyproject.toml` is the standardized modern Python project metadata/configuration mechanism; dependency specifications use established PEP formats.                                                                                | Keeps the project aligned with the Python packaging ecosystem.                                                                           | PEP 621 / PEP 508 / PEP 440   | Use uv-managed `pyproject.toml` rather than legacy setup files.             | Python Packaging Authority / PEPs  |
-| **F-018**  | Security                 | OWASP Top 10:2025 emphasizes Broken Access Control, Security Misconfiguration, Software Supply Chain Failures, Injection, Insecure Design, Logging failures, and related risks.                                                    | These map directly to local MCP tools that may expose data or execute operations.                                                        | OWASP Top 10:2025             | Use least privilege, strict inputs, dependency locking, and useful logging. | OWASP Top 10:2025                  |
-| **F-019**  | Secure development       | NIST SSDF 1.1 recommends integrating secure software practices into the SDLC to reduce vulnerabilities and their impact.                                                                                                           | The server should be tested, versioned, dependency-controlled, and reviewed like normal software.                                        | NIST SP 800-218, v1.1         | Include tests, dependency lock, code review, and update process.            | NIST SP 800-218                    |
-| **F-020**  | Network security         | Current TLS 1.3 standard is RFC 9846, which supersedes RFC 8446.                                                                                                                                                                   | Relevant to the outbound HTTPS tunnel; TLS should be delegated to the official tunnel client/platform rather than reimplemented locally. | RFC 9846, July 2026           | Do not implement custom tunnel cryptography.                                | IETF RFC 9846                      |
-| **F-021**  | HTTP/OAuth — conditional | If the MCP server later becomes an HTTP server with authorization, current MCP authorization aligns with modern OAuth metadata/security standards such as RFC 8414, RFC 9728, RFC 9207, RFC 7636, and OAuth security BCP RFC 9700. | Important for a future HTTP deployment, but unnecessary for the initial local stdio server.                                              | Current IETF standards        | Keep HTTP/OAuth as a later architecture phase.                              | IETF OAuth standards               |
-
----
-
-# Part 2 — Research-Based Design Decision
-
-The evidence leads to this initial stack:
+## 1. Revised target architecture
 
 ```text
-Python 3.14.7
-       │
-       ▼
-uv 0.12.19
-       │
-       ▼
-MCP Python SDK 2.2.0
-       │
-       ▼
-MCPServer
-       │
-       ▼
-stdio
-       │
-       ▼
-MCP Inspector 2.8.0
-       │
-       ▼
-OpenAI tunnel-client 0.0.15
-       │
-       ▼
-ChatGPT / OpenAI product
+                         INTERNET
+                            │
+                            │ HTTPS outbound
+                            ▼
+                  ┌─────────────────────┐
+                  │  OpenAI Secure MCP  │
+                  │       Tunnel        │
+                  └──────────┬──────────┘
+                             │
+                             │
+                   ┌─────────▼─────────┐
+                   │  tunnel-client    │
+                   │   Docker container│
+                   └─────────┬─────────┘
+                             │
+                    HTTP :8000
+                    private network
+                             │
+                ┌────────────▼────────────┐
+                │     mcp-server          │
+                │   Docker container      │
+                │                         │
+                │ Python 3.14.7           │
+                │ MCP SDK 2.2.0           │
+                │ Streamable HTTP         │
+                │                         │
+                │  get_system_info()      │
+                │  list_allowed_files()   │
+                │  read_allowed_file()    │
+                └────────────┬────────────┘
+                             │
+                      read-only mount
+                             │
+                             ▼
+                       ./allowed_data
 ```
 
-The important design choice is **not to introduce FastAPI, OAuth, a local HTTP listener, or a shell-execution interface in the first version**.
+There is **no published MCP port to the Internet**.
 
-That follows from three separate pieces of evidence:
-
-1. MCP defines stdio specifically for client-launched local subprocesses.
-2. The official Python SDK calls stdio the default transport for local servers and says not to build new systems on SSE.
-3. OpenAI Secure MCP Tunnel directly supports forwarding to a local stdio MCP command.
+The MCP container is reachable only from the private Docker network. The tunnel container has two jobs: reach the MCP container internally and reach OpenAI externally. OpenAI's tunnel documentation says the tunnel requires outbound HTTPS to `api.openai.com:443` and no inbound port for the tunnel itself. ([GitHub][2])
 
 ---
 
-# Part 3 — Visual Implementation Plan
+# 2. Why Docker changes the design
+
+Previously, stdio was the natural choice:
 
 ```text
-PHASE 1
-Install runtime/tooling
-        │
-        ▼
-PHASE 2
-Create Python project
-        │
-        ▼
-PHASE 3
-Install + lock MCP SDK
-        │
-        ▼
-PHASE 4
-Implement safe MCP tools
-        │
-        ▼
-PHASE 5
-Run local tests
-        │
-        ▼
-PHASE 6
-Test with MCP Inspector
-        │
-        ▼
-PHASE 7
-Harden + document
-        │
-        ▼
-PHASE 8
-Connect Secure MCP Tunnel
-        │
-        ▼
-PHASE 9
-Test from ChatGPT
+tunnel-client
+      │
+      └── launches server.py
 ```
 
----
+That works extremely well when both processes live on the same host.
 
-# Part 4 — Complete Step-by-Step Runbook
-
-## Step 1 — Confirm the implementation target
-
-Decide that version 1 of the server will be:
+Once we deliberately separate them into containers, this is cleaner:
 
 ```text
-Language       Python
-Python         3.14.7
-MCP SDK        2.2.0
-Transport      stdio
-Project tool   uv
-Testing        MCP Inspector + pytest
-Exposure       private/local only
+tunnel-client container
+      │
+      │ HTTP
+      ▼
+MCP server container
 ```
 
-Do **not** add HTTP or OAuth yet.
+The current MCP Python SDK explicitly describes:
 
-**Related Finding IDs:** `F-001, F-003, F-004, F-005, F-007, F-008, F-013`
+* **stdio** → local subprocess
+* **Streamable HTTP** → a real HTTP server you deploy
+
+and says SSE is the older transport and should not be used for new implementations. ([GitHub][1])
+
+OpenAI's tunnel-client also officially supports:
+
+```text
+MCP_SERVER_URL
+```
+
+for Streamable HTTP and:
+
+```text
+MCP_COMMAND
+```
+
+for stdio. ([GitHub][3])
+
+For Docker, `MCP_SERVER_URL=http://mcp-server:8000/mcp` gives us clean process/container separation without exposing a host port.
 
 ---
 
-## Step 2 — Install Python 3.14.7
+# 3. Research findings
 
-Download/install the current stable Python release from Python.org.
+| Finding ID | Area                   | Finding                                                                                                                                    | Why It Matters                                                                                | Version / Date                         | Implementation Impact                                            | Source / Standard                                                  |
+| ---------- | ---------------------- | ------------------------------------------------------------------------------------------------------------------------------------------ | --------------------------------------------------------------------------------------------- | -------------------------------------- | ---------------------------------------------------------------- | ------------------------------------------------------------------ |
+| **F-001**  | MCP                    | Current stable MCP specification is **2026-07-28**.                                                                                        | Avoid implementing against obsolete protocol assumptions.                                     | 2026-07-28                             | Target current MCP behavior.                                     | MCP official release/spec ([Model Context Protocol Blog][4])       |
+| **F-002**  | MCP protocol           | MCP uses **JSON-RPC 2.0** messaging.                                                                                                       | The application should use the SDK instead of implementing protocol framing manually.         | Current                                | SDK handles MCP wire protocol.                                   | MCP specification                                                  |
+| **F-003**  | MCP transport          | **stdio** is intended for a client-launched local subprocess.                                                                              | Good for same-process-boundary deployments.                                                   | Current                                | Not our primary Docker-to-Docker transport.                      | MCP Python SDK ([GitHub][1])                                       |
+| **F-004**  | MCP transport          | **Streamable HTTP** is the current HTTP transport; SSE is superseded for new deployments.                                                  | Docker containers naturally communicate over private HTTP.                                    | Current                                | Use Streamable HTTP.                                             | MCP Python SDK ([GitHub][1])                                       |
+| **F-005**  | MCP SDK                | Official Python SDK **v2.2.0** is current.                                                                                                 | v1 tutorials/API can be misleading.                                                           | Sep. 7, 2026                           | Use `MCPServer`.                                                 | Official SDK release ([GitHub][5])                                 |
+| **F-006**  | MCP SDK                | Python SDK requires Python **3.10+** and publishes for Python 3.14.                                                                        | Python 3.14 is supported.                                                                     | Current                                | Use Python 3.14.7.                                               | Official SDK/PyPI ([PyPI][6])                                      |
+| **F-007**  | Python                 | Python **3.14.7** is the current stable 3.14 maintenance release.                                                                          | Provides a current supported interpreter.                                                     | Aug. 5, 2026                           | Use 3.14.7 in the image.                                         | Python.org ([Python.org][7])                                       |
+| **F-008**  | Python tooling         | uv is the recommended modern project/dependency manager for this implementation.                                                           | Simplifies lockfile-based Docker builds.                                                      | Current                                | Use uv inside build stages.                                      | uv Docker guide ([Astral Docs][8])                                 |
+| **F-009**  | Dependencies           | `uv.lock` should be used as the source of truth for reproducible dependency installation.                                                  | Prevents Docker builds from silently changing dependencies.                                   | Current                                | Build with `uv sync --locked`.                                   | uv CLI/Docker docs ([Astral Docs][8])                              |
+| **F-010**  | Docker                 | Docker recommends trusted/minimal base images and separate build/runtime stages.                                                           | Reduces final image size and attack surface.                                                  | Current                                | Multi-stage Dockerfile.                                          | Docker build best practices ([Docker Documentation][9])            |
+| **F-011**  | Docker                 | Docker recommends pinning base image versions; digests provide stronger reproducibility.                                                   | Mutable image tags otherwise change underneath builds.                                        | Current                                | Start with exact patch tags; pin digest for controlled releases. | Docker best practices ([Docker Documentation][9])                  |
+| **F-012**  | Docker                 | `RUN --mount=type=cache` supports build-time package caches without baking them into image layers.                                         | Faster secure builds.                                                                         | Current                                | Cache uv downloads.                                              | Dockerfile reference ([Docker Documentation][10])                  |
+| **F-013**  | Docker secrets         | Build secrets should use BuildKit secret mounts rather than build arguments.                                                               | Prevents secret values from being persisted/leaked in layers or provenance.                   | Current                                | Never put credentials in Docker build args.                      | Dockerfile reference ([Docker Documentation][10])                  |
+| **F-014**  | Container runtime      | Containers should run as an unprivileged user.                                                                                             | Limits impact of application compromise.                                                      | Current                                | `USER` non-root.                                                 | Docker + OWASP ([Docker Documentation][9])                         |
+| **F-015**  | Container runtime      | `read_only`, capability dropping, and `no-new-privileges` are supported hardening controls.                                                | Reduces runtime attack surface.                                                               | Current                                | Apply to both containers where compatible.                       | Docker Compose + OWASP ([Docker Documentation][11])                |
+| **F-016**  | Container networking   | Docker supports isolated Compose networks and service-to-service networking.                                                               | MCP server can stay private without publishing a host port.                                   | Current                                | Use an internal MCP network.                                     | Docker Compose ([Docker Documentation][11])                        |
+| **F-017**  | OpenAI                 | Secure MCP Tunnel requires outbound HTTPS to `api.openai.com:443`; the tunnel itself requires no inbound host port.                        | No public MCP endpoint is necessary.                                                          | Current                                | Tunnel container gets egress only.                               | OpenAI tunnel docs ([GitHub][2])                                   |
+| **F-018**  | OpenAI                 | Official tunnel-client provides a Docker image and supports Docker Compose.                                                                | No need to build tunnel-client yourself.                                                      | Current; v0.0.15 latest public release | Use official `ghcr.io/openai/tunnel-client`.                     | OpenAI tunnel-client Docker docs ([GitHub][12])                    |
+| **F-019**  | OpenAI                 | Current tunnel-client supports `MCP_SERVER_URL` for Streamable HTTP.                                                                       | Direct Docker-to-Docker integration is supported.                                             | Current                                | Point tunnel-client to `http://mcp-server:8000/mcp`.             | OpenAI tunnel-client configuration ([GitHub][13])                  |
+| **F-020**  | OpenAI                 | Runtime API key can be supplied via a secret file using `file:/...`.                                                                       | Better than putting a key directly in environment variables.                                  | Current                                | Use Docker Compose secret.                                       | OpenAI Docker deployment docs ([GitHub][12])                       |
+| **F-021**  | MCP HTTP security      | Python SDK enables DNS-rebinding/Host-header protection by default for localhost-style HTTP servers.                                       | A container-to-container hostname such as `mcp-server` otherwise gets rejected with HTTP 421. | SDK v2                                 | Explicitly allowlist `mcp-server:8000`.                          | Python SDK deploy/troubleshooting docs ([GitHub][14])              |
+| **F-022**  | MCP health             | `@mcp.custom_route()` can add a plain HTTP health endpoint.                                                                                | Docker can monitor MCP service health separately from MCP protocol traffic.                   | SDK v2                                 | Add `/healthz`.                                                  | Official Python SDK ([GitHub][15])                                 |
+| **F-023**  | MCP protocol evolution | The 2026-07-28 protocol is stateless and deprecated roots, sampling, and logging.                                                          | New servers should avoid building around those deprecated capabilities.                       | 2026-07-28                             | Keep first version tool-focused.                                 | MCP release / SDK docs ([Model Context Protocol Blog][4])          |
+| **F-024**  | MCP logging            | The current Python SDK recommends ordinary Python logging rather than protocol-level logging for new implementations.                      | Keeps operational logs separate from MCP business traffic.                                    | Current                                | Log to stderr/container logs.                                    | Python SDK ([MCP Python SDK][16])                                  |
+| **F-025**  | Docker standard        | OCI Image Specification defines interoperable image manifests, layers, configuration and indexes.                                          | Image should remain OCI-compatible.                                                           | OCI Image 1.1.x                        | Use normal OCI/Docker images; support multi-arch release.        | OCI ([https://opencontainers.github.io][17])                       |
+| **F-026**  | Docker standard        | OCI Runtime Specification **1.3.0** is the current runtime standard.                                                                       | Defines runtime configuration/lifecycle expectations.                                         | 1.3.0                                  | Rely on standard container runtime behavior.                     | OCI ([Open Container Initiative][18])                              |
+| **F-027**  | Supply chain           | SLSA **1.2** is the current approved specification.                                                                                        | Provenance makes container builds traceable to source/build inputs.                           | v1.2                                   | Generate provenance in CI.                                       | SLSA ([SLSA][19])                                                  |
+| **F-028**  | Container supply chain | Docker BuildKit supports SBOM and provenance attestations.                                                                                 | Gives the built image verifiable component/build metadata.                                    | Current                                | Enable SBOM + max provenance for release images.                 | Docker Build attestations ([Docker Documentation][20])             |
+| **F-029**  | Container security     | NIST SP 800-190 remains the dedicated NIST guidance for application-container security.                                                    | Gives a recognized security baseline for container threats.                                   | SP 800-190                             | Use it as a container-security reference.                        | NIST ([NIST Computer Security Resource Center][21])                |
+| **F-030**  | Container security     | OWASP recommends non-root containers, no-new-privileges, read-only filesystems, resource limits, scanning, and not exposing Docker socket. | These controls map directly to this MCP container.                                            | Current                                | Apply these hardening controls.                                  | OWASP Docker Security Cheat Sheet ([OWASP Cheat Sheet Series][22]) |
+| **F-031**  | Secure development     | NIST SSDF encourages security practices across the SDLC.                                                                                   | Security should cover source, build and release, not just runtime.                            | SP 800-218 v1.1                        | Add tests, review, dependency and release controls.              | NIST SSDF                                                          |
+| **F-032**  | GitHub CI security     | GitHub recommends pinning third-party Actions to full-length commit SHAs for immutable references.                                         | Protects the build pipeline itself.                                                           | Current                                | Pin CI actions by SHA.                                           | GitHub security guidance ([GitHub Docs][23])                       |
+| **F-033**  | Dependency security    | GitHub Dependency Review can detect vulnerable dependency changes in pull requests.                                                        | Prevents known-vulnerable dependency additions.                                               | Current                                | Enable dependency review.                                        | GitHub ([GitHub Docs][24])                                         |
+
+---
+
+# 4. Key design decisions from the research
+
+## Decision A — Dockerized MCP server uses Streamable HTTP
+
+**Decision:** Yes.
+
+```text
+MCP container
+      │
+      │ HTTP
+      ▼
+tunnel-client container
+```
+
+This is different from the first version of the plan because we now have two independently managed containers.
+
+The Python SDK explicitly describes Streamable HTTP as the transport to deploy, while stdio is the subprocess transport. ([GitHub][1])
+
+---
+
+## Decision B — Do not put tunnel-client inside your application image
+
+Use:
+
+```text
+ghcr.io/openai/tunnel-client
+```
+
+as its own container.
+
+This gives you:
+
+```text
+Container A
+Python MCP server
+
+Container B
+OpenAI tunnel-client
+```
+
+rather than:
+
+```text
+Container
+├── Python
+├── MCP
+├── tunnel-client
+└── everything else
+```
+
+The official tunnel-client documentation explicitly provides a Docker image and Compose deployment model. ([GitHub][12])
+
+---
+
+## Decision C — Do not publish the MCP port
+
+Don't do:
+
+```yaml
+ports:
+  - "8000:8000"
+```
+
+in the normal configuration.
+
+Instead:
+
+```text
+mcp-server:8000
+```
+
+exists only inside Docker's private network.
+
+The tunnel-client reaches it through Docker DNS. OpenAI only needs the tunnel client to make outbound HTTPS to OpenAI. ([GitHub][2])
+
+---
+
+## Decision D — Use two Docker networks
+
+```text
+                         ┌───────────────┐
+                         │    Internet   │
+                         └───────┬───────┘
+                                 │
+                           egress network
+                                 │
+                       ┌─────────▼─────────┐
+                       │   tunnel-client   │
+                       └─────────┬─────────┘
+                                 │
+                         mcp-internal network
+                                 │
+                       ┌─────────▼─────────┐
+                       │    mcp-server     │
+                       └───────────────────┘
+```
+
+The MCP server gets **no Internet-facing network path**.
+
+The tunnel container is the only component that needs Internet egress.
+
+---
+
+# 5. Complete Dockerized runbook
+
+## Step 1 — Freeze the target architecture
+
+Use this as the project baseline:
+
+```text
+Python                    3.14.7
+MCP Python SDK            2.2.0
+uv                        0.12.19
+MCP protocol              2026-07-28
+MCP transport             Streamable HTTP
+Container runtime         Docker
+Application base image    python:3.14.7-slim-trixie
+Tunnel client             OpenAI tunnel-client v0.0.15
+Container orchestration   Docker Compose
+Testing                   pytest + MCP Inspector
+Release                   OCI image
+Supply chain              SBOM + provenance
+```
+
+The current official Python image publishes a `3.14.7-slim-trixie` tag, and the current MCP/uv versions are documented by their respective projects. ([GitHub][25])
+
+**Related Finding IDs:** `F-001, F-004, F-005, F-007, F-008, F-018, F-025`
+
+---
+
+## Step 2 — Make Docker the host prerequisite
+
+You only need these on the host:
+
+```text
+Git
+Docker Desktop / Docker Engine
+Docker Compose v2
+```
+
+You do **not** need Python installed on the host for the containerized runtime.
 
 Verify:
 
 ```bash
-python --version
+docker version
 ```
 
-or on systems where Python 3 is invoked separately:
+Then:
 
 ```bash
-python3 --version
+docker compose version
 ```
 
-Expected baseline:
+Also check Buildx:
+
+```bash
+docker buildx version
+```
+
+**Related Finding IDs:** `F-010, F-025, F-026`
+
+---
+
+# Step 3 — Create the project structure
+
+Use:
 
 ```text
-Python 3.14.7
+openai-secure-mcp-tunnel/
+│
+├── local-mcp-server/
+│   ├── Dockerfile
+│   ├── compose.yaml
+│   ├── .dockerignore
+│   ├── pyproject.toml
+│   ├── uv.lock
+│   ├── .python-version
+│   │
+│   ├── src/
+│   │   └── local_mcp_server/
+│   │       ├── __init__.py
+│   │       └── server.py
+│   │
+│   ├── tests/
+│   │   └── test_security.py
+│   │
+│   └── allowed_data/
+│       └── .gitkeep
+│
+└── .github/
+    └── workflows/
 ```
 
-Python 3.14.7 is the current stable 3.14 maintenance release as of this research.
+The important change from the previous design is that `src/` contains a real Python package instead of a standalone `server.py`.
 
-**Related Finding IDs:** `F-006, F-007`
+**Related Finding IDs:** `F-009, F-017, F-019`
 
 ---
 
-## Step 3 — Install uv
+# Step 4 — Create the Python project metadata
 
-### macOS/Linux
+Use this baseline `pyproject.toml`:
+
+```toml
+[project]
+name = "local-mcp-server"
+version = "0.1.0"
+description = "Private local MCP server for OpenAI Secure MCP Tunnel"
+requires-python = ">=3.14,<3.15"
+dependencies = [
+    "mcp[cli]==2.2.0",
+    "starlette",
+]
+
+[dependency-groups]
+dev = [
+    "pytest",
+]
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+```
+
+Then generate/update:
 
 ```bash
-curl -LsSf https://astral.sh/uv/install.sh | sh
+uv lock
 ```
 
-### Windows PowerShell
+The important property is that `uv.lock` becomes the exact dependency resolution used by the Docker build. uv's Docker guidance explicitly recommends `uv sync --locked`. ([Astral Docs][8])
 
-```powershell
-powershell -ExecutionPolicy ByPass -c "irm https://astral.sh/uv/install.ps1 | iex"
-```
-
-Restart the terminal, then:
-
-```bash
-uv --version
-```
-
-The current uv release is 0.12.19 as of September 24, 2026.
-
-**Related Finding IDs:** `F-008, F-009`
+**Related Finding IDs:** `F-005, F-008, F-009, F-017, F-019`
 
 ---
 
-## Step 4 — Pin Python for the project
+# Step 5 — Pin the Python version
 
-Create your project directory:
+Create:
 
-```bash
-mkdir local-mcp-server
-cd local-mcp-server
+```text
+.python-version
 ```
 
-Initialize the project:
+containing:
 
-```bash
-uv init
+```text
+3.14.7
 ```
 
-Pin the project interpreter:
+Verify from a uv environment if you want local development:
 
 ```bash
 uv python install 3.14.7
 uv python pin 3.14.7
 ```
 
-Verify:
-
-```bash
-uv run python --version
-```
-
-Expected:
-
-```text
-Python 3.14.7
-```
-
-This gives the project a reproducible Python selection without relying on whichever system Python happens to be first on PATH.
-
-**Related Finding IDs:** `F-007, F-008, F-017`
+**Related Finding IDs:** `F-007, F-008`
 
 ---
 
-## Step 5 — Create the virtual environment
-
-Run:
-
-```bash
-uv venv --python 3.14.7
-```
-
-You should now have:
-
-```text
-local-mcp-server/
-├── .venv/
-├── .python-version
-├── pyproject.toml
-└── README.md
-```
-
-You do not need to activate the environment manually for this runbook. We will consistently use `uv run`, which runs commands in the project environment and keeps it synchronized with the lockfile.
-
-**Related Finding IDs:** `F-008, F-009, F-017`
-
----
-
-## Step 6 — Install the official MCP Python SDK
-
-Install the current SDK and CLI:
-
-```bash
-uv add "mcp[cli]==2.2.0"
-```
-
-This intentionally pins the version to the current research baseline rather than allowing future dependency resolution to silently change the MCP SDK.
-
-The official SDK's current stable release is v2.2.0, released September 7, 2026.
-
-Check:
-
-```bash
-uv tree
-```
-
-Then:
-
-```bash
-uv run python -c "import mcp; print(mcp.__version__)"
-```
-
-Expected:
-
-```text
-2.2.0
-```
-
-**Related Finding IDs:** `F-005, F-006, F-009`
-
----
-
-## Step 7 — Add the test dependency
-
-Install pytest as a development dependency:
-
-```bash
-uv add --dev pytest
-```
-
-Your project now has:
-
-```text
-local-mcp-server/
-├── .venv/
-├── .python-version
-├── pyproject.toml
-├── uv.lock
-└── README.md
-```
-
-The `uv.lock` file should be committed to source control. uv documents it as the exact resolved dependency set for reproducible environments.
-
-**Related Finding IDs:** `F-009, F-017, F-019`
-
----
-
-## Step 8 — Create the server file
+# Step 6 — Implement the MCP server
 
 Create:
 
 ```text
-server.py
+src/local_mcp_server/server.py
 ```
 
-Put this in it:
+Use this structure:
 
 ```python
 from __future__ import annotations
 
 import logging
+import os
 import platform
 import sys
 from pathlib import Path
 
-from mcp.server import MCPServer
+from mcp.server.mcpserver import MCPServer
+from mcp.server.transport_security import TransportSecuritySettings
+from starlette.requests import Request
+from starlette.responses import JSONResponse
 
 logger = logging.getLogger(__name__)
 
 mcp = MCPServer("local-computer")
 
-PROJECT_ROOT = Path(__file__).resolve().parent
-ALLOWED_ROOT = (PROJECT_ROOT / "allowed_data").resolve()
+ALLOWED_ROOT = Path(
+    os.environ.get("ALLOWED_DATA_DIR", "/app/allowed_data")
+).resolve()
 
 MAX_READ_BYTES = 1_000_000
 
 
 def resolve_allowed_path(relative_path: str) -> Path:
-    """Resolve a path while preventing access outside allowed_data."""
+    """Resolve a file path while preventing access outside ALLOWED_ROOT."""
     candidate = (ALLOWED_ROOT / relative_path).resolve()
 
     try:
         candidate.relative_to(ALLOWED_ROOT)
     except ValueError as exc:
-        raise ValueError("Path is outside the allowed data directory.") from exc
+        raise ValueError(
+            "Requested path is outside the allowed data directory."
+        ) from exc
 
     return candidate
 
 
+@mcp.custom_route(
+    "/healthz",
+    methods=["GET"],
+    include_in_schema=False,
+)
+async def healthz(request: Request) -> JSONResponse:
+    return JSONResponse({"status": "ok"})
+
+
 @mcp.tool()
 def get_system_info() -> dict[str, str]:
-    """Return basic information about the local MCP host."""
+    """Return basic information about the local MCP container."""
     return {
         "operating_system": platform.system(),
         "platform": platform.platform(),
@@ -375,7 +466,7 @@ def get_system_info() -> dict[str, str]:
 
 @mcp.tool()
 def list_allowed_files() -> list[str]:
-    """List files inside the server's allowed_data directory."""
+    """List files below the configured allowed data directory."""
     if not ALLOWED_ROOT.exists():
         return []
 
@@ -389,7 +480,10 @@ def list_allowed_files() -> list[str]:
                 continue
 
             resolved.relative_to(ALLOWED_ROOT)
-            results.append(resolved.relative_to(ALLOWED_ROOT).as_posix())
+
+            results.append(
+                resolved.relative_to(ALLOWED_ROOT).as_posix()
+            )
 
         except (OSError, ValueError):
             continue
@@ -399,56 +493,86 @@ def list_allowed_files() -> list[str]:
 
 @mcp.tool()
 def read_allowed_text_file(relative_path: str) -> str:
-    """Read a UTF-8 text file from the allowed_data directory."""
+    """Read a UTF-8 text file under the configured allowed data directory."""
     target = resolve_allowed_path(relative_path)
 
     if not target.is_file():
         raise ValueError("Requested path is not a regular file.")
 
     if target.stat().st_size > MAX_READ_BYTES:
-        raise ValueError("Requested file exceeds the maximum allowed size.")
+        raise ValueError("Requested file is too large.")
 
     try:
         return target.read_text(encoding="utf-8")
     except UnicodeDecodeError as exc:
-        raise ValueError("Requested file is not valid UTF-8 text.") from exc
+        raise ValueError(
+            "Requested file is not valid UTF-8 text."
+        ) from exc
+
+
+def main() -> None:
+    logging.basicConfig(
+        level=os.environ.get("LOG_LEVEL", "INFO"),
+        format="%(asctime)s %(levelname)s %(name)s %(message)s",
+    )
+
+    security = TransportSecuritySettings(
+        allowed_hosts=["mcp-server:8000"],
+    )
+
+    logger.info("Starting local MCP server")
+
+    mcp.run(
+        transport="streamable-http",
+        host="0.0.0.0",
+        port=8000,
+        streamable_http_path="/mcp",
+        transport_security=security,
+    )
 
 
 if __name__ == "__main__":
-    logging.basicConfig(level=logging.INFO)
-    logger.info("Starting local MCP server")
-    mcp.run()
+    main()
 ```
 
-This implementation intentionally exposes **three narrow tools**:
+Three details here are important.
 
-```text
-get_system_info()
-list_allowed_files()
-read_allowed_text_file()
+### First
+
+The server now uses:
+
+```python
+mcp.run(transport="streamable-http")
 ```
 
-It does **not** expose:
+because it is a deployed container rather than a child subprocess. ([GitHub][1])
 
-```text
-run_shell(command)
-execute_python(code)
-read_any_file(path)
-delete_file(path)
+### Second
+
+This line is essential:
+
+```python
+allowed_hosts=["mcp-server:8000"]
 ```
 
-This is directly motivated by MCP's tool-safety guidance and OWASP's access-control/injection/insecure-design concerns.
+The current SDK protects Streamable HTTP servers against DNS rebinding by default and otherwise expects localhost. A Docker service named `mcp-server` would otherwise hit the SDK's `421 Invalid Host header` protection. ([GitHub][14])
 
-**Related Finding IDs:** `F-010, F-011, F-012, F-018`
+### Third
+
+`/healthz` is deliberately tiny.
+
+The SDK documents `custom_route()` specifically for health checks and other non-MCP HTTP endpoints, and those routes are not authenticated. Therefore the route must expose **no sensitive information**. ([GitHub][15])
+
+**Related Finding IDs:** `F-004, F-010, F-021, F-022, F-023, F-024, F-030`
 
 ---
 
-## Step 9 — Create the allowed data boundary
+# Step 7 — Create the controlled local data area
 
 Create:
 
 ```text
-allowed_data/
+local-mcp-server/allowed_data/
 ```
 
 Then create:
@@ -457,189 +581,561 @@ Then create:
 allowed_data/hello.txt
 ```
 
-Put:
+containing:
 
 ```text
 Hello from my local MCP server.
 ```
 
-inside it.
-
-Your project should now look like:
+The container will later mount this directory:
 
 ```text
-local-mcp-server/
-│
-├── .venv/
-├── .python-version
-├── pyproject.toml
-├── uv.lock
-├── server.py
-│
-└── allowed_data/
-    └── hello.txt
+host allowed_data/
+        │
+        │ :ro
+        ▼
+container /app/allowed_data/
 ```
 
-The purpose of this directory is to establish a **least-privilege data boundary**.
+This is much safer than mounting:
 
-The MCP server can read files under this directory, but the tool deliberately rejects paths that resolve outside it.
+```text
+/home/username/
+```
 
-**Related Finding IDs:** `F-010, F-018, F-019`
+or:
+
+```text
+/
+```
+
+into the container.
+
+**Related Finding IDs:** `F-010, F-014, F-018, F-030`
 
 ---
 
-## Step 10 — Add logging correctly
+# Step 8 — Create the Dockerfile
 
-For a stdio MCP server, stdout is part of the MCP protocol stream.
+Use a multi-stage build.
 
-Therefore, do **not** write:
+```dockerfile
+# syntax=docker/dockerfile:1.7
 
-```python
-print("Server started")
+FROM ghcr.io/astral-sh/uv:0.12.19 AS uv
+
+FROM python:3.14.7-slim-trixie AS builder
+
+COPY --from=uv /uv /uvx /bin/
+
+WORKDIR /app
+
+ENV UV_COMPILE_BYTECODE=1 \
+    UV_LINK_MODE=copy
+
+COPY pyproject.toml uv.lock .python-version ./
+
+RUN --mount=type=cache,target=/root/.cache/uv \
+    uv sync \
+    --locked \
+    --no-install-project
+
+COPY src ./src
+
+RUN --mount=type=cache,target=/root/.cache/uv \
+    uv sync \
+    --locked \
+    --no-dev \
+    --no-editable
+
+
+FROM python:3.14.7-slim-trixie AS runtime
+
+WORKDIR /app
+
+ENV PATH="/app/.venv/bin:$PATH" \
+    PYTHONDONTWRITEBYTECODE=1 \
+    PYTHONUNBUFFERED=1
+
+RUN groupadd \
+        --gid 10001 \
+        appgroup \
+    && useradd \
+        --uid 10001 \
+        --gid 10001 \
+        --create-home \
+        --shell /usr/sbin/nologin \
+        appuser
+
+COPY --from=builder --chown=10001:10001 \
+    /app/.venv \
+    /app/.venv
+
+USER 10001:10001
+
+EXPOSE 8000
+
+ENTRYPOINT ["python", "-m", "local_mcp_server.server"]
 ```
+
+This follows several current Docker/uv recommendations:
+
+* trusted/minimal Python base image
+* multi-stage build
+* uv copied from the official uv image
+* lockfile validation
+* cache mounts
+* non-editable installation
+* non-root runtime
+
+uv explicitly documents this pattern, including `uv sync --locked`, `--no-editable`, and copying uv from its official image. Docker separately recommends multi-stage builds and non-root execution. ([Astral Docs][8])
+
+**Related Finding IDs:** `F-007, F-008, F-009, F-010, F-011, F-012, F-014`
+
+---
+
+# Step 9 — Create `.dockerignore`
 
 Use:
 
-```python
-logger.info("Server started")
+```dockerignore
+.git
+.github
+
+.venv
+__pycache__
+.pytest_cache
+.ruff_cache
+.mypy_cache
+
+*.py[cod]
+
+.env
+.env.*
+*.secret
+secrets
+
+allowed_data/*
+!allowed_data/.gitkeep
+
+Dockerfile*
+compose*.yaml
+
+dist
+build
+*.egg-info
 ```
 
-The official MCP server-building documentation explicitly warns that stdout output can corrupt stdio JSON-RPC traffic and recommends Python's `logging` module, which writes to stderr by default.
+The key objective is:
 
-**Related Finding IDs:** `F-002, F-003, F-012`
+```text
+No credentials
+No local virtualenv
+No private data
+No Git metadata
+```
+
+should enter the Docker build context.
+
+Docker specifically recommends using `.dockerignore` to keep irrelevant or sensitive files out of builds. ([Docker Documentation][9])
+
+**Related Finding IDs:** `F-010, F-013, F-018, F-030`
 
 ---
 
-## Step 11 — Run the server directly
+# Step 10 — Validate the Dockerfile before building
 
 Run:
 
 ```bash
-uv run python server.py
+docker buildx build --check ./local-mcp-server
 ```
 
-The terminal may appear to wait without displaying anything.
+Docker's current Buildx supports `--check` specifically to evaluate Dockerfile/build configuration without executing the build. ([Docker Documentation][26])
 
-That is expected.
+Fix every warning that indicates an actual configuration problem.
 
-The server is waiting for MCP protocol input on stdin.
-
-Do **not** type ordinary text into the terminal.
-
-Stop it with:
-
-```text
-Ctrl+C
-```
-
-**Related Finding IDs:** `F-003, F-012`
+**Related Finding IDs:** `F-010, F-011, F-031`
 
 ---
 
-## Step 12 — Run the MCP Inspector
+# Step 11 — Build the MCP image
 
-The official Python SDK provides:
+From the repository root:
 
 ```bash
-uv run mcp dev server.py
+docker build \
+  --pull \
+  -t local-mcp-server:dev \
+  ./local-mcp-server
 ```
 
-This launches the MCP Inspector workflow. The Python SDK explicitly documents this command as the development/testing path.
+For a fully clean validation build:
 
-You should see the Inspector interface.
+```bash
+docker build \
+  --pull \
+  --no-cache \
+  -t local-mcp-server:dev \
+  ./local-mcp-server
+```
 
-The Inspector should discover:
+Docker recommends `--pull` when you want a fresh base image and distinguishes that from `--no-cache`, which rebuilds layers without using the local build cache. ([Docker Documentation][9])
+
+**Related Finding IDs:** `F-010, F-011, F-012`
+
+---
+
+# Step 12 — Create the Docker Compose architecture
+
+Create:
+
+```text
+local-mcp-server/compose.yaml
+```
+
+Use:
+
+```yaml
+services:
+  mcp-server:
+    build:
+      context: .
+      dockerfile: Dockerfile
+
+    image: local-mcp-server:dev
+
+    restart: unless-stopped
+
+    read_only: true
+
+    security_opt:
+      - no-new-privileges:true
+
+    cap_drop:
+      - ALL
+
+    tmpfs:
+      - /tmp:rw,noexec,nosuid,nodev
+
+    environment:
+      ALLOWED_DATA_DIR: /app/allowed_data
+      LOG_LEVEL: INFO
+
+    volumes:
+      - ./allowed_data:/app/allowed_data:ro
+
+    networks:
+      - mcp-internal
+
+    healthcheck:
+      test:
+        [
+          "CMD",
+          "python",
+          "-c",
+          "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/healthz', timeout=2).read()"
+        ]
+      interval: 10s
+      timeout: 3s
+      retries: 10
+      start_period: 15s
+
+
+  tunnel-client:
+    image: ghcr.io/openai/tunnel-client:v0.0.15
+
+    restart: unless-stopped
+
+    command:
+      - run
+      - --control-plane.api-key=file:/run/secrets/control_plane_api_key
+
+    environment:
+      CONTROL_PLANE_TUNNEL_ID: ${CONTROL_PLANE_TUNNEL_ID}
+      MCP_SERVER_URL: http://mcp-server:8000/mcp
+      LOG_LEVEL: info
+      LOG_FORMAT: json
+      MCP_CONNECTION_MAX_TTL: 10m
+
+    secrets:
+      - control_plane_api_key
+
+    depends_on:
+      mcp-server:
+        condition: service_healthy
+
+    networks:
+      - mcp-internal
+      - tunnel-egress
+
+    security_opt:
+      - no-new-privileges:true
+
+    cap_drop:
+      - ALL
+
+
+networks:
+  mcp-internal:
+    internal: true
+
+  tunnel-egress:
+
+
+secrets:
+  control_plane_api_key:
+    file: .secrets/control-plane-api-key
+```
+
+This is the most important new piece of the design.
+
+---
+
+# 13. Understand the Compose network
+
+The networks are intentionally asymmetric:
+
+```text
+mcp-server
+    │
+    │
+    ▼
+mcp-internal
+    │
+    ▼
+tunnel-client
+    │
+    ▼
+tunnel-egress
+    │
+    ▼
+Internet → api.openai.com:443
+```
+
+The MCP server **does not belong to the Internet-facing network**.
+
+Docker Compose supports service networking, read-only filesystems, dropped capabilities and security options; OWASP recommends the corresponding container hardening controls. ([Docker Documentation][11])
+
+**Related Finding IDs:** `F-015, F-016, F-017, F-030`
+
+---
+
+# Step 14 — Create the runtime secret
+
+Create:
+
+```text
+local-mcp-server/.secrets/control-plane-api-key
+```
+
+Put **only** the OpenAI runtime key inside it.
+
+For example:
+
+```text
+sk-xxxxxxxxxxxxxxxx
+```
+
+Do not put quotes around it.
+
+Then add:
+
+```gitignore
+.secrets/
+```
+
+to `.gitignore`.
+
+OpenAI's tunnel-client documentation explicitly supports passing the runtime credential as a file using `file:/...`. ([GitHub][12])
+
+**Related Finding IDs:** `F-013, F-018, F-020, F-030`
+
+---
+
+# Step 15 — Configure the tunnel ID
+
+Create a local `.env` file:
+
+```text
+CONTROL_PLANE_TUNNEL_ID=tunnel_xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx
+```
+
+Docker Compose reads this value for:
+
+```yaml
+CONTROL_PLANE_TUNNEL_ID: ${CONTROL_PLANE_TUNNEL_ID}
+```
+
+Do not commit `.env`.
+
+**Related Finding IDs:** `F-017, F-018, F-020`
+
+---
+
+# Step 16 — Verify the Compose configuration
+
+Run:
+
+```bash
+docker compose \
+  -f local-mcp-server/compose.yaml \
+  config
+```
+
+Inspect the output.
+
+Make sure you see:
+
+```text
+MCP_SERVER_URL: http://mcp-server:8000/mcp
+```
+
+and:
+
+```text
+CONTROL_PLANE_TUNNEL_ID
+```
+
+but **not the literal secret value** in a committed file.
+
+**Related Finding IDs:** `F-013, F-016, F-020`
+
+---
+
+# Step 17 — Start only the MCP container first
+
+Do not start the tunnel yet.
+
+Run:
+
+```bash
+docker compose \
+  -f local-mcp-server/compose.yaml \
+  up -d --build mcp-server
+```
+
+Check:
+
+```bash
+docker compose \
+  -f local-mcp-server/compose.yaml \
+  ps
+```
+
+You want:
+
+```text
+mcp-server    healthy
+```
+
+Inspect:
+
+```bash
+docker compose \
+  -f local-mcp-server/compose.yaml \
+  logs mcp-server
+```
+
+**Related Finding IDs:** `F-009, F-015, F-022`
+
+---
+
+# Step 18 — Test the health endpoint
+
+Because the MCP port is deliberately not published to the host, the cleanest first test is from another container on the internal network.
+
+For example:
+
+```bash
+docker run --rm \
+  --network container:<mcp-container-id> \
+  python:3.14.7-slim-trixie \
+  python -c \
+  "import urllib.request; print(urllib.request.urlopen('http://127.0.0.1:8000/healthz').read().decode())"
+```
+
+Alternatively, for easier local development, temporarily expose:
+
+```yaml
+ports:
+  - "127.0.0.1:8000:8000"
+```
+
+and test:
+
+```bash
+curl http://127.0.0.1:8000/healthz
+```
+
+Do **not** expose:
+
+```yaml
+- "8000:8000"
+```
+
+on a machine where you do not want LAN access.
+
+**Related Finding IDs:** `F-015, F-016, F-022, F-030`
+
+---
+
+# Step 19 — Verify the MCP endpoint
+
+With a temporary localhost debug port, test:
+
+```text
+http://127.0.0.1:8000/mcp
+```
+
+The important thing to verify is that the server does **not** return:
+
+```text
+421 Invalid Host header
+```
+
+If it does, check:
+
+```python
+TransportSecuritySettings(
+    allowed_hosts=["mcp-server:8000"]
+)
+```
+
+The current SDK explicitly documents this DNS-rebinding/Host-header behavior. ([GitHub][14])
+
+**Related Finding IDs:** `F-004, F-021`
+
+---
+
+# Step 20 — Test with MCP Inspector
+
+For the debug configuration, connect MCP Inspector to:
+
+```text
+http://127.0.0.1:8000/mcp
+```
+
+You should see:
 
 ```text
 Tools
-
-get_system_info
-list_allowed_files
-read_allowed_text_file
+├── get_system_info
+├── list_allowed_files
+└── read_allowed_text_file
 ```
 
-**Related Finding IDs:** `F-005, F-015`
+MCP Inspector is the official interactive testing tool for MCP servers. ([GitHub][1])
+
+Test all three tools.
+
+**Related Finding IDs:** `F-005, F-015, F-023`
 
 ---
 
-## Step 13 — Test `get_system_info`
+# Step 21 — Test path security
 
-From the Inspector, call:
-
-```text
-get_system_info
-```
-
-Expected result will contain information such as:
-
-```json
-{
-  "operating_system": "...",
-  "platform": "...",
-  "python_version": "3.14.7",
-  "python_implementation": "CPython"
-}
-```
-
-This proves that the MCP request reached your local Python process and executed there.
-
-**Related Finding IDs:** `F-003, F-011, F-015`
-
----
-
-## Step 14 — Test the allowed file list
-
-Call:
-
-```text
-list_allowed_files
-```
-
-Expected:
-
-```json
-[
-  "hello.txt"
-]
-```
-
-This establishes that the server can inspect the deliberately permitted local directory.
-
-**Related Finding IDs:** `F-010, F-011, F-018`
-
----
-
-## Step 15 — Test file reading
-
-Call:
-
-```text
-read_allowed_text_file
-```
-
-with:
-
-```json
-{
-  "relative_path": "hello.txt"
-}
-```
-
-Expected result:
-
-```text
-Hello from my local MCP server.
-```
-
-This is your first end-to-end local data operation.
-
-**Related Finding IDs:** `F-010, F-011, F-015`
-
----
-
-## Step 16 — Verify path-traversal protection
-
-Try:
+Use:
 
 ```json
 {
@@ -647,451 +1143,209 @@ Try:
 }
 ```
 
-The server should reject it with:
+Then:
 
-```text
-Path is outside the allowed data directory.
+```json
+{
+  "relative_path": "../../pyproject.toml"
+}
 ```
 
-Also test:
+Both must be rejected.
 
-```text
-../../
+Also test a symlink inside `allowed_data` that points outside it.
+
+That last test is important because the code calls:
+
+```python
+Path.resolve()
 ```
 
-and, where applicable, paths using alternate separators.
+before checking the allowed root.
 
-The important property is not the exact error text; it is that **the resolved path cannot escape `allowed_data`**.
-
-This is the security boundary we intentionally built into the server.
-
-**Related Finding IDs:** `F-010, F-018, F-019`
+**Related Finding IDs:** `F-010, F-018, F-030`
 
 ---
 
-## Step 17 — Create automated security tests
+# Step 22 — Run automated tests
 
-Create:
-
-```text
-tests/
-└── test_security.py
-```
-
-Use:
+Use tests such as:
 
 ```python
 import pytest
 
-from server import ALLOWED_ROOT, read_allowed_text_file, resolve_allowed_path
+from local_mcp_server.server import (
+    ALLOWED_ROOT,
+    read_allowed_text_file,
+    resolve_allowed_path,
+)
 
 
-def test_allowed_path_stays_inside_root() -> None:
+def test_allowed_file_is_inside_root():
     result = resolve_allowed_path("hello.txt")
-
     assert result.parent == ALLOWED_ROOT
 
 
-def test_parent_traversal_is_rejected() -> None:
+def test_parent_traversal_is_rejected():
     with pytest.raises(ValueError):
         resolve_allowed_path("../server.py")
 
 
-def test_nested_parent_traversal_is_rejected() -> None:
+def test_nested_parent_traversal_is_rejected():
     with pytest.raises(ValueError):
         resolve_allowed_path("../../pyproject.toml")
 
 
-def test_allowed_file_can_be_read() -> None:
+def test_allowed_file_can_be_read():
     result = read_allowed_text_file("hello.txt")
-
     assert result == "Hello from my local MCP server.\n"
 ```
 
-Run:
+Run them either with your local uv environment:
 
 ```bash
 uv run pytest
 ```
 
-Expected:
+or add a Docker test target in CI.
 
-```text
-4 passed
-```
-
-This turns the important security rule into an automated regression test.
-
-**Related Finding IDs:** `F-018, F-019`
+**Related Finding IDs:** `F-018, F-019, F-031`
 
 ---
 
-## Step 18 — Verify the dependency lock
+# Step 23 — Start the tunnel-client container
+
+Once the MCP server is healthy:
+
+```bash
+docker compose \
+  -f local-mcp-server/compose.yaml \
+  up -d tunnel-client
+```
+
+Or simply:
+
+```bash
+docker compose \
+  -f local-mcp-server/compose.yaml \
+  up -d
+```
+
+Compose will honor:
+
+```text
+mcp-server healthy
+        ↓
+tunnel-client starts
+```
+
+**Related Finding IDs:** `F-017, F-018, F-019`
+
+---
+
+# Step 24 — Check tunnel-client logs
 
 Run:
 
 ```bash
-uv lock
+docker compose \
+  -f local-mcp-server/compose.yaml \
+  logs -f tunnel-client
+```
+
+You are looking for successful:
+
+```text
+control-plane connection
+tunnel authentication
+MCP target connection
+readiness
+```
+
+OpenAI's tunnel-client provides health/readiness/operator surfaces for this purpose. ([GitHub][27])
+
+**Related Finding IDs:** `F-017, F-018, F-019, F-020`
+
+---
+
+# Step 25 — Verify tunnel-client readiness
+
+For troubleshooting, optionally expose the tunnel-client health port only to localhost:
+
+```yaml
+environment:
+  HEALTH_LISTEN_ADDR: ":8080"
+
+ports:
+  - "127.0.0.1:8080:8080"
 ```
 
 Then:
 
 ```bash
-uv tree
+curl http://127.0.0.1:8080/healthz
 ```
 
-Check that:
-
-```text
-mcp 2.2.0
-```
-
-is present.
-
-Commit:
-
-```text
-pyproject.toml
-uv.lock
-.python-version
-server.py
-tests/
-```
-
-Do **not** commit:
-
-```text
-.venv/
-private credentials
-private data
-API keys
-```
-
-uv explicitly recommends version-controlling `uv.lock` for reproducibility.
-
-**Related Finding IDs:** `F-009, F-017, F-019`
-
----
-
-## Step 19 — Add the Git ignore rules
-
-Create or update:
-
-```text
-.gitignore
-```
-
-with:
-
-```gitignore
-.venv/
-__pycache__/
-*.py[cod]
-.pytest_cache/
-
-# Local/private data
-allowed_data/*
-!allowed_data/.gitkeep
-
-# Local secrets
-.env
-.env.*
-*.secret
-```
-
-Create:
-
-```text
-allowed_data/.gitkeep
-```
-
-This keeps the directory in Git without accidentally committing private data.
-
-**Related Finding IDs:** `F-018, F-019`
-
----
-
-## Step 20 — Decide how secrets will work
-
-For any future tool that talks to another service, do not hard-code:
-
-```python
-API_KEY = "sk-..."
-```
-
-Use an environment variable instead:
-
-```python
-import os
-
-api_key = os.environ["MY_SERVICE_API_KEY"]
-```
-
-For a stdio MCP implementation, the MCP authorization specification specifically says HTTP authorization should not be applied to stdio in the same way; credentials can instead be retrieved from the environment.
-
-**Related Finding IDs:** `F-013, F-018, F-019`
-
----
-
-## Step 21 — Establish the first production boundary
-
-At this point your server should be considered:
-
-```text
-LOCAL + READ-ONLY + NARROW
-```
-
-Do not add arbitrary command execution yet.
-
-A safe expansion path is:
-
-```text
-Phase 1
-Read-only tools
-
-        ↓
-
-Phase 2
-Specific write tools
-
-        ↓
-
-Phase 3
-Explicit confirmation / authorization
-
-        ↓
-
-Phase 4
-Long-running operations
-
-        ↓
-
-Phase 5
-HTTP deployment, if actually required
-```
-
-This matches the MCP principle that tools may provide arbitrary capability and should be treated with caution.
-
-**Related Finding IDs:** `F-010, F-018, F-019`
-
----
-
-# Part 5 — Connect the Local Server to OpenAI Secure MCP Tunnel
-
-This phase is optional until the local server itself works.
-
-Do not start here.
-
----
-
-## Step 22 — Create an OpenAI tunnel
-
-Open the OpenAI Platform tunnel settings and create a tunnel.
-
-Record:
-
-```text
-TUNNEL_ID
-```
-
-Secure MCP Tunnel is designed for private/on-premises/developer-machine MCP servers and uses an outbound connection from the host.
-
-**Related Finding IDs:** `F-014`
-
----
-
-## Step 23 — Create a restricted runtime credential
-
-Create the runtime credential for `tunnel-client` with only the permissions required to use/read the tunnel.
-
-Keep it separate from administrator credentials.
-
-Store it outside the source repository.
-
-**Related Finding IDs:** `F-014, F-018, F-019`
-
----
-
-## Step 24 — Install `tunnel-client`
-
-Use the OpenAI Platform download or the latest official GitHub release.
-
-Current public release:
-
-```text
-tunnel-client v0.0.15
-```
-
-released September 25, 2026.
-
-Verify:
+and:
 
 ```bash
-tunnel-client --version
+curl http://127.0.0.1:8080/readyz
 ```
 
-Then:
+OpenAI documents these runtime endpoints and specifically warns that exposing the health listener should be done only intentionally. ([GitHub][12])
 
-```bash
-tunnel-client help quickstart
-```
+For normal operation, you can omit the published port.
 
-OpenAI explicitly recommends using the current release mechanism rather than hard-coding a future release URL.
-
-**Related Finding IDs:** `F-014`
+**Related Finding IDs:** `F-017, F-018`
 
 ---
 
-## Step 25 — Provide the runtime API key
+# Step 26 — Verify internal connectivity
 
-Set the runtime credential in the environment used by `tunnel-client`.
-
-For example:
-
-```bash
-export CONTROL_PLANE_API_KEY="YOUR_RESTRICTED_KEY"
-```
-
-On PowerShell:
-
-```powershell
-$env:CONTROL_PLANE_API_KEY="YOUR_RESTRICTED_KEY"
-```
-
-Do not commit this value.
-
-**Related Finding IDs:** `F-013, F-014, F-018`
-
----
-
-## Step 26 — Configure the tunnel to launch your local MCP server
-
-Your local MCP command is:
-
-```bash
-uv run python server.py
-```
-
-Configure `tunnel-client` to use that command as its stdio MCP target.
-
-The OpenAI tunnel documentation provides the `sample_mcp_stdio_local` / `--mcp-command` model for local stdio servers.
-
-The resulting conceptual configuration is:
+The effective connection should now be:
 
 ```text
-Tunnel
-  │
-  └── stdio command:
-      uv run python server.py
-```
-
-Use the exact current CLI syntax shown by:
-
-```bash
-tunnel-client help quickstart
-```
-
-if the current release's flags differ.
-
-**Related Finding IDs:** `F-003, F-014`
-
----
-
-## Step 27 — Run the tunnel diagnostic
-
-Run the tunnel client's diagnostic command using your profile:
-
-```bash
-tunnel-client doctor --profile YOUR_PROFILE --explain
-```
-
-You want:
-
-```text
-authentication OK
-tunnel available
-MCP command reachable
-configuration valid
-```
-
-**Related Finding IDs:** `F-014`
-
----
-
-## Step 28 — Start the tunnel
-
-Run:
-
-```bash
-tunnel-client run --profile YOUR_PROFILE
-```
-
-The resulting architecture should now be:
-
-```text
-ChatGPT
-   │
-   ▼
-OpenAI Secure MCP Tunnel
-   │
-   ▼
 tunnel-client
-   │
-   ▼
-uv run python server.py
-   │
-   ▼
-MCPServer
+      │
+      │ http://mcp-server:8000/mcp
+      ▼
+mcp-server
 ```
 
-OpenAI documents Secure MCP Tunnel as outbound-only; the local machine does not need an inbound Internet port for this architecture.
+No host routing is involved.
 
-**Related Finding IDs:** `F-003, F-014, F-020`
-
----
-
-## Step 29 — Do not expose a local HTTP port
-
-For this architecture, you should **not** need:
+If the tunnel reports that the MCP target is unreachable, troubleshoot:
 
 ```text
-0.0.0.0:8000
-0.0.0.0:8080
+1. mcp-server healthy?
+2. Both services on mcp-internal?
+3. Correct service name?
+4. Port 8000?
+5. Host allowlist?
+6. Container logs?
 ```
 
-or a public reverse proxy.
-
-The MCP server is a local stdio process.
-
-That is one of the main benefits of this architecture.
-
-**Related Finding IDs:** `F-003, F-004, F-014`
+**Related Finding IDs:** `F-016, F-019, F-021`
 
 ---
 
-## Step 30 — Connect the tunnel to ChatGPT
+# Step 27 — Create/configure the ChatGPT tunnel connection
 
-Configure the appropriate custom MCP app/connector in ChatGPT using the tunnel you created.
+Use the OpenAI Platform tunnel/workspace configuration from the previous runbook.
 
-Keep the local:
+The tunnel must be associated with the correct ChatGPT workspace and the runtime credential must have the required tunnel permissions.
 
-```bash
-tunnel-client run ...
-```
+OpenAI documents the tunnel runtime permissions as **Read + Use** for a normal runtime principal; tunnel managers additionally require Manage. ([GitHub][28])
 
-process running while ChatGPT discovers and calls the server.
-
-OpenAI describes the tunnel as providing the normal MCP request path to supported OpenAI products while keeping the MCP server private.
-
-**Related Finding IDs:** `F-014`
+**Related Finding IDs:** `F-017, F-018, F-020`
 
 ---
 
-## Step 31 — Perform the first remote test
+# Step 28 — Test from ChatGPT
 
-Do not start with file modification or shell execution.
+Use only read-only operations first.
 
-Ask ChatGPT to use:
+Test:
 
 ```text
 get_system_info
@@ -1109,253 +1363,602 @@ Then:
 read_allowed_text_file("hello.txt")
 ```
 
-The complete flow should be:
+The final path is:
 
 ```text
 ChatGPT
-   │
-   ▼
-OpenAI MCP Tunnel
-   │
-   ▼
-tunnel-client
-   │
-   ▼
-Python MCPServer
-   │
-   ▼
-tool
-   │
-   ▼
-local computer
+   ↓
+OpenAI Tunnel Service
+   ↓
+tunnel-client container
+   ↓
+Docker private network
+   ↓
+Python MCP container
+   ↓
+MCP tool
 ```
 
-**Related Finding IDs:** `F-003, F-010, F-011, F-014`
+**Related Finding IDs:** `F-004, F-010, F-017, F-019, F-023`
 
 ---
 
-# Part 6 — Acceptance Checklist
+# Step 29 — Test container isolation
 
-The implementation is complete when all of these are true:
+Verify the MCP container:
+
+```bash
+docker inspect <mcp-container>
+```
+
+Check:
 
 ```text
-Runtime
-[ ] Python 3.14.7 installed
-[ ] uv installed
-[ ] Project has .python-version
-[ ] Project has pyproject.toml
-[ ] Project has uv.lock
-
-MCP
-[ ] MCP SDK 2.2.0 installed
-[ ] MCPServer imports successfully
-[ ] stdio transport works
-[ ] No stdout diagnostic logging
-
-Tools
-[ ] get_system_info works
-[ ] list_allowed_files works
-[ ] read_allowed_text_file works
-[ ] Path traversal is rejected
-[ ] File-size limit is enforced
-[ ] No unrestricted shell tool exists
-
-Testing
-[ ] pytest passes
-[ ] MCP Inspector discovers tools
-[ ] MCP Inspector can invoke every tool
-[ ] Security tests cover traversal
-
-Security
-[ ] Secrets are outside source code
-[ ] Private files are not committed
-[ ] uv.lock is committed
-[ ] Tools follow least privilege
-[ ] No unnecessary HTTP listener
-[ ] No unnecessary OAuth implementation
-
-OpenAI integration
-[ ] OpenAI tunnel exists
-[ ] Runtime credential is restricted
-[ ] tunnel-client starts successfully
-[ ] tunnel-client can launch server.py
-[ ] Tunnel has outbound HTTPS connectivity
-[ ] ChatGPT discovers the MCP server
-[ ] ChatGPT can invoke the read-only tools
+read-only root filesystem
+non-root user
+no-new-privileges
+capabilities dropped
+only expected volume mounted
 ```
+
+Also verify you did **not** mount:
+
+```text
+/var/run/docker.sock
+```
+
+OWASP explicitly warns that access to the Docker socket is effectively host-level root access and should not be exposed to containers. ([OWASP Cheat Sheet Series][22])
+
+**Related Finding IDs:** `F-014, F-015, F-030`
 
 ---
 
-# Part 7 — Troubleshooting Flow
+# Step 30 — Add container resource limits
 
-```text
-ChatGPT cannot see server
-        │
-        ├── Is tunnel-client running?
-        │       └── No → start it
-        │
-        ├── Does tunnel-client doctor pass?
-        │       └── No → fix tunnel/auth/profile
-        │
-        ├── Does local MCP Inspector work?
-        │       └── No → fix Python MCP server
-        │
-        ├── Does "uv run python server.py" start?
-        │       └── No → fix Python/project
-        │
-        └── Does Inspector discover tools?
-                │
-                ├── No → fix MCP server/tool definition
-                │
-                └── Yes → investigate tunnel/ChatGPT layer
+After measuring real usage, add limits such as:
+
+```yaml
+deploy:
+  resources:
+    limits:
+      cpus: "0.50"
+      memory: 512M
 ```
 
-The critical diagnostic principle is:
+or Compose runtime-specific limits where supported.
+
+Don't blindly choose extremely small limits; the MCP server's actual tools may have different requirements.
+
+OWASP explicitly recommends resource limits as a container DoS-control measure. ([OWASP Cheat Sheet Series][22])
+
+**Related Finding IDs:** `F-018, F-029, F-030`
+
+---
+
+# Step 31 — Pin the base image for release builds
+
+For development:
+
+```dockerfile
+FROM python:3.14.7-slim-trixie
+```
+
+is reasonable.
+
+For a controlled release, resolve the image digest and use:
+
+```dockerfile
+FROM python:3.14.7-slim-trixie@sha256:<DIGEST>
+```
+
+Do the same for:
 
 ```text
-Local server
-    ↓
-Inspector
-    ↓
-Tunnel
-    ↓
+ghcr.io/astral-sh/uv
+```
+
+and use an exact tunnel-client image version/digest.
+
+Docker explicitly recommends digest pinning when reproducibility and supply-chain control are important. ([Docker Documentation][9])
+
+**Related Finding IDs:** `F-008, F-011, F-027`
+
+---
+
+# Step 32 — Use the official OpenAI tunnel image
+
+Do not rebuild tunnel-client unless you have a specific reason.
+
+Use:
+
+```text
+ghcr.io/openai/tunnel-client:v0.0.15
+```
+
+for the current public release baseline.
+
+The official release is currently **v0.0.15**, published September 25, 2026, and the project publishes multi-architecture Docker images. ([GitHub][29])
+
+The tunnel-client's own Docker publishing pipeline includes SBOM and provenance information. ([GitHub][30])
+
+**Related Finding IDs:** `F-018, F-025, F-028`
+
+---
+
+# Step 33 — Add CI Dockerfile validation
+
+Your CI should at minimum perform:
+
+```bash
+docker buildx build --check ./local-mcp-server
+```
+
+Docker documents the Buildx check mode specifically for validating Docker build configuration before executing the build. ([Docker Documentation][26])
+
+**Related Finding IDs:** `F-010, F-031`
+
+---
+
+# Step 34 — Add automated tests to GitHub Actions
+
+At minimum:
+
+```text
+pytest
+Dockerfile validation
+Docker image build
+dependency security review
+```
+
+GitHub Dependency Review can identify vulnerable dependency changes in pull requests. ([GitHub Docs][24])
+
+**Related Finding IDs:** `F-009, F-019, F-031, F-033`
+
+---
+
+# Step 35 — Build release images with provenance and SBOM
+
+For release images, use Docker Buildx and enable:
+
+```text
+provenance: mode=max
+sbom: true
+```
+
+Docker documents both mechanisms; provenance describes how the image was built, while SBOM describes what software is contained in it. ([Docker Documentation][20])
+
+The current SLSA specification is **v1.2**, which defines build provenance levels and verification concepts. ([SLSA][19])
+
+---
+
+# Step 36 — Pin GitHub Actions
+
+When creating the CI workflow, don't leave important third-party actions at floating tags if you want a stronger supply-chain posture.
+
+GitHub specifically recommends pinning Actions to **full-length commit SHAs** when immutable references are required. ([GitHub Docs][23])
+
+For example, instead of only:
+
+```yaml
+uses: docker/build-push-action@v7
+```
+
+a hardened workflow can pin:
+
+```yaml
+uses: docker/build-push-action@<full-40-character-commit-sha>
+```
+
+while recording the corresponding human-readable version in a comment.
+
+**Related Finding IDs:** `F-027, F-032`
+
+---
+
+# Step 37 — Build multi-architecture images
+
+For publishing:
+
+```bash
+docker buildx build \
+  --platform linux/amd64,linux/arm64 \
+  --push \
+  ...
+```
+
+The official OpenAI tunnel-client Docker release itself publishes Linux `amd64` and `arm64` images. ([GitHub][12])
+
+Your Python image can follow the same architecture model.
+
+**Related Finding IDs:** `F-025, F-026`
+
+---
+
+# Step 38 — Do not use Docker socket access
+
+Do not add:
+
+```yaml
+volumes:
+  - /var/run/docker.sock:/var/run/docker.sock
+```
+
+to the MCP server.
+
+Do not expose the Docker daemon over TCP.
+
+OWASP explicitly treats Docker socket access as equivalent to unrestricted host-root-level control. ([OWASP Cheat Sheet Series][22])
+
+**Related Finding IDs:** `F-018, F-030`
+
+---
+
+# Step 39 — Define the tool security model before adding real capabilities
+
+Every new tool should answer:
+
+```text
+What resource does it access?
+What is the smallest permission needed?
+Is it read-only?
+Can its input escape its intended boundary?
+Can it cause destructive side effects?
+Does it need human confirmation?
+Does it expose secrets?
+```
+
+For example:
+
+### Good
+
+```text
+read_allowed_text_file(relative_path)
+get_project_status(project_name)
+list_allowed_files()
+```
+
+### High-risk
+
+```text
+run_shell(command)
+execute_python(code)
+read_file(path)
+delete_file(path)
+send_http_request(url)
+```
+
+The MCP tool model gives the server the ability to expose arbitrary capabilities, so least privilege is a fundamental application-security boundary. MCP itself emphasizes human control and authorization, while OWASP recommends least privilege. ([Model Context Protocol Blog][4])
+
+**Related Finding IDs:** `F-010, F-018, F-030`
+
+---
+
+# Step 40 — Establish the production lifecycle
+
+Your operational lifecycle should be:
+
+```text
+Source change
+     ↓
+pytest
+     ↓
+Dockerfile --check
+     ↓
+dependency review
+     ↓
+Docker build
+     ↓
+container security scan
+     ↓
+SBOM
+     ↓
+provenance
+     ↓
+publish image
+     ↓
+run pinned image
+     ↓
+Secure MCP Tunnel
+     ↓
 ChatGPT
 ```
 
-Validate each layer before debugging the next one.
-
-**Related Finding IDs:** `F-003, F-009, F-014, F-015, F-019`
-
----
-
-# Part 8 — Why this design is the research-backed baseline
-
-The implementation deliberately avoids several seemingly convenient approaches:
-
-| Design choice                | Decision          | Reason                                                                                |
-| ---------------------------- | ----------------- | ------------------------------------------------------------------------------------- |
-| `MCPServer` vs old `FastMCP` | **MCPServer**     | Current Python SDK v2 API.                                                            |
-| stdio vs HTTP                | **stdio**         | Official local-server transport and direct OpenAI tunnel fit.                         |
-| FastAPI                      | **Not initially** | Adds an HTTP deployment layer that is unnecessary for a local stdio server.           |
-| SSE                          | **No**            | Superseded by Streamable HTTP for new HTTP implementations.                           |
-| OAuth for local MCP          | **No**            | MCP authorization spec is for HTTP; stdio should use environment credentials instead. |
-| Arbitrary shell execution    | **No**            | Excessive capability conflicts with least-privilege/tool-safety principles.           |
-| Public HTTP endpoint         | **No**            | Secure MCP Tunnel is specifically designed to keep the MCP server private.            |
-| Unpinned dependencies        | **No**            | Lockfile provides reproducibility.                                                    |
-| `print()` logging            | **No**            | stdout is part of stdio protocol traffic.                                             |
-
----
-
-# Part 9 — End State
-
-When complete, you have:
+This is considerably stronger than:
 
 ```text
-                  ┌──────────────────┐
-                  │    ChatGPT       │
-                  └────────┬─────────┘
-                           │
-                           ▼
-                  ┌──────────────────┐
-                  │ OpenAI MCP       │
-                  │ Secure Tunnel    │
-                  └────────┬─────────┘
-                           │
-                    outbound HTTPS
-                           │
-                           ▼
-                  ┌──────────────────┐
-                  │ tunnel-client    │
-                  └────────┬─────────┘
-                           │
-                         stdio
-                           │
-                           ▼
-       ┌─────────────────────────────────────┐
-       │        Python MCP Server            │
-       │                                     │
-       │   MCPServer("local-computer")       │
-       │                                     │
-       │   ┌─────────────────────────────┐   │
-       │   │ get_system_info()           │   │
-       │   │ list_allowed_files()        │   │
-       │   │ read_allowed_text_file()    │   │
-       │   └─────────────────────────────┘   │
-       │                                     │
-       │        allowed_data/                │
-       └─────────────────────────────────────┘
+edit Python
+    ↓
+docker build
+    ↓
+docker run
 ```
 
-The key security boundary is:
+NIST SSDF and SLSA both support treating build/release provenance and secure development practices as part of the software lifecycle, not just runtime. ([SLSA][19])
 
-```text
-ChatGPT does NOT receive
-"access to your computer."
-
-ChatGPT receives access to
-"the specific MCP tools you expose."
-```
-
-That distinction is fundamental to the MCP security model.
+**Related Finding IDs:** `F-027, F-028, F-031, F-032, F-033`
 
 ---
 
-# Part 10 — Official Source Set
+# 6. Final repository structure
 
-**MCP**
+I recommend evolving your repository toward this:
 
-Official current specification: [MCP 2026-07-28 Specification](https://modelcontextprotocol.io/specification/2026-07-28?utm_source=chatgpt.com)
-
-[MCP Build an MCP Server](https://modelcontextprotocol.io/docs/develop/build-server?utm_source=chatgpt.com)
-
-[MCP Python SDK](https://github.com/modelcontextprotocol/python-sdk?utm_source=chatgpt.com)
-
-**Python**
-
-[Python 3.14.7](https://www.python.org/downloads/release/python-3147/?utm_source=chatgpt.com)
-
-**uv**
-
-[uv documentation](https://docs.astral.sh/uv/?utm_source=chatgpt.com)
-
-**Testing**
-
-[MCP Inspector](https://github.com/modelcontextprotocol/inspector?utm_source=chatgpt.com)
-
-**OpenAI**
-
-[OpenAI Secure MCP Tunnel](https://developers.openai.com/api/docs/guides/secure-mcp-tunnels?utm_source=chatgpt.com)
-
-[OpenAI tunnel-client](https://github.com/openai/tunnel-client?utm_source=chatgpt.com)
-
-**Standards**
-
-[JSON-RPC 2.0](https://www.jsonrpc.org/specification?utm_source=chatgpt.com)
-
-[RFC 8259 — JSON](https://www.rfc-editor.org/rfc/rfc8259.html?utm_source=chatgpt.com)
-
-[RFC 9846 — TLS 1.3](https://www.rfc-editor.org/rfc/rfc9846.html?utm_source=chatgpt.com)
-
-[OWASP Top 10:2025](https://top10.owasp.org/2025/?utm_source=chatgpt.com)
-
-[NIST SP 800-218 SSDF 1.1](https://csrc.nist.gov/pubs/sp/800/218/final?utm_source=chatgpt.com)
+```text
+openai-secure-mcp-tunnel/
+│
+├── README.md
+├── .gitignore
+│
+├── local-mcp-server/
+│   │
+│   ├── Dockerfile
+│   ├── compose.yaml
+│   ├── .dockerignore
+│   ├── .python-version
+│   ├── pyproject.toml
+│   ├── uv.lock
+│   │
+│   ├── src/
+│   │   └── local_mcp_server/
+│   │       ├── __init__.py
+│   │       └── server.py
+│   │
+│   ├── tests/
+│   │   └── test_security.py
+│   │
+│   └── allowed_data/
+│       └── .gitkeep
+│
+├── docs/
+│   ├── architecture.md
+│   ├── security.md
+│   ├── research.md
+│   └── operations.md
+│
+└── .github/
+    └── workflows/
+        ├── test.yml
+        ├── dependency-review.yml
+        └── container-release.yml
+```
 
 ---
 
-## Final implementation baseline
+# 7. Revised visual workflow
 
 ```text
-Python             3.14.7
-uv                 0.12.19
-MCP Python SDK     2.2.0
-MCP specification  2026-07-28
-Transport          stdio
-Testing            MCP Inspector 2.8.0 + pytest
-Logging            stderr
-Secrets            environment / OS secret storage
-Data boundary      explicit allowed directory
-Dependency control uv.lock
-Remote access      OpenAI Secure MCP Tunnel
+                         ┌──────────────────────┐
+                         │   Research / Standards│
+                         └──────────┬───────────┘
+                                    │
+                                    ▼
+                         ┌──────────────────────┐
+                         │ Python MCP Server    │
+                         │ SDK 2.2.0            │
+                         └──────────┬───────────┘
+                                    │
+                         Streamable HTTP
+                                    │
+                                    ▼
+                         ┌──────────────────────┐
+                         │ Docker Image         │
+                         │ non-root             │
+                         │ read-only FS         │
+                         │ capabilities dropped │
+                         └──────────┬───────────┘
+                                    │
+                         private Docker network
+                                    │
+                                    ▼
+                         ┌──────────────────────┐
+                         │ tunnel-client        │
+                         │ official OpenAI image│
+                         └──────────┬───────────┘
+                                    │
+                            HTTPS :443 outbound
+                                    │
+                                    ▼
+                         ┌──────────────────────┐
+                         │ OpenAI Secure MCP    │
+                         │ Tunnel               │
+                         └──────────┬───────────┘
+                                    │
+                                    ▼
+                              ChatGPT Web
 ```
 
-This gives you a **small, private, current, standards-aligned starting point** without prematurely turning the local MCP server into a web application or remote administration system.
+---
+
+# 8. Strict implementation sequence
+
+This is the sequence I would actually follow:
+
+|   Step | Action                                        | Related Findings             |
+| -----: | --------------------------------------------- | ---------------------------- |
+|  **1** | Confirm Dockerized two-container architecture | `F-004, F-017, F-018, F-019` |
+|  **2** | Install Docker + Compose + Buildx             | `F-010, F-025, F-026`        |
+|  **3** | Create repository/project structure           | `F-009, F-017`               |
+|  **4** | Create `pyproject.toml` + lockfile            | `F-005, F-008, F-009`        |
+|  **5** | Pin Python 3.14.7                             | `F-006, F-007`               |
+|  **6** | Implement MCPServer                           | `F-001, F-005, F-010, F-011` |
+|  **7** | Implement Streamable HTTP                     | `F-004, F-023`               |
+|  **8** | Implement Host allowlist                      | `F-021`                      |
+|  **9** | Implement `/healthz`                          | `F-022`                      |
+| **10** | Implement least-privilege filesystem access   | `F-010, F-018, F-030`        |
+| **11** | Create Dockerfile                             | `F-010, F-011, F-012, F-014` |
+| **12** | Create `.dockerignore`                        | `F-013, F-018`               |
+| **13** | Validate Dockerfile                           | `F-010, F-031`               |
+| **14** | Build MCP image                               | `F-010, F-011`               |
+| **15** | Create isolated Compose networks              | `F-015, F-016`               |
+| **16** | Add read-only data mount                      | `F-010, F-030`               |
+| **17** | Add secret-file handling                      | `F-013, F-020`               |
+| **18** | Start MCP container                           | `F-022`                      |
+| **19** | Verify `/healthz`                             | `F-022`                      |
+| **20** | Test MCP through Inspector                    | `F-005, F-015`               |
+| **21** | Test path traversal/security                  | `F-018, F-030`               |
+| **22** | Run automated tests                           | `F-019, F-031`               |
+| **23** | Start OpenAI tunnel-client container          | `F-017, F-018, F-019`        |
+| **24** | Verify tunnel readiness                       | `F-017, F-018`               |
+| **25** | Connect tunnel to ChatGPT                     | `F-017, F-018, F-020`        |
+| **26** | Execute read-only end-to-end tests            | `F-010, F-014, F-019`        |
+| **27** | Harden runtime                                | `F-014, F-015, F-030`        |
+| **28** | Add CI/dependency review                      | `F-031, F-033`               |
+| **29** | Add image scanning/SBOM                       | `F-028, F-030`               |
+| **30** | Add signed/provenance release                 | `F-027, F-028, F-032`        |
+| **31** | Publish multi-architecture image              | `F-025, F-026`               |
+| **32** | Establish update/rotation process             | `F-009, F-027, F-031`        |
+
+---
+
+# 9. The three layers you should think about
+
+This is the biggest conceptual improvement to the original plan.
+
+```text
+┌─────────────────────────────────────┐
+│ Layer 1 — MCP Application Security │
+│                                     │
+│ tools                               │
+│ input validation                    │
+│ authorization                       │
+│ data boundaries                     │
+└──────────────────┬──────────────────┘
+                   │
+┌──────────────────▼──────────────────┐
+│ Layer 2 — Container Security        │
+│                                     │
+│ non-root                            │
+│ read-only filesystem                │
+│ dropped capabilities                │
+│ no-new-privileges                   │
+│ private network                     │
+│ resource limits                     │
+└──────────────────┬──────────────────┘
+                   │
+┌──────────────────▼──────────────────┐
+│ Layer 3 — Tunnel / Network Security│
+│                                     │
+│ outbound HTTPS                     │
+│ tunnel authentication               │
+│ no public MCP port                  │
+│ ChatGPT workspace authorization     │
+└─────────────────────────────────────┘
+```
+
+A secure tunnel does **not** make an unsafe MCP server safe.
+
+A hardened container does **not** make an over-privileged MCP tool safe.
+
+And a carefully designed MCP server does **not** eliminate the need to protect the tunnel credentials.
+
+You need all three layers.
+
+---
+
+# 10. What I would specifically change from the old plan
+
+| Old approach                   | Revised approach                                          |
+| ------------------------------ | --------------------------------------------------------- |
+| Local Python process           | **Python MCP container**                                  |
+| stdio as final transport       | **Streamable HTTP between containers**                    |
+| tunnel-client on host          | **official tunnel-client container**                      |
+| One process boundary           | **two independent containers**                            |
+| Public/host HTTP debugging     | **no published port by default**                          |
+| Broad Docker network           | **private MCP network + tunnel egress network**           |
+| Environment API key            | **Docker secret file**                                    |
+| Root container                 | **non-root**                                              |
+| Writable container FS          | **read-only root FS + tmpfs**                             |
+| No container supply-chain plan | **SBOM + provenance + image scanning**                    |
+| Generic dependency lock        | **`uv.lock` + locked Docker install**                     |
+| Basic tunnel test              | **layered MCP → container → tunnel → ChatGPT validation** |
+
+---
+
+## The final baseline
+
+I would now make this the official design for your repository:
+
+```text
+Language:
+    Python 3.14.7
+
+MCP:
+    MCP specification 2026-07-28
+    MCP Python SDK 2.2.0
+
+Application transport:
+    Streamable HTTP
+
+Python tooling:
+    uv 0.12.19
+
+Application container:
+    python:3.14.7-slim-trixie
+
+Container:
+    non-root
+    read-only filesystem
+    no-new-privileges
+    cap_drop=ALL
+    private Docker network
+
+OpenAI:
+    Secure MCP Tunnel
+    tunnel-client v0.0.15
+
+Tunnel architecture:
+    separate official OpenAI container
+
+Secrets:
+    Docker secret file
+
+Testing:
+    pytest
+    MCP Inspector
+    Docker buildx --check
+
+Supply chain:
+    pinned images
+    uv.lock
+    SBOM
+    SLSA-compatible provenance
+    dependency review
+    pinned GitHub Actions
+```
+
+The **most important architectural decision** is therefore:
+
+> **Python MCP server container → private Streamable HTTP → OpenAI tunnel-client container → outbound Secure MCP Tunnel → ChatGPT.**
+
+That is the version of the plan I would use going forward.
+
+[1]: https://github.com/modelcontextprotocol/python-sdk/blob/main/docs/run/index.md?utm_source=chatgpt.com "python-sdk/docs/run/index.md at main · modelcontextprotocol/python-sdk · GitHub"
+[2]: https://github.com/openai/tunnel-client/blob/master/docs/deployment/overview.md?utm_source=chatgpt.com "tunnel-client/docs/deployment/overview.md at master · openai/tunnel-client · GitHub"
+[3]: https://github.com/openai/tunnel-client/blob/master/docs/connectors.md?utm_source=chatgpt.com "tunnel-client/docs/connectors.md at master · openai/tunnel-client · GitHub"
+[4]: https://blog.modelcontextprotocol.io/posts/2026-07-28/?utm_source=chatgpt.com "The 2026-07-28 Specification | Model Context Protocol Blog"
+[5]: https://github.com/modelcontextprotocol/python-sdk/releases?utm_source=chatgpt.com "Releases · modelcontextprotocol/python-sdk · GitHub"
+[6]: https://pypi.org/project/mcp/?utm_source=chatgpt.com "mcp · PyPI"
+[7]: https://www.python.org/downloads/release/python-3147/?utm_source=chatgpt.com "Python Release Python 3.14.7 | Python.org"
+[8]: https://docs.astral.sh/uv/guides/integration/docker/?utm_source=chatgpt.com "Using uv in Docker | uv"
+[9]: https://docs.docker.com/build/building/best-practices/?utm_source=chatgpt.com "Building best practices | Docker Docs"
+[10]: https://docs.docker.com/reference/dockerfile?utm_source=chatgpt.com "Dockerfile reference | Docker Docs"
+[11]: https://docs.docker.com/reference/compose-file/services/?utm_source=chatgpt.com "Define services in Docker Compose | Docker Docs"
+[12]: https://github.com/openai/tunnel-client/blob/master/docs/deployment/docker.md?utm_source=chatgpt.com "tunnel-client/docs/deployment/docker.md at master · openai/tunnel-client · GitHub"
+[13]: https://github.com/openai/tunnel-client/blob/master/docs/configuration.md?utm_source=chatgpt.com "tunnel-client/docs/configuration.md at master · openai/tunnel-client · GitHub"
+[14]: https://github.com/modelcontextprotocol/python-sdk/blob/main/docs/troubleshooting.md?utm_source=chatgpt.com "python-sdk/docs/troubleshooting.md at main · modelcontextprotocol/python-sdk · GitHub"
+[15]: https://github.com/modelcontextprotocol/python-sdk/blob/main/docs/run/asgi.md?utm_source=chatgpt.com "python-sdk/docs/run/asgi.md at main · modelcontextprotocol/python-sdk · GitHub"
+[16]: https://py.sdk.modelcontextprotocol.io/handlers/logging/?utm_source=chatgpt.com "Logging - MCP Python SDK"
+[17]: https://specs.opencontainers.org/image-spec/?utm_source=chatgpt.com "The OpenContainers Image Spec"
+[18]: https://opencontainers.org/release-notices/overview/?utm_source=chatgpt.com "Release notices - Open Container Initiative"
+[19]: https://slsa.dev/spec/v1.2/?utm_source=chatgpt.com "SLSA • SLSA specification"
+[20]: https://docs.docker.com/build/metadata/attestations/?utm_source=chatgpt.com "Build attestations | Docker Docs"
+[21]: https://csrc.nist.gov/pubs/sp/800/190/final?utm_source=chatgpt.com "SP 800-190, Application Container Security Guide | CSRC"
+[22]: https://cheatsheetseries.owasp.org/cheatsheets/Docker_Security_Cheat_Sheet.html?utm_source=chatgpt.com "Docker Security - OWASP Cheat Sheet Series"
+[23]: https://docs.github.com/en/actions/reference/security/secure-use?utm_source=chatgpt.com "Secure use reference - GitHub Docs"
+[24]: https://docs.github.com/en/code-security/how-tos/secure-your-supply-chain/manage-your-dependency-security/configure-dependency-review-action?utm_source=chatgpt.com "Configuring the dependency review action - GitHub Docs"
+[25]: https://github.com/docker-library/official-images/blob/master/library/python?utm_source=chatgpt.com "official-images/library/python at master · docker-library/official-images · GitHub"
+[26]: https://docs.docker.com/reference/cli/docker/buildx/build/?utm_source=chatgpt.com "docker buildx build | Docker Docs"
+[27]: https://github.com/openai/tunnel-client/blob/master/docs/end-user-guide.md?utm_source=chatgpt.com "tunnel-client/docs/end-user-guide.md at master · openai/tunnel-client · GitHub"
+[28]: https://github.com/openai/tunnel-client/blob/master/docs/permissions.md?utm_source=chatgpt.com "tunnel-client/docs/permissions.md at master · openai/tunnel-client · GitHub"
+[29]: https://github.com/openai/tunnel-client/releases?utm_source=chatgpt.com "Releases · openai/tunnel-client · GitHub"
+[30]: https://github.com/openai/tunnel-client/blob/master/.github/workflows/release.yml?utm_source=chatgpt.com "tunnel-client/.github/workflows/release.yml at master · openai/tunnel-client · GitHub"
