@@ -10,8 +10,7 @@ WORKDIR /app
 
 ENV UV_COMPILE_BYTECODE=1 \
     UV_LINK_MODE=copy \
-    UV_NO_DEV=1 \
-    UV_NO_MANAGED_PYTHON=1
+    UV_NO_DEV=1
 
 COPY pyproject.toml uv.lock .python-version ./
 COPY README.md ./
@@ -32,7 +31,7 @@ WORKDIR /app
 ENV PATH="/app/.venv/bin:$PATH" \
     PYTHONDONTWRITEBYTECODE=1 \
     PYTHONUNBUFFERED=1 \
-    workspace_DIR=/app/workspace \
+    WORKSPACE_DIR=/app/workspace \
     LOG_LEVEL=INFO
 
 RUN groupadd \

@@ -1,13 +1,11 @@
-.git
-.github
-
-.venv
-__pycache__
-.pytest_cache
-.ruff_cache
-.mypy_cache
-
+.venv/
+__pycache__/
 *.py[cod]
+.pytest_cache/
+.ruff_cache/
+
+.git/
+.github/
 
 .env
 .env.*
@@ -17,6 +15,5 @@ __pycache__
 workspace/*
 !workspace/.gitkeep
 
-dist
-build
-*.egg-info
+dist/
+build/

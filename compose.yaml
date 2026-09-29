@@ -20,11 +20,11 @@ services:
       - /tmp:rw,noexec,nosuid,nodev
 
     environment:
-      workspace_DIR: /app/workspace
+      WORKSPACE_DIR: /app/workspace
       LOG_LEVEL: INFO
 
     volumes:
-      - ./workspace:/app/workspace:ro
+      - ./workspace:/app/workspace:rw
 
     networks:
       - mcp-internal
