@@ -6,6 +6,16 @@ import sys
 from mcp.server import MCPServer
 from mcp.types import ToolAnnotations
 
+from .workspace import (
+    create_workspace_directory as create_workspace_directory_impl,
+    create_workspace_file as create_workspace_file_impl,
+    delete_workspace_file as delete_workspace_file_impl,
+    list_workspace_files as list_workspace_files_impl,
+    read_workspace_text_file as read_workspace_text_file_impl,
+    rename_workspace_path as rename_workspace_path_impl,
+    write_workspace_file as write_workspace_file_impl,
+)
+
 
 def register_tools(mcp: MCPServer) -> None:
     """Register MCP tools exposed by the local server."""
@@ -37,7 +47,7 @@ def register_tools(mcp: MCPServer) -> None:
     )
     def list_workspace_files() -> list[str]:
         """List regular files below the workspace."""
-        return list_workspace_files()
+        return list_workspace_files_impl()
 
     @mcp.tool(
         annotations=ToolAnnotations(
@@ -49,7 +59,7 @@ def register_tools(mcp: MCPServer) -> None:
     )
     def read_workspace_text_file(relative_path: str) -> str:
         """Read a UTF-8 text file from the workspace."""
-        return read_workspace_text_file(relative_path)
+        return read_workspace_text_file_impl(relative_path)
 
     @mcp.tool(
         annotations=ToolAnnotations(
@@ -64,7 +74,7 @@ def register_tools(mcp: MCPServer) -> None:
         content: str,
     ) -> str:
         """Create a new UTF-8 text file in the workspace."""
-        return create_workspace_file(
+        return create_workspace_file_impl(
             relative_path,
             content,
         )
@@ -82,7 +92,7 @@ def register_tools(mcp: MCPServer) -> None:
         content: str,
     ) -> str:
         """Replace the contents of an existing UTF-8 text file."""
-        return write_workspace_file(
+        return write_workspace_file_impl(
             relative_path,
             content,
         )
@@ -97,7 +107,7 @@ def register_tools(mcp: MCPServer) -> None:
     )
     def create_workspace_directory(relative_path: str) -> str:
         """Create a directory inside the workspace."""
-        return create_workspace_directory(relative_path)
+        return create_workspace_directory_impl(relative_path)
 
     @mcp.tool(
         annotations=ToolAnnotations(
@@ -112,7 +122,7 @@ def register_tools(mcp: MCPServer) -> None:
         new_relative_path: str,
     ) -> str:
         """Rename a file or directory inside the workspace."""
-        return rename_workspace_path(
+        return rename_workspace_path_impl(
             relative_path,
             new_relative_path,
         )
@@ -127,4 +137,4 @@ def register_tools(mcp: MCPServer) -> None:
     )
     def delete_workspace_file(relative_path: str) -> str:
         """Delete a regular file inside the workspace."""
-        return delete_workspace_file(relative_path)
+        return delete_workspace_file_impl(relative_path)

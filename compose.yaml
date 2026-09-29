@@ -8,6 +8,8 @@ services:
 
     restart: unless-stopped
 
+    user: "${MCP_UID:-1000}:${MCP_GID:-1000}"
+
     read_only: true
 
     security_opt:
