@@ -12,6 +12,7 @@ ENV PYTHONDONTWRITEBYTECODE=1 \
     LOCAL_TERMINAL_EXECUTOR_PORT=8765 \
     LOCAL_TERMINAL_EXECUTOR_TOKEN_FILE=/run/secrets/local_terminal_executor_token \
     PLAYWRIGHT_BROWSERS_PATH=/ms-playwright \
+    PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD=1 \
     LOG_LEVEL=INFO
 
 COPY --from=node /usr/local /usr/local
@@ -28,7 +29,7 @@ RUN apt-get update \
         wget \
     && rm -rf /var/lib/apt/lists/*
 
-RUN npm install --global playwright@1.63.0 \
+RUN npm install --global npm@12.1.0 playwright@1.63.0 \
     && npm cache clean --force
 
 RUN chromium_path="$(find /ms-playwright -type f -path '*/chrome-linux64/chrome' -print -quit)" \
