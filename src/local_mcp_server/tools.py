@@ -12,6 +12,7 @@ from .terminal import (
 from .workspace import (
     create_workspace_directory as create_workspace_directory_impl,
     create_workspace_file as create_workspace_file_impl,
+    delete_workspace_directory as delete_workspace_directory_impl,
     delete_workspace_file as delete_workspace_file_impl,
     list_workspace_files as list_workspace_files_impl,
     read_workspace_text_file as read_workspace_text_file_impl,
@@ -86,7 +87,7 @@ def register_tools(mcp: MCPServer) -> None:
         annotations=ToolAnnotations(
             readOnlyHint=False,
             destructiveHint=True,
-            idempotentHint=True,
+            idempotentHint=False,
             openWorldHint=False,
         )
     )
@@ -146,8 +147,20 @@ def register_tools(mcp: MCPServer) -> None:
         annotations=ToolAnnotations(
             readOnlyHint=False,
             destructiveHint=True,
-            idempotentHint=False,
-            openWorldHint=True,
+            idempotentHint=True,
+            openWorldHint=False,
+        )
+    )
+    def delete_workspace_directory(relative_path: str) -> str:
+        """Delete a directory tree inside the workspace."""
+        return delete_workspace_directory_impl(relative_path)
+
+    @mcp.tool(
+        annotations=ToolAnnotations(
+            readOnlyHint=False,
+            destructiveHint=True,
+            idempotentHint=True,
+            openWorldHint=False,
         )
     )
     def execute_terminal_command(

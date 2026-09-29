@@ -189,7 +189,8 @@ async def request_logging_middleware(ctx, call_next):
 #   create_workspace_directory
 #   rename_workspace_path
 #   delete_workspace_file
-#
+#   delete_workspace_directory
+#   execute_terminal_command
 mcp.middleware.append(request_logging_middleware)
 
 

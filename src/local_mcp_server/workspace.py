@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import os
+import shutil
 from pathlib import Path
 
 
@@ -15,14 +16,15 @@ def resolve_workspace_path(relative_path: str) -> Path:
     if not relative_path:
         raise ValueError("Path must not be empty.")
 
-    candidate = (WORKSPACE_ROOT / relative_path).resolve()
+    candidate = WORKSPACE_ROOT / relative_path
+    resolved = candidate.resolve()
 
     try:
-        candidate.relative_to(WORKSPACE_ROOT)
+        resolved.relative_to(WORKSPACE_ROOT)
     except ValueError as exc:
         raise ValueError("Requested path is outside the workspace.") from exc
 
-    return candidate
+    return resolved
 
 
 def list_workspace_files() -> list[str]:
@@ -158,5 +160,39 @@ def delete_workspace_file(relative_path: str) -> str:
         raise ValueError("Requested path is not a regular file.")
 
     target.unlink()
+
+    return target.relative_to(WORKSPACE_ROOT).as_posix()
+
+
+def delete_workspace_directory(relative_path: str) -> str:
+    """Delete a directory tree inside the workspace."""
+    if not relative_path:
+        raise ValueError("Path must not be empty.")
+
+    requested = WORKSPACE_ROOT / relative_path
+
+    if requested == WORKSPACE_ROOT:
+        raise ValueError("Deleting the workspace root is not allowed.")
+
+    if requested.is_symlink():
+        raise ValueError("Requested path must not be a symbolic link.")
+
+    target = requested.resolve()
+
+    try:
+        target.relative_to(WORKSPACE_ROOT)
+    except ValueError as exc:
+        raise ValueError("Requested path is outside the workspace.") from exc
+
+    if target == WORKSPACE_ROOT:
+        raise ValueError("Deleting the workspace root is not allowed.")
+
+    if not target.exists():
+        raise ValueError("Requested directory does not exist.")
+
+    if not target.is_dir():
+        raise ValueError("Requested path is not a directory.")
+
+    shutil.rmtree(target)
 
     return target.relative_to(WORKSPACE_ROOT).as_posix()
