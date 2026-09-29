@@ -3,6 +3,8 @@
 **Repository:** `0n6k4v-Coder/openai-secure-mcp-tunnel`     
 **Scope:** Private Python MCP server in Docker, connected to ChatGPT through OpenAI Secure MCP Tunnel.
 
+---
+
 ## Set Up
 
 ### Step 1 - Clone the repository
@@ -153,6 +155,55 @@ rename_workspace_path
 delete_workspace_file
 execute_terminal_command
 ```
+
+---
+
+## Update MCP Server Tools
+
+### Docker
+
+1. `docker compose build --no-cache mcp-server`
+   → **Rebuild the Docker image** so the latest MCP code and tools are included.
+
+2. `docker compose up -d --force-recreate mcp-server`
+   → **Recreate and restart the MCP container** using the newly built image.
+
+3. `docker compose ps`
+   → Check that the MCP server and related services are **running and healthy**.
+
+4. `docker compose logs --tail=200 mcp-server`
+   or
+   `docker compose logs -f mcp-server`
+   → Check that the MCP server **started successfully without errors**.
+
+   * `--tail=200` = show the latest 200 log lines
+   * `-f` = follow logs in real time
+
+5. `docker compose logs --tail=100 tunnel-client`
+   → Check that **tunnel-client is still running and connected to the existing tunnel**.
+
+### ChatGPT
+
+**Settings**      
+→ **Apps / Connectors**    
+→ **Our MCP App**    
+→ **Refresh**
+
+→ This forces ChatGPT to **rediscover the MCP tools** and load the latest tool list.
+
+### If Refresh Still Doesn't Show the New Tool
+
+Do **not** create a new API key or tunnel immediately.
+
+**Delete only the MCP App/Connector**
+→ **Create it again**
+→ Select the **same existing tunnel**
+→ Check the tool list again.
+
+**Remember:**
+`Rebuild → Recreate → Check
+
+---
 
 ## Quick Start
 
