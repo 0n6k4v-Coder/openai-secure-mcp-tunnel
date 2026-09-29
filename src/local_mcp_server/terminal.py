@@ -30,9 +30,7 @@ def _load_token() -> str:
     ).strip()
 
     if not token:
-        raise RuntimeError(
-            "Terminal executor token is empty"
-        )
+        raise RuntimeError("Terminal executor token is empty")
 
     return token
 
@@ -48,36 +46,19 @@ def execute_terminal_command_impl(
     with /workspace as the working directory.
     """
     if not isinstance(command, str):
-        raise ValueError(
-            "command must be a string"
-        )
+        raise ValueError("command must be a string")
 
     if not command.strip():
-        raise ValueError(
-            "command must not be empty"
-        )
+        raise ValueError("command must not be empty")
 
     if len(command.encode("utf-8")) > MAX_COMMAND_BYTES:
-        raise ValueError(
-            f"command exceeds {MAX_COMMAND_BYTES} bytes"
-        )
+        raise ValueError(f"command exceeds {MAX_COMMAND_BYTES} bytes")
 
-    if (
-        isinstance(timeout_seconds, bool)
-        or not isinstance(timeout_seconds, int)
-    ):
-        raise ValueError(
-            "timeout_seconds must be an integer"
-        )
+    if isinstance(timeout_seconds, bool) or not isinstance(timeout_seconds, int):
+        raise ValueError("timeout_seconds must be an integer")
 
-    if (
-        timeout_seconds < 1
-        or timeout_seconds > MAX_TIMEOUT_SECONDS
-    ):
-        raise ValueError(
-            f"timeout_seconds must be between 1 "
-            f"and {MAX_TIMEOUT_SECONDS}"
-        )
+    if timeout_seconds < 1 or timeout_seconds > MAX_TIMEOUT_SECONDS:
+        raise ValueError(f"timeout_seconds must be between 1 and {MAX_TIMEOUT_SECONDS}")
 
     token = _load_token()
 
@@ -117,24 +98,16 @@ def execute_terminal_command_impl(
         )
 
         raise RuntimeError(
-            f"Terminal executor returned HTTP "
-            f"{exc.code}: {error_body}"
+            f"Terminal executor returned HTTP {exc.code}: {error_body}"
         ) from exc
 
     except URLError as exc:
-        raise RuntimeError(
-            f"Could not reach terminal executor: "
-            f"{exc.reason}"
-        ) from exc
+        raise RuntimeError(f"Could not reach terminal executor: {exc.reason}") from exc
 
     try:
-        result = json.loads(
-            response_body
-        )
+        result = json.loads(response_body)
     except json.JSONDecodeError as exc:
-        raise RuntimeError(
-            "Terminal executor returned invalid JSON"
-        ) from exc
+        raise RuntimeError("Terminal executor returned invalid JSON") from exc
 
     return json.dumps(
         result,

@@ -19,6 +19,7 @@ services:
 
     volumes:
       - ./workspace:/app/workspace:rw
+      - ./.secrets/terminal-agent-token:/run/secrets/local_terminal_executor_token:ro
 
     networks:
       - mcp-internal
@@ -26,9 +27,6 @@ services:
     depends_on:
       terminal-executor:
         condition: service_healthy
-
-    secrets:
-      - local_terminal_executor_token
 
     environment:
       TERMINAL_EXECUTOR_URL: http://terminal-executor:8765
@@ -61,7 +59,7 @@ services:
         "/app/host/terminal_executor.py"
       ]
 
-    user: "10001:10001"
+    user: "${TERMINAL_EXECUTOR_UID:-1000}:${TERMINAL_EXECUTOR_GID:-1000}"
 
     working_dir: /workspace
 
@@ -78,12 +76,10 @@ services:
 
     volumes:
       - ./workspace:/workspace:rw
+      - ./.secrets/terminal-agent-token:/run/secrets/local_terminal_executor_token:ro
 
     networks:
       - mcp-internal
-
-    secrets:
-      - local_terminal_executor_token
 
     environment:
       LOCAL_TERMINAL_EXECUTOR_HOST: 0.0.0.0
@@ -133,6 +129,3 @@ networks:
 secrets:
   control_plane_api_key:
     file: .secrets/control-plane-api-key
-
-  local_terminal_executor_token:
-    file: .secrets/terminal-agent-token
