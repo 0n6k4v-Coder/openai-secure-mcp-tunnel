@@ -23,14 +23,15 @@ services:
     networks:
       - mcp-internal
 
-    extra_hosts:
-      - "host.docker.internal:host-gateway"
+    depends_on:
+      terminal-executor:
+        condition: service_healthy
 
     secrets:
       - local_terminal_executor_token
 
     environment:
-      TERMINAL_EXECUTOR_URL: http://host.docker.internal:8765
+      TERMINAL_EXECUTOR_URL: http://terminal-executor:8765
       TERMINAL_EXECUTOR_TOKEN_FILE: /run/secrets/local_terminal_executor_token
 
     healthcheck:
@@ -48,6 +49,63 @@ services:
 
     expose:
       - "8000"
+
+  terminal-executor:
+    build:
+      context: .
+      dockerfile: Dockerfile
+
+    command:
+      [
+        "python",
+        "/app/host/terminal_executor.py"
+      ]
+
+    user: "10001:10001"
+
+    working_dir: /workspace
+
+    read_only: true
+
+    security_opt:
+      - no-new-privileges:true
+
+    cap_drop:
+      - ALL
+
+    tmpfs:
+      - /tmp:rw,noexec,nosuid,nodev
+
+    volumes:
+      - ./workspace:/workspace:rw
+
+    networks:
+      - mcp-internal
+
+    secrets:
+      - local_terminal_executor_token
+
+    environment:
+      LOCAL_TERMINAL_EXECUTOR_HOST: 0.0.0.0
+      LOCAL_TERMINAL_EXECUTOR_PORT: "8765"
+      LOCAL_TERMINAL_EXECUTOR_TOKEN_FILE: /run/secrets/local_terminal_executor_token
+      LOG_LEVEL: INFO
+
+    healthcheck:
+      test:
+        [
+          "CMD",
+          "python",
+          "-c",
+          "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8765/healthz', timeout=2)"
+        ]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 5s
+
+    expose:
+      - "8765"
 
   tunnel-client:
     image: ghcr.io/openai/tunnel-client:v0.0.15

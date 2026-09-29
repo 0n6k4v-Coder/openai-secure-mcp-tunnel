@@ -16,7 +16,7 @@ TOKEN_FILE = Path(
 
 EXECUTOR_URL = os.environ.get(
     "TERMINAL_EXECUTOR_URL",
-    "http://host.docker.internal:8765",
+    "http://terminal-executor:8765",
 ).rstrip("/")
 
 MAX_COMMAND_BYTES = 32 * 1024
@@ -42,15 +42,20 @@ def execute_terminal_command_impl(
     timeout_seconds: int = 30,
 ) -> str:
     """
-    Execute a command on the host through the local terminal executor.
+    Execute a command through the terminal executor container.
 
-    The actual subprocess execution happens outside the MCP container.
+    Commands execute inside the terminal-executor container
+    with /workspace as the working directory.
     """
     if not isinstance(command, str):
-        raise ValueError("command must be a string")
+        raise ValueError(
+            "command must be a string"
+        )
 
     if not command.strip():
-        raise ValueError("command must not be empty")
+        raise ValueError(
+            "command must not be empty"
+        )
 
     if len(command.encode("utf-8")) > MAX_COMMAND_BYTES:
         raise ValueError(
@@ -65,10 +70,13 @@ def execute_terminal_command_impl(
             "timeout_seconds must be an integer"
         )
 
-    if timeout_seconds < 1 or timeout_seconds > MAX_TIMEOUT_SECONDS:
+    if (
+        timeout_seconds < 1
+        or timeout_seconds > MAX_TIMEOUT_SECONDS
+    ):
         raise ValueError(
-            f"timeout_seconds must be between 1 and "
-            f"{MAX_TIMEOUT_SECONDS}"
+            f"timeout_seconds must be between 1 "
+            f"and {MAX_TIMEOUT_SECONDS}"
         )
 
     token = _load_token()
@@ -115,11 +123,14 @@ def execute_terminal_command_impl(
 
     except URLError as exc:
         raise RuntimeError(
-            f"Could not reach terminal executor: {exc.reason}"
+            f"Could not reach terminal executor: "
+            f"{exc.reason}"
         ) from exc
 
     try:
-        result = json.loads(response_body)
+        result = json.loads(
+            response_body
+        )
     except json.JSONDecodeError as exc:
         raise RuntimeError(
             "Terminal executor returned invalid JSON"

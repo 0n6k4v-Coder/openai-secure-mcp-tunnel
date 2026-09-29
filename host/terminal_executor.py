@@ -12,13 +12,22 @@ from pathlib import Path
 from typing import Any
 
 
-HOST = os.environ.get("LOCAL_TERMINAL_EXECUTOR_HOST", "0.0.0.0")
-PORT = int(os.environ.get("LOCAL_TERMINAL_EXECUTOR_PORT", "8765"))
+HOST = os.environ.get(
+    "LOCAL_TERMINAL_EXECUTOR_HOST",
+    "0.0.0.0",
+)
+
+PORT = int(
+    os.environ.get(
+        "LOCAL_TERMINAL_EXECUTOR_PORT",
+        "8765",
+    )
+)
 
 TOKEN_FILE = Path(
     os.environ.get(
         "LOCAL_TERMINAL_EXECUTOR_TOKEN_FILE",
-        ".secrets/terminal-agent-token",
+        "/run/secrets/local_terminal_executor_token",
     )
 )
 
@@ -26,21 +35,27 @@ MAX_COMMAND_LENGTH = 32 * 1024
 MAX_TIMEOUT_SECONDS = 300
 MAX_OUTPUT_BYTES = 1024 * 1024
 
-LOGGER = logging.getLogger("local-terminal-executor")
+LOGGER = logging.getLogger(
+    "local-terminal-executor"
+)
 
 
 def load_token() -> str:
-    """Load the shared authentication token from disk."""
+    """Load the shared authentication token."""
     try:
-        token = TOKEN_FILE.read_text(encoding="utf-8").strip()
+        token = TOKEN_FILE.read_text(
+            encoding="utf-8",
+        ).strip()
     except OSError as exc:
         raise RuntimeError(
-            f"Unable to read terminal executor token from {TOKEN_FILE}: {exc}"
+            f"Unable to read terminal executor token "
+            f"from {TOKEN_FILE}: {exc}"
         ) from exc
 
     if len(token) < 32:
         raise RuntimeError(
-            "Terminal executor token must contain at least 32 characters."
+            "Terminal executor token must contain "
+            "at least 32 characters."
         )
 
     return token
@@ -50,17 +65,28 @@ TOKEN = load_token()
 
 
 def command_hash(command: str) -> str:
-    """Return a stable SHA-256 identifier without logging the command itself."""
-    return hashlib.sha256(command.encode("utf-8")).hexdigest()
+    """Return a stable SHA-256 identifier."""
+    return hashlib.sha256(
+        command.encode("utf-8")
+    ).hexdigest()
 
 
-def truncate_output(data: bytes) -> tuple[str, bool]:
-    """Decode output and enforce the maximum response size."""
+def truncate_output(
+    data: bytes,
+) -> tuple[str, bool]:
+    """Decode output and enforce the maximum size."""
     truncated = len(data) > MAX_OUTPUT_BYTES
+
     if truncated:
         data = data[:MAX_OUTPUT_BYTES]
 
-    return data.decode("utf-8", errors="replace"), truncated
+    return (
+        data.decode(
+            "utf-8",
+            errors="replace",
+        ),
+        truncated,
+    )
 
 
 def json_response(
@@ -69,23 +95,48 @@ def json_response(
     payload: dict[str, Any],
 ) -> None:
     """Write a JSON HTTP response."""
-    body = json.dumps(payload, ensure_ascii=False).encode("utf-8")
+    body = json.dumps(
+        payload,
+        ensure_ascii=False,
+    ).encode("utf-8")
 
     handler.send_response(status)
-    handler.send_header("Content-Type", "application/json; charset=utf-8")
-    handler.send_header("Content-Length", str(len(body)))
-    handler.send_header("Cache-Control", "no-store")
+
+    handler.send_header(
+        "Content-Type",
+        "application/json; charset=utf-8",
+    )
+
+    handler.send_header(
+        "Content-Length",
+        str(len(body)),
+    )
+
+    handler.send_header(
+        "Cache-Control",
+        "no-store",
+    )
+
     handler.end_headers()
+
     handler.wfile.write(body)
 
 
-class TerminalExecutorHandler(BaseHTTPRequestHandler):
-    """HTTP handler for authenticated local terminal execution."""
+class TerminalExecutorHandler(
+    BaseHTTPRequestHandler
+):
+    """Authenticated terminal execution HTTP handler."""
 
-    server_version = "LocalTerminalExecutor/1.0"
+    server_version = (
+        "LocalTerminalExecutor/1.0"
+    )
 
-    def log_message(self, format: str, *args: Any) -> None:
-        """Use structured application logging instead of stderr output."""
+    def log_message(
+        self,
+        format: str,
+        *args: Any,
+    ) -> None:
+        """Use application logging."""
         LOGGER.info(
             "http_request",
             extra={
@@ -100,7 +151,9 @@ class TerminalExecutorHandler(BaseHTTPRequestHandler):
                 HTTPStatus.OK,
                 {
                     "ok": True,
-                    "service": "local-terminal-executor",
+                    "service": (
+                        "local-terminal-executor"
+                    ),
                 },
             )
             return
@@ -130,14 +183,21 @@ class TerminalExecutorHandler(BaseHTTPRequestHandler):
             return
 
         try:
-            content_length = int(self.headers.get("Content-Length", "0"))
+            content_length = int(
+                self.headers.get(
+                    "Content-Length",
+                    "0",
+                )
+            )
         except ValueError:
             json_response(
                 self,
                 HTTPStatus.BAD_REQUEST,
                 {
                     "ok": False,
-                    "error": "invalid_content_length",
+                    "error": (
+                        "invalid_content_length"
+                    ),
                 },
             )
             return
@@ -148,27 +208,41 @@ class TerminalExecutorHandler(BaseHTTPRequestHandler):
                 HTTPStatus.BAD_REQUEST,
                 {
                     "ok": False,
-                    "error": "request_body_required",
+                    "error": (
+                        "request_body_required"
+                    ),
                 },
             )
             return
 
-        if content_length > MAX_COMMAND_LENGTH + 8192:
+        if (
+            content_length
+            > MAX_COMMAND_LENGTH + 8192
+        ):
             json_response(
                 self,
                 HTTPStatus.REQUEST_ENTITY_TOO_LARGE,
                 {
                     "ok": False,
-                    "error": "request_body_too_large",
+                    "error": (
+                        "request_body_too_large"
+                    ),
                 },
             )
             return
 
-        body = self.rfile.read(content_length)
+        body = self.rfile.read(
+            content_length
+        )
 
         try:
-            payload = json.loads(body.decode("utf-8"))
-        except (UnicodeDecodeError, json.JSONDecodeError):
+            payload = json.loads(
+                body.decode("utf-8")
+            )
+        except (
+            UnicodeDecodeError,
+            json.JSONDecodeError,
+        ):
             json_response(
                 self,
                 HTTPStatus.BAD_REQUEST,
@@ -179,27 +253,43 @@ class TerminalExecutorHandler(BaseHTTPRequestHandler):
             )
             return
 
-        if not isinstance(payload, dict):
+        if not isinstance(
+            payload,
+            dict,
+        ):
             json_response(
                 self,
                 HTTPStatus.BAD_REQUEST,
                 {
                     "ok": False,
-                    "error": "request_body_must_be_object",
+                    "error": (
+                        "request_body_must_be_object"
+                    ),
                 },
             )
             return
 
-        command = payload.get("command")
-        timeout_seconds = payload.get("timeout_seconds", 30)
+        command = payload.get(
+            "command"
+        )
 
-        if not isinstance(command, str):
+        timeout_seconds = payload.get(
+            "timeout_seconds",
+            30,
+        )
+
+        if not isinstance(
+            command,
+            str,
+        ):
             json_response(
                 self,
                 HTTPStatus.BAD_REQUEST,
                 {
                     "ok": False,
-                    "error": "command_must_be_string",
+                    "error": (
+                        "command_must_be_string"
+                    ),
                 },
             )
             return
@@ -210,7 +300,9 @@ class TerminalExecutorHandler(BaseHTTPRequestHandler):
                 HTTPStatus.BAD_REQUEST,
                 {
                     "ok": False,
-                    "error": "command_must_not_be_empty",
+                    "error": (
+                        "command_must_not_be_empty"
+                    ),
                 },
             )
             return
@@ -222,57 +314,92 @@ class TerminalExecutorHandler(BaseHTTPRequestHandler):
                 {
                     "ok": False,
                     "error": "command_too_long",
-                    "max_command_length": MAX_COMMAND_LENGTH,
+                    "max_command_length": (
+                        MAX_COMMAND_LENGTH
+                    ),
                 },
             )
             return
 
-        if isinstance(timeout_seconds, bool) or not isinstance(
-            timeout_seconds,
-            int,
+        if (
+            isinstance(
+                timeout_seconds,
+                bool,
+            )
+            or not isinstance(
+                timeout_seconds,
+                int,
+            )
         ):
             json_response(
                 self,
                 HTTPStatus.BAD_REQUEST,
                 {
                     "ok": False,
-                    "error": "timeout_seconds_must_be_integer",
+                    "error": (
+                        "timeout_seconds_must_be_integer"
+                    ),
                 },
             )
             return
 
-        if timeout_seconds < 1 or timeout_seconds > MAX_TIMEOUT_SECONDS:
+        if (
+            timeout_seconds < 1
+            or timeout_seconds
+            > MAX_TIMEOUT_SECONDS
+        ):
             json_response(
                 self,
                 HTTPStatus.BAD_REQUEST,
                 {
-                    "ok": False,
-                    "error": "timeout_seconds_out_of_range",
+                    "ok": HTTPStatus.BAD_REQUEST,
+                    "error": (
+                        "timeout_seconds_out_of_range"
+                    ),
                     "min_timeout_seconds": 1,
-                    "max_timeout_seconds": MAX_TIMEOUT_SECONDS,
+                    "max_timeout_seconds": (
+                        MAX_TIMEOUT_SECONDS
+                    ),
                 },
             )
             return
 
-        self._execute(command, timeout_seconds)
+        self._execute(
+            command,
+            timeout_seconds,
+        )
 
     def _authenticate(self) -> bool:
-        authorization = self.headers.get("Authorization", "")
+        authorization = self.headers.get(
+            "Authorization",
+            "",
+        )
 
-        if not authorization.startswith("Bearer "):
+        if not authorization.startswith(
+            "Bearer "
+        ):
             json_response(
                 self,
                 HTTPStatus.UNAUTHORIZED,
                 {
                     "ok": False,
-                    "error": "missing_bearer_token",
+                    "error": (
+                        "missing_bearer_token"
+                    ),
                 },
             )
             return False
 
-        supplied_token = authorization.removeprefix("Bearer ").strip()
+        supplied_token = (
+            authorization.removeprefix(
+                "Bearer "
+            ).strip()
+        )
 
-        if not hmac.compare_digest(supplied_token, TOKEN):
+        if not hmac.compare_digest(
+            supplied_token,
+            TOKEN,
+        ):
             json_response(
                 self,
                 HTTPStatus.UNAUTHORIZED,
@@ -285,14 +412,22 @@ class TerminalExecutorHandler(BaseHTTPRequestHandler):
 
         return True
 
-    def _execute(self, command: str, timeout_seconds: int) -> None:
-        digest = command_hash(command)
+    def _execute(
+        self,
+        command: str,
+        timeout_seconds: int,
+    ) -> None:
+        digest = command_hash(
+            command
+        )
 
         LOGGER.info(
             "terminal_command_start",
             extra={
                 "command_sha256": digest,
-                "timeout_seconds": timeout_seconds,
+                "timeout_seconds": (
+                    timeout_seconds
+                ),
             },
         )
 
@@ -303,13 +438,17 @@ class TerminalExecutorHandler(BaseHTTPRequestHandler):
             stdout=subprocess.PIPE,
             stderr=subprocess.PIPE,
             text=False,
+            cwd="/workspace",
             start_new_session=True,
         )
 
         timed_out = False
 
         try:
-            stdout_data, stderr_data = process.communicate(
+            (
+                stdout_data,
+                stderr_data,
+            ) = process.communicate(
                 timeout=timeout_seconds
             )
         except subprocess.TimeoutExpired as exc:
@@ -317,18 +456,40 @@ class TerminalExecutorHandler(BaseHTTPRequestHandler):
 
             process.kill()
 
-            stdout_data, stderr_data = process.communicate()
+            (
+                stdout_data,
+                stderr_data,
+            ) = process.communicate()
 
             if exc.stdout:
-                stdout_data = exc.stdout + stdout_data
+                stdout_data = (
+                    exc.stdout
+                    + stdout_data
+                )
 
             if exc.stderr:
-                stderr_data = exc.stderr + stderr_data
+                stderr_data = (
+                    exc.stderr
+                    + stderr_data
+                )
 
-        stdout, stdout_truncated = truncate_output(stdout_data)
-        stderr, stderr_truncated = truncate_output(stderr_data)
+        (
+            stdout,
+            stdout_truncated,
+        ) = truncate_output(
+            stdout_data
+        )
 
-        return_code = process.returncode
+        (
+            stderr,
+            stderr_truncated,
+        ) = truncate_output(
+            stderr_data
+        )
+
+        return_code = (
+            process.returncode
+        )
 
         LOGGER.info(
             "terminal_command_complete",
@@ -336,8 +497,12 @@ class TerminalExecutorHandler(BaseHTTPRequestHandler):
                 "command_sha256": digest,
                 "return_code": return_code,
                 "timed_out": timed_out,
-                "stdout_truncated": stdout_truncated,
-                "stderr_truncated": stderr_truncated,
+                "stdout_truncated": (
+                    stdout_truncated
+                ),
+                "stderr_truncated": (
+                    stderr_truncated
+                ),
             },
         )
 
@@ -345,27 +510,47 @@ class TerminalExecutorHandler(BaseHTTPRequestHandler):
             self,
             HTTPStatus.OK,
             {
-                "ok": not timed_out and return_code == 0,
+                "ok": (
+                    not timed_out
+                    and return_code == 0
+                ),
                 "timed_out": timed_out,
                 "return_code": return_code,
                 "stdout": stdout,
                 "stderr": stderr,
-                "stdout_truncated": stdout_truncated,
-                "stderr_truncated": stderr_truncated,
+                "stdout_truncated": (
+                    stdout_truncated
+                ),
+                "stderr_truncated": (
+                    stderr_truncated
+                ),
                 "command_sha256": digest,
-                "timeout_seconds": timeout_seconds,
+                "timeout_seconds": (
+                    timeout_seconds
+                ),
             },
         )
 
 
 def main() -> None:
     logging.basicConfig(
-        level=os.environ.get("LOG_LEVEL", "INFO").upper(),
-        format="%(asctime)s %(levelname)s %(name)s %(message)s",
+        level=os.environ.get(
+            "LOG_LEVEL",
+            "INFO",
+        ).upper(),
+        format=(
+            "%(asctime)s "
+            "%(levelname)s "
+            "%(name)s "
+            "%(message)s"
+        ),
     )
 
     server = ThreadingHTTPServer(
-        (HOST, PORT),
+        (
+            HOST,
+            PORT,
+        ),
         TerminalExecutorHandler,
     )
 
@@ -374,14 +559,18 @@ def main() -> None:
         extra={
             "host": HOST,
             "port": PORT,
-            "token_file": str(TOKEN_FILE),
+            "token_file": str(
+                TOKEN_FILE
+            ),
         },
     )
 
     try:
         server.serve_forever()
     except KeyboardInterrupt:
-        LOGGER.info("terminal_executor_stopping")
+        LOGGER.info(
+            "terminal_executor_stopping"
+        )
     finally:
         server.server_close()
 
