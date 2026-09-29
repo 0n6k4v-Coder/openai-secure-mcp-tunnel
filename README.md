@@ -5,13 +5,22 @@
 
 ## Quick Start
 
-```bash
-# 1. Start the MCP server and tunnel
-docker compose up -d
+1. Start the MCP server and tunnel
+    ```bash
+    docker compose up -d
+    ```
 
-# 2. Check that both services are running
-docker compose ps
+2. Check that both services are running
+    ```bash
+    docker compose ps
+    ```
 
-# 3. Follow the tunnel logs
-docker compose logs -f tunnel-client
-```
+3. Follow the tunnel logs
+    ```bash
+    docker compose logs -f tunnel-client
+    ```
+
+4. Stop and remove the containers and network
+    ```bash
+    docker compose down
+    ```
