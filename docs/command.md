@@ -436,7 +436,7 @@ Sandbox resource defaults are controlled through:
 
 ```dotenv
 SANDBOX_DEFAULT_CPU=1
-SANDBOX_DEFAULT_MEMORY=1GiB
+SANDBOX_DEFAULT_MEMORY=1Gi
 ```
 
 The sandbox image is controlled through:
@@ -559,7 +559,7 @@ OPEN_SHELL_WORKSPACE=default
 
 SANDBOX_IMAGE=local-mcp-openshell-sandbox:1.0.0
 SANDBOX_DEFAULT_CPU=1
-SANDBOX_DEFAULT_MEMORY=1GiB
+SANDBOX_DEFAULT_MEMORY=1Gi
 
 OPENSHELL_IMAGE_TAG=v0.1.1
 OPENSHELL_PORT=8080
