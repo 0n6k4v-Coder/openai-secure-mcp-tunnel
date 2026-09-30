@@ -42,6 +42,7 @@ services:
 
     networks:
       - openshell-gateway
+      - openshell-internal
 
   mcp-server:
     build:
