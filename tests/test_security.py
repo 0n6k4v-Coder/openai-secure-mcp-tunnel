@@ -261,17 +261,20 @@ def test_create_workspace_grant_round_trip(
 
     grant = workspace.create_workspace_grant(
         str(tmp_path),
+        create_volume=False,
     )
 
+    assert grant["workspace_id"].startswith("ws_")
+    assert grant["volume_name"].startswith("mcp-ws-")
     assert grant["target"] == "/workspace/project"
-    assert grant["read_only"] == "false"
+    assert grant["read_only"] is False
     assert grant["host_path"] == str(tmp_path.resolve())
 
-    resolved = workspace.resolve_workspace_grant(
-        grant["workspace_id"],
+    resolved_vol = workspace.resolve_workspace_grant(
+        str(grant["workspace_id"]),
     )
 
-    assert resolved == tmp_path.resolve()
+    assert resolved_vol == grant["volume_name"]
 
 
 def test_list_workspace_grants_does_not_require_host_path_visibility(
@@ -283,7 +286,12 @@ def test_list_workspace_grants_does_not_require_host_path_visibility(
     grants_file.write_text(
         (
             '{\n'
-            '  "ws_test123": "/host/path/not-visible-in-container"\n'
+            '  "ws_test123": {\n'
+            '    "host_path": "/host/path/not-visible-in-container",\n'
+            '    "volume_name": "mcp-ws-test123",\n'
+            '    "target": "/workspace/project",\n'
+            '    "read_only": false\n'
+            '  }\n'
             '}\n'
         ),
         encoding="utf-8",
@@ -301,8 +309,9 @@ def test_list_workspace_grants_does_not_require_host_path_visibility(
         {
             "workspace_id": "ws_test123",
             "host_path": "/host/path/not-visible-in-container",
+            "volume_name": "mcp-ws-test123",
             "target": "/workspace/project",
-            "read_only": "false",
+            "read_only": False,
         }
     ]
 
@@ -316,7 +325,12 @@ def test_resolve_workspace_grant_does_not_require_host_path_visibility(
     grants_file.write_text(
         (
             '{\n'
-            '  "ws_test123": "/host/path/not-visible-in-container"\n'
+            '  "ws_test123": {\n'
+            '    "host_path": "/host/path/not-visible-in-container",\n'
+            '    "volume_name": "mcp-ws-test123",\n'
+            '    "target": "/workspace/project",\n'
+            '    "read_only": false\n'
+            '  }\n'
             '}\n'
         ),
         encoding="utf-8",
@@ -332,6 +346,95 @@ def test_resolve_workspace_grant_does_not_require_host_path_visibility(
         "ws_test123",
     )
 
-    assert resolved == Path(
-        "/host/path/not-visible-in-container"
+    assert resolved == "mcp-ws-test123"
+
+
+def test_resolve_workspace_grant_rejects_invalid_and_nonexistent_ids(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    grants_file = tmp_path / "grants.json"
+    grants_file.write_text("{}", encoding="utf-8")
+
+    monkeypatch.setattr(
+        workspace,
+        "WORKSPACE_GRANTS_FILE",
+        grants_file,
     )
+
+    with pytest.raises(
+        ValueError,
+        match="workspace_id must not be empty",
+    ):
+        workspace.resolve_workspace_grant("")
+
+    with pytest.raises(
+        ValueError,
+        match="workspace_id has an invalid format",
+    ):
+        workspace.resolve_workspace_grant("invalid_prefix")
+
+    with pytest.raises(
+        ValueError,
+        match="was not found",
+    ):
+        workspace.resolve_workspace_grant("ws_missing")
+
+
+def test_revoke_workspace_grant_round_trip(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    grants_file = tmp_path / "grants.json"
+
+    monkeypatch.setattr(
+        workspace,
+        "WORKSPACE_GRANTS_FILE",
+        grants_file,
+    )
+    monkeypatch.setattr(
+        workspace,
+        "GRANTS_READ_ONLY",
+        False,
+    )
+
+    grant = workspace.create_workspace_grant(
+        str(tmp_path),
+        create_volume=False,
+    )
+
+    ws_id = str(grant["workspace_id"])
+    assert workspace.resolve_workspace_grant(ws_id) == grant["volume_name"]
+
+    revoked = workspace.revoke_workspace_grant(
+        ws_id,
+        remove_volume=False,
+    )
+
+    assert revoked["revoked"] is True
+    assert revoked["workspace_id"] == ws_id
+
+    with pytest.raises(
+        ValueError,
+        match="was not found",
+    ):
+        workspace.resolve_workspace_grant(ws_id)
+
+
+def test_revoke_workspace_grant_rejects_read_only_process(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(
+        workspace,
+        "GRANTS_READ_ONLY",
+        True,
+    )
+
+    with pytest.raises(
+        RuntimeError,
+        match="read-only",
+    ):
+        workspace.revoke_workspace_grant(
+            "ws_test",
+        )

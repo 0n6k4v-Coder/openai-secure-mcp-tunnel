@@ -167,3 +167,6 @@ test-results/
 *.backup
 *.orig
 *.rej
+
+# Runtime state
+.state/

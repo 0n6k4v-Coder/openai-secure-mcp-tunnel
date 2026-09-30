@@ -4,7 +4,11 @@ import argparse
 import json
 import sys
 
-from .workspace import create_workspace_grant, list_workspace_grants
+from .workspace import (
+    create_workspace_grant,
+    list_workspace_grants,
+    revoke_workspace_grant,
+)
 
 
 def _build_parser() -> argparse.ArgumentParser:
@@ -30,6 +34,15 @@ def _build_parser() -> argparse.ArgumentParser:
         help="Absolute host directory selected by the human operator.",
     )
 
+    revoke = subparsers.add_parser(
+        "revoke",
+        help="Revoke an authorized workspace capability.",
+    )
+    revoke.add_argument(
+        "workspace_id",
+        help="Opaque capability ID (e.g. ws_...) to revoke.",
+    )
+
     subparsers.add_parser(
         "list",
         help="List currently authorized workspace capabilities.",
@@ -44,6 +57,20 @@ def _authorize(host_path: str) -> int:
     print(
         json.dumps(
             grant,
+            ensure_ascii=False,
+            indent=2,
+        )
+    )
+
+    return 0
+
+
+def _revoke(workspace_id: str) -> int:
+    result = revoke_workspace_grant(workspace_id)
+
+    print(
+        json.dumps(
+            result,
             ensure_ascii=False,
             indent=2,
         )
@@ -71,6 +98,9 @@ def main(argv: list[str] | None = None) -> int:
     try:
         if args.command == "authorize":
             return _authorize(args.host_path)
+
+        if args.command == "revoke":
+            return _revoke(args.workspace_id)
 
         if args.command == "list":
             return _list()

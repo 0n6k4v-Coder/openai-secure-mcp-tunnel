@@ -242,7 +242,7 @@ def register_tools(mcp: MCPServer) -> None:
             openWorldHint=False,
         )
     )
-    def list_authorized_workspaces() -> list[dict[str, str]]:
+    def list_authorized_workspaces() -> list[dict[str, object]]:
         """List currently authorized host workspace capabilities."""
         return list_workspace_grants()
 

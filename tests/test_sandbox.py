@@ -1,7 +1,5 @@
 from __future__ import annotations
 
-from pathlib import Path
-
 import pytest
 
 from local_mcp_server import sandbox
@@ -24,14 +22,13 @@ def test_memory_quantity_rejects_gib_suffix() -> None:
         sandbox._validate_memory("1GiB")
 
 
-def test_build_sandbox_spec_uses_valid_memory_limit(
-    tmp_path: Path,
+def test_build_sandbox_spec_emits_volume_mount_and_policy(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     monkeypatch.setattr(
         sandbox,
         "resolve_workspace_grant",
-        lambda workspace_id: tmp_path,
+        lambda workspace_id: "mcp-ws-testvolume123",
     )
 
     spec = sandbox._build_sandbox_spec(
@@ -54,7 +51,78 @@ def test_build_sandbox_spec_uses_valid_memory_limit(
 
     mount = docker_config["mounts"][0]
 
-    assert mount["type"] == "bind"
-    assert mount["source"] == str(tmp_path)
+    assert mount["type"] == "volume"
+    assert mount["source"] == "mcp-ws-testvolume123"
     assert mount["target"] == "/workspace/project"
     assert mount["read_only"] is False
+
+    assert spec.policy.version == 1
+    assert spec.policy.filesystem.include_workdir is True
+    assert list(spec.policy.filesystem.read_only) == [
+        "/bin",
+        "/usr",
+        "/lib",
+        "/proc",
+        "/dev/urandom",
+        "/etc",
+        "/var/log",
+    ]
+    assert list(spec.policy.filesystem.read_write) == [
+        "/tmp",
+        "/dev/null",
+        "/workspace/project",
+    ]
+    assert spec.policy.landlock.compatibility == "hard_requirement"
+
+
+def test_create_sandbox_rejects_arbitrary_host_path(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    # Arbitrary host paths must never be accepted as workspace capabilities
+    with pytest.raises(
+        ValueError,
+        match="workspace_id has an invalid format",
+    ):
+        sandbox.create_sandbox(
+            "test-sandbox",
+            "/tmp/arbitrary/host/path",
+        )
+
+
+def test_create_sandbox_rejects_invalid_workspace_id() -> None:
+    with pytest.raises(
+        ValueError,
+        match="workspace_id must not be empty",
+    ):
+        sandbox.create_sandbox(
+            "test-sandbox",
+            "",
+        )
+
+    with pytest.raises(
+        ValueError,
+        match="workspace_id has an invalid format",
+    ):
+        sandbox.create_sandbox(
+            "test-sandbox",
+            "invalid_prefix_123",
+        )
+
+
+def test_create_sandbox_rejects_nonexistent_workspace_id(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(
+        sandbox,
+        "resolve_workspace_grant",
+        sandbox.resolve_workspace_grant,
+    )
+
+    with pytest.raises(
+        ValueError,
+        match="was not found",
+    ):
+        sandbox.create_sandbox(
+            "test-sandbox",
+            "ws_nonexistent_capability",
+        )

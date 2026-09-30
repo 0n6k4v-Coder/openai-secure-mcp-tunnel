@@ -157,7 +157,8 @@ def _build_sandbox_spec(
     Build the OpenShell sandbox specification.
 
     The host path is never supplied directly by the model. It is resolved
-    through an opaque, previously authorized workspace capability.
+    through an opaque, previously authorized workspace capability into a
+    system-managed Docker volume name.
     """
     cpu = _validate_cpu(
         DEFAULT_CPU
@@ -166,7 +167,7 @@ def _build_sandbox_spec(
         DEFAULT_MEMORY
     )
 
-    host_workspace = resolve_workspace_grant(
+    volume_name = resolve_workspace_grant(
         workspace_id
     )
 
@@ -188,8 +189,8 @@ def _build_sandbox_spec(
             "docker": {
                 "mounts": [
                     {
-                        "type": "bind",
-                        "source": str(host_workspace),
+                        "type": "volume",
+                        "source": volume_name,
                         "target": "/workspace/project",
                         "read_only": False,
                     }
@@ -197,6 +198,28 @@ def _build_sandbox_spec(
             }
         }
     )
+
+    spec.policy.version = 1
+    spec.policy.filesystem.include_workdir = True
+    spec.policy.filesystem.read_only.extend(
+        [
+            "/bin",
+            "/usr",
+            "/lib",
+            "/proc",
+            "/dev/urandom",
+            "/etc",
+            "/var/log",
+        ]
+    )
+    spec.policy.filesystem.read_write.extend(
+        [
+            "/tmp",
+            "/dev/null",
+            "/workspace/project",
+        ]
+    )
+    spec.policy.landlock.compatibility = "hard_requirement"
 
     return spec
 
