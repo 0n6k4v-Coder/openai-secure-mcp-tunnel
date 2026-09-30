@@ -25,7 +25,6 @@ from .sandbox import (
 from .workspace import (
     create_workspace_directory as create_workspace_directory_impl,
     create_workspace_file as create_workspace_file_impl,
-    create_workspace_grant,
     delete_workspace_directory as delete_workspace_directory_impl,
     delete_workspace_file as delete_workspace_file_impl,
     list_workspace_files as list_workspace_files_impl,
@@ -233,27 +232,6 @@ def register_tools(mcp: MCPServer) -> None:
         """Delete a directory tree inside the MCP workspace."""
         return delete_workspace_directory_impl(
             relative_path,
-        )
-
-    @mcp.tool(
-        annotations=ToolAnnotations(
-            readOnlyHint=False,
-            destructiveHint=True,
-            idempotentHint=False,
-            openWorldHint=False,
-        )
-    )
-    def authorize_workspace(
-        host_path: str,
-    ) -> dict[str, str]:
-        """
-        Create a workspace capability for a host directory.
-
-        The returned workspace_id is the only value accepted by
-        create_sandbox().
-        """
-        return create_workspace_grant(
-            host_path,
         )
 
     @mcp.tool(
