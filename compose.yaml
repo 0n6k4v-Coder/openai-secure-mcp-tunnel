@@ -21,19 +21,6 @@ services:
       - "host.openshell.internal:host-gateway"
     networks:
       - openshell-internal
-    healthcheck:
-      test:
-        [
-          "CMD",
-          "/usr/local/bin/curl",
-          "-fsS",
-          "http://127.0.0.1:8081/healthz"
-        ]
-      interval: 10s
-      timeout: 5s
-      retries: 10
-      start_period: 15s
-
   mcp-server:
     build:
       context: .
@@ -53,7 +40,7 @@ services:
       - openshell-internal
     depends_on:
       openshell-gateway:
-        condition: service_healthy
+        condition: service_started
     environment:
       OPEN_SHELL_GATEWAY: openshell-gateway:8080
       OPEN_SHELL_WORKSPACE: ${OPEN_SHELL_WORKSPACE:-default}
