@@ -73,6 +73,7 @@ services:
     networks:
       - mcp-internal
       - openshell-internal
+      - mcp-host-publish
 
     depends_on:
       openshell-gateway:
@@ -140,6 +141,9 @@ networks:
 
   openshell-internal:
     internal: true
+
+  mcp-host-publish:
+    driver: bridge
 
   openshell-gateway:
     driver: bridge
