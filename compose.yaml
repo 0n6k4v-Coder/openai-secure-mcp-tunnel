@@ -68,7 +68,8 @@ services:
     volumes:
       - ./workspace:/app/workspace:rw
 
-      - ${MCP_STATE_DIR:-./.state}:/var/lib/local-mcp-server:rw
+      - ${MCP_INSTALLATION_STATE_FILE:-./.state/installations.json}:/var/lib/local-mcp-server/installations.json:rw
+      - ${WORKSPACE_GRANTS_FILE:-./.state/workspace-grants.json}:/var/lib/local-mcp-server/workspace-grants.json:ro
 
     networks:
       - mcp-internal
@@ -89,6 +90,7 @@ services:
 
       WORKSPACE_DIR: /app/workspace
       WORKSPACE_GRANTS_FILE: /var/lib/local-mcp-server/workspace-grants.json
+      WORKSPACE_GRANTS_READ_ONLY: "true"
 
       INSTALLATION_STATE_FILE: /var/lib/local-mcp-server/installations.json
 
