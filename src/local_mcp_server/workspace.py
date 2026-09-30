@@ -179,6 +179,12 @@ def create_workspace_grant(host_path: str) -> dict[str, str]:
     This function is intended for the host-only workspace broker.
     The MCP server process must run with WORKSPACE_GRANTS_READ_ONLY=true.
     """
+    if GRANTS_READ_ONLY:
+        raise RuntimeError(
+            "Workspace grants are read-only in this process. "
+            "Run the host workspace broker to authorize a workspace."
+        )
+
     resolved = canonicalize_host_workspace(host_path)
 
     workspace_id = f"ws_{secrets.token_urlsafe(18)}"

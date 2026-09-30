@@ -69,7 +69,8 @@ services:
       - ./workspace:/app/workspace:rw
 
       - ${MCP_INSTALLATION_STATE_FILE:-./.state/installations.json}:/var/lib/local-mcp-server/installations.json:rw
-      - ${WORKSPACE_GRANTS_FILE:-./.state/workspace-grants.json}:/var/lib/local-mcp-server/workspace-grants.json:ro
+
+      - ${WORKSPACE_GRANTS_DIR:-./.state/workspace-grants}:/var/lib/local-mcp-server/workspace-grants:ro
 
     networks:
       - mcp-internal
@@ -89,7 +90,8 @@ services:
       SANDBOX_DEFAULT_MEMORY: ${SANDBOX_DEFAULT_MEMORY:-1Gi}
 
       WORKSPACE_DIR: /app/workspace
-      WORKSPACE_GRANTS_FILE: /var/lib/local-mcp-server/workspace-grants.json
+
+      WORKSPACE_GRANTS_FILE: /var/lib/local-mcp-server/workspace-grants/workspace-grants.json
       WORKSPACE_GRANTS_READ_ONLY: "true"
 
       INSTALLATION_STATE_FILE: /var/lib/local-mcp-server/installations.json
