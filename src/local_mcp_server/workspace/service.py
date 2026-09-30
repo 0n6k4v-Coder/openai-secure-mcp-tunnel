@@ -56,21 +56,15 @@ GRANTS_READ_ONLY = os.environ.get(
 
 
 def _grants_file() -> Path:
-    """Return the current value of WORKSPACE_GRANTS_FILE (supports monkeypatching).
-
-    Checks the parent workspace package namespace first (where tests monkeypatch via
-    ``monkeypatch.setattr(workspace, "WORKSPACE_GRANTS_FILE", ...)``), then falls back
-    to this service module's own attribute.
     """
-    import sys
-    # Check the workspace package namespace first (the tests patch this one)
-    pkg_name = __name__.rsplit(".", 1)[0]  # "local_mcp_server.workspace"
-    pkg = sys.modules.get(pkg_name)
-    if pkg is not None:
-        val = getattr(pkg, "WORKSPACE_GRANTS_FILE", None)
-        if val is not None:
-            return Path(val)
-    return sys.modules[__name__].WORKSPACE_GRANTS_FILE
+    Return the current grants database path.
+
+    The service module's value is authoritative so tests and runtime
+    configuration can replace WORKSPACE_GRANTS_FILE directly.
+    """
+    return Path(
+        WORKSPACE_GRANTS_FILE
+    )
 
 
 def _ensure_grants_directory() -> None:
@@ -156,9 +150,7 @@ def _load_workspace_grants() -> dict[str, dict[str, object]]:
 def _save_workspace_grants(
     grants: dict[str, dict[str, object]],
 ) -> None:
-    import sys
-    _mod = sys.modules[__name__]
-    if _mod.GRANTS_READ_ONLY:
+    if GRANTS_READ_ONLY:
         raise RuntimeError(
             "Workspace grants are read-only in this process. "
             "Run the host workspace broker to authorize a workspace."

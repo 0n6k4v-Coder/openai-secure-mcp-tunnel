@@ -12,14 +12,14 @@ from .service import (
 from .validation import canonicalize_host_workspace
 
 
-def _grants_read_only() -> bool:
-    """Read GRANTS_READ_ONLY from the workspace package (supports monkeypatching)."""
-    import sys
-    pkg = sys.modules.get(__name__.rsplit(".", 1)[0])
-    if pkg is not None and hasattr(pkg, "GRANTS_READ_ONLY"):
-        return bool(pkg.GRANTS_READ_ONLY)
-    return bool(_service.GRANTS_READ_ONLY)
+GRANTS_READ_ONLY = _service.GRANTS_READ_ONLY
 
+
+def _grants_read_only() -> bool:
+    """Return the broker's current workspace-grant write policy."""
+    return bool(
+        GRANTS_READ_ONLY
+    )
 
 
 def _create_docker_volume(
