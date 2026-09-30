@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import pytest
+
 from local_mcp_server import sandbox
 
 
@@ -13,7 +15,7 @@ def test_memory_quantity_accepts_open_shell_binary_units() -> None:
 
 
 def test_memory_quantity_rejects_gib_suffix() -> None:
-    with __import__("pytest").raises(
+    with pytest.raises(
         ValueError,
         match="memory must be a quantity",
     ):
