@@ -10,6 +10,10 @@ dependencies = [
     "starlette",
 ]
 
+[project.scripts]
+mcp-sandbox = "local_mcp_server.cli:main"
+workspace-broker = "local_mcp_server.workspace_broker:main"
+
 [dependency-groups]
 dev = [
     "pytest>=9,<10",
