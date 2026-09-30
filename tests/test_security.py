@@ -272,3 +272,65 @@ def test_create_workspace_grant_round_trip(
     )
 
     assert resolved == tmp_path.resolve()
+
+
+def test_list_workspace_grants_does_not_require_host_path_visibility(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    grants_file = tmp_path / "grants.json"
+
+    grants_file.write_text(
+        (
+            '{\n'
+            '  "ws_test123": "/host/path/not-visible-in-container"\n'
+            '}\n'
+        ),
+        encoding="utf-8",
+    )
+
+    monkeypatch.setattr(
+        workspace,
+        "WORKSPACE_GRANTS_FILE",
+        grants_file,
+    )
+
+    grants = workspace.list_workspace_grants()
+
+    assert grants == [
+        {
+            "workspace_id": "ws_test123",
+            "host_path": "/host/path/not-visible-in-container",
+            "target": "/workspace/project",
+            "read_only": "false",
+        }
+    ]
+
+    def test_resolve_workspace_grant_does_not_require_host_path_visibility(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    grants_file = tmp_path / "grants.json"
+
+    grants_file.write_text(
+        (
+            '{\n'
+            '  "ws_test123": "/host/path/not-visible-in-container"\n'
+            '}\n'
+        ),
+        encoding="utf-8",
+    )
+
+    monkeypatch.setattr(
+        workspace,
+        "WORKSPACE_GRANTS_FILE",
+        grants_file,
+    )
+
+    resolved = workspace.resolve_workspace_grant(
+        "ws_test123",
+    )
+
+    assert resolved == Path(
+        "/host/path/not-visible-in-container"
+    )

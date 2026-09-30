@@ -15,7 +15,7 @@ WORKSPACE_ROOT = Path(
 WORKSPACE_GRANTS_FILE = Path(
     os.environ.get(
         "WORKSPACE_GRANTS_FILE",
-        "/var/lib/local-mcp-server/workspace-grants.json",
+        "/var/lib/local-mcp-server/workspace-grants/workspace-grants.json",
     )
 ).resolve()
 
@@ -23,6 +23,7 @@ MAX_READ_BYTES = 1_000_000
 MAX_WRITE_BYTES = 1_000_000
 
 _GRANTS_LOCK = Lock()
+
 GRANTS_READ_ONLY = os.environ.get(
     "WORKSPACE_GRANTS_READ_ONLY",
     "false",
@@ -72,7 +73,9 @@ def _load_workspace_grants() -> dict[str, str]:
     return result
 
 
-def _save_workspace_grants(grants: dict[str, str]) -> None:
+def _save_workspace_grants(
+    grants: dict[str, str],
+) -> None:
     if GRANTS_READ_ONLY:
         raise RuntimeError(
             "Workspace grants are read-only in this process. "
@@ -101,23 +104,19 @@ def _save_workspace_grants(grants: dict[str, str]) -> None:
     )
 
 
-def canonicalize_host_workspace(host_path: str) -> Path:
+def canonicalize_host_workspace(
+    host_path: str,
+) -> Path:
     """
     Canonicalize and validate a host workspace path.
 
-    The selected path must:
-      - be absolute;
-      - exist;
-      - be a directory;
-      - not resolve outside itself;
-      - not be the filesystem root;
-      - not be a sensitive host path.
-
-    The caller must perform the human authorization step before creating
-    a grant for this path.
+    This function is a host-side authorization boundary and must be
+    executed by the workspace broker, not by the MCP container.
     """
     if not isinstance(host_path, str) or not host_path.strip():
-        raise ValueError("host_path must not be empty.")
+        raise ValueError(
+            "host_path must not be empty."
+        )
 
     candidate = Path(host_path).expanduser()
 
@@ -127,9 +126,7 @@ def canonicalize_host_workspace(host_path: str) -> Path:
         )
 
     try:
-        resolved = candidate.resolve(
-            strict=True,
-        )
+        resolved = candidate.resolve(strict=True)
     except FileNotFoundError as exc:
         raise ValueError(
             "host_path does not exist."
@@ -149,7 +146,7 @@ def canonicalize_host_workspace(host_path: str) -> Path:
             "Mounting the host filesystem root is not allowed."
         )
 
-    forbidden = {
+    forbidden = (
         Path("/proc"),
         Path("/sys"),
         Path("/dev"),
@@ -157,7 +154,7 @@ def canonicalize_host_workspace(host_path: str) -> Path:
         Path("/etc"),
         Path("/var/run"),
         Path("/var/lib/docker"),
-    }
+    )
 
     for path in forbidden:
         try:
@@ -172,12 +169,15 @@ def canonicalize_host_workspace(host_path: str) -> Path:
     return resolved
 
 
-def create_workspace_grant(host_path: str) -> dict[str, str]:
+def create_workspace_grant(
+    host_path: str,
+) -> dict[str, str]:
     """
-    Create a capability representing one user-authorized host workspace.
+    Create a capability representing one human-authorized host workspace.
 
     This function is intended for the host-only workspace broker.
-    The MCP server process must run with WORKSPACE_GRANTS_READ_ONLY=true.
+    The MCP server process must run with
+    WORKSPACE_GRANTS_READ_ONLY=true.
     """
     if GRANTS_READ_ONLY:
         raise RuntimeError(
@@ -207,12 +207,26 @@ def create_workspace_grant(host_path: str) -> dict[str, str]:
     }
 
 
-def resolve_workspace_grant(workspace_id: str) -> Path:
+def resolve_workspace_grant(
+    workspace_id: str,
+) -> Path:
     """
-    Resolve an opaque workspace capability into its canonical host path.
+    Resolve an opaque workspace capability.
+
+    The returned path is the canonical path previously authorized by
+    the host-side broker. This function deliberately does not call
+    Path.resolve() because the MCP container cannot see the host
+    filesystem.
     """
     if not isinstance(workspace_id, str) or not workspace_id.strip():
-        raise ValueError("workspace_id must not be empty.")
+        raise ValueError(
+            "workspace_id must not be empty."
+        )
+
+    if not workspace_id.startswith("ws_"):
+        raise ValueError(
+            "workspace_id has an invalid format."
+        )
 
     with _GRANTS_LOCK:
         grants = _load_workspace_grants()
@@ -224,32 +238,37 @@ def resolve_workspace_grant(workspace_id: str) -> Path:
             f"Workspace grant '{workspace_id}' was not found."
         )
 
-    resolved = canonicalize_host_workspace(host_path)
-
-    if str(resolved) != host_path:
+    if not host_path.startswith("/"):
         raise ValueError(
-            "Workspace grant no longer resolves to its authorized path."
+            "Workspace grant contains a non-absolute host path."
         )
 
-    return resolved
+    return Path(host_path)
 
 
 def list_workspace_grants() -> list[dict[str, str]]:
+    """
+    List broker-issued workspace capabilities.
+
+    Host paths are returned exactly as stored by the host-side broker.
+    No host filesystem access is attempted from the MCP container.
+    """
     with _GRANTS_LOCK:
         grants = _load_workspace_grants()
 
     result: list[dict[str, str]] = []
 
     for workspace_id, host_path in sorted(grants.items()):
-        try:
-            resolved = canonicalize_host_workspace(host_path)
-        except ValueError:
+        if not workspace_id.startswith("ws_"):
+            continue
+
+        if not host_path.startswith("/"):
             continue
 
         result.append(
             {
                 "workspace_id": workspace_id,
-                "host_path": str(resolved),
+                "host_path": host_path,
                 "target": "/workspace/project",
                 "read_only": "false",
             }
@@ -258,10 +277,14 @@ def list_workspace_grants() -> list[dict[str, str]]:
     return result
 
 
-def resolve_workspace_path(relative_path: str) -> Path:
+def resolve_workspace_path(
+    relative_path: str,
+) -> Path:
     """Resolve a user-supplied path while enforcing the workspace boundary."""
     if not relative_path:
-        raise ValueError("Path must not be empty.")
+        raise ValueError(
+            "Path must not be empty."
+        )
 
     candidate = WORKSPACE_ROOT / relative_path
     resolved = candidate.resolve()
@@ -293,7 +316,9 @@ def list_workspace_files() -> list[str]:
             resolved.relative_to(WORKSPACE_ROOT)
 
             results.append(
-                resolved.relative_to(WORKSPACE_ROOT).as_posix()
+                resolved.relative_to(
+                    WORKSPACE_ROOT
+                ).as_posix()
             )
 
         except (OSError, ValueError):
@@ -302,7 +327,9 @@ def list_workspace_files() -> list[str]:
     return sorted(results)
 
 
-def read_workspace_text_file(relative_path: str) -> str:
+def read_workspace_text_file(
+    relative_path: str,
+) -> str:
     """Read a UTF-8 text file from the workspace."""
     target = resolve_workspace_path(relative_path)
 
@@ -420,12 +447,8 @@ def rename_workspace_path(
     new_relative_path: str,
 ) -> str:
     """Rename a file or directory within the workspace."""
-    source = resolve_workspace_path(
-        relative_path
-    )
-    destination = resolve_workspace_path(
-        new_relative_path
-    )
+    source = resolve_workspace_path(relative_path)
+    destination = resolve_workspace_path(new_relative_path)
 
     if not source.exists():
         raise ValueError(
@@ -453,9 +476,7 @@ def delete_workspace_file(
     relative_path: str,
 ) -> str:
     """Delete a regular file inside the workspace."""
-    target = resolve_workspace_path(
-        relative_path
-    )
+    target = resolve_workspace_path(relative_path)
 
     if not target.is_file():
         raise ValueError(
