@@ -1,3 +1,38 @@
 {
-  "ws_-yTIe-JX9e2YT2pkQNVU067-": "/tmp/openshell-workspace-test"
+  "ws_2237050f1b65c7ba6c7c7039": {
+    "host_path": "/tmp/pytest-of-kawee/pytest-23/test_create_workspace_grant_re0",
+    "read_only": false,
+    "target": "/workspace/project",
+    "volume_name": "mcp-ws-2237050f1b65c7ba6c7c7039"
+  },
+  "ws_40c8f931fc0e75bccaffef6e": {
+    "host_path": "/tmp/pytest-of-kawee/pytest-23/test_create_workspace_grant_ro0",
+    "read_only": false,
+    "target": "/workspace/project",
+    "volume_name": "mcp-ws-40c8f931fc0e75bccaffef6e"
+  },
+  "ws_8ce8db884be6bbd70fcb41ae": {
+    "host_path": "/tmp/pytest-of-kawee/pytest-22/test_create_workspace_grant_re0",
+    "read_only": false,
+    "target": "/workspace/project",
+    "volume_name": "mcp-ws-8ce8db884be6bbd70fcb41ae"
+  },
+  "ws_8fc5284c33c815f31a6dc588": {
+    "host_path": "/tmp/pytest-of-kawee/pytest-24/test_create_workspace_grant_ro0",
+    "read_only": false,
+    "target": "/workspace/project",
+    "volume_name": "mcp-ws-8fc5284c33c815f31a6dc588"
+  },
+  "ws_ad36c1e8e96fed92f55dd89c": {
+    "host_path": "/tmp/pytest-of-kawee/pytest-22/test_create_workspace_grant_ro0",
+    "read_only": false,
+    "target": "/workspace/project",
+    "volume_name": "mcp-ws-ad36c1e8e96fed92f55dd89c"
+  },
+  "ws_fe82c657cff6c61c70606336": {
+    "host_path": "/tmp/pytest-of-kawee/pytest-24/test_create_workspace_grant_re0",
+    "read_only": false,
+    "target": "/workspace/project",
+    "volume_name": "mcp-ws-fe82c657cff6c61c70606336"
+  }
 }

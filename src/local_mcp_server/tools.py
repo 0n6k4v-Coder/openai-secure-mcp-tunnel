@@ -8,7 +8,7 @@ from mcp.server.mcpserver import Context
 from mcp.types import ToolAnnotations
 from pydantic import BaseModel
 
-from .install import (
+from .installation import (
     approve_installation,
     consume_installation_approval,
     create_installation_request,
@@ -68,23 +68,29 @@ async def _installation_approval(
     )
 
     if result.action != "accept":
-        deny_installation(request_id)
+        deny_installation(
+            request_id
+        )
 
         return InstallationApproval(
-            approved=False,
+            approved=False
         )
 
     if result.data is None:
-        deny_installation(request_id)
+        deny_installation(
+            request_id
+        )
 
         return InstallationApproval(
-            approved=False,
+            approved=False
         )
 
     return result.data
 
 
-def register_tools(mcp: MCPServer) -> None:
+def register_tools(
+    mcp: MCPServer,
+) -> None:
     """Register all MCP tools exposed by the local server."""
 
     @mcp.tool(
@@ -129,7 +135,7 @@ def register_tools(mcp: MCPServer) -> None:
     ) -> str:
         """Read a UTF-8 text file from the MCP workspace."""
         return read_workspace_text_file_impl(
-            relative_path,
+            relative_path
         )
 
     @mcp.tool(
@@ -179,9 +185,9 @@ def register_tools(mcp: MCPServer) -> None:
     def create_workspace_directory(
         relative_path: str,
     ) -> str:
-        """Create a directory inside the MCP workspace."""
+        """Create a directory inside the workspace."""
         return create_workspace_directory_impl(
-            relative_path,
+            relative_path
         )
 
     @mcp.tool(
@@ -196,7 +202,7 @@ def register_tools(mcp: MCPServer) -> None:
         relative_path: str,
         new_relative_path: str,
     ) -> str:
-        """Rename a file or directory inside the MCP workspace."""
+        """Rename a file or directory inside the workspace."""
         return rename_workspace_path_impl(
             relative_path,
             new_relative_path,
@@ -213,9 +219,9 @@ def register_tools(mcp: MCPServer) -> None:
     def delete_workspace_file(
         relative_path: str,
     ) -> str:
-        """Delete a regular file inside the MCP workspace."""
+        """Delete a regular file inside the workspace."""
         return delete_workspace_file_impl(
-            relative_path,
+            relative_path
         )
 
     @mcp.tool(
@@ -229,9 +235,9 @@ def register_tools(mcp: MCPServer) -> None:
     def delete_workspace_directory(
         relative_path: str,
     ) -> str:
-        """Delete a directory tree inside the MCP workspace."""
+        """Delete a directory tree inside the workspace."""
         return delete_workspace_directory_impl(
-            relative_path,
+            relative_path
         )
 
     @mcp.tool(
@@ -258,9 +264,7 @@ def register_tools(mcp: MCPServer) -> None:
         name: str,
         workspace_id: str,
     ) -> str:
-        """
-        Create a sandbox using a previously authorized workspace capability.
-        """
+        """Create a sandbox using a previously authorized workspace."""
         return create_sandbox_impl(
             name=name,
             workspace_id=workspace_id,
@@ -291,7 +295,7 @@ def register_tools(mcp: MCPServer) -> None:
     ) -> str:
         """Return the status of an OpenShell sandbox."""
         return sandbox_status_impl(
-            name,
+            name
         )
 
     @mcp.tool(
@@ -306,11 +310,7 @@ def register_tools(mcp: MCPServer) -> None:
         name: str,
         command: str,
     ) -> str:
-        """
-        Execute a normal command inside an OpenShell sandbox.
-
-        Software installation must use request_tool_installation().
-        """
+        """Execute a normal command inside an OpenShell sandbox."""
         return execute_sandbox_impl(
             name=name,
             command=command,
@@ -336,13 +336,8 @@ def register_tools(mcp: MCPServer) -> None:
         """
         Request a one-time, human-approved software installation.
 
-        The installation does not execute unless the MCP client explicitly
-        accepts the elicitation request.
-
-        Note:
-            The current implementation deliberately stops after approval.
-            The approved installation worker must be implemented separately
-            before this feature is considered production-complete.
+        The current implementation stops after approval and does not execute
+        an installation command.
         """
         request = create_installation_request(
             sandbox_name=sandbox_name,
@@ -374,11 +369,11 @@ def register_tools(mcp: MCPServer) -> None:
             }
 
         approved = approve_installation(
-            request.request_id,
+            request.request_id
         )
 
         consumed = consume_installation_approval(
-            approved.request_id,
+            approved.request_id
         )
 
         mark_installation_finished(
@@ -410,5 +405,5 @@ def register_tools(mcp: MCPServer) -> None:
     ) -> str:
         """Delete an OpenShell sandbox and its managed resources."""
         return delete_sandbox_impl(
-            name,
+            name
         )

@@ -5,15 +5,28 @@ from pathlib import Path
 
 import pytest
 
-from local_mcp_server import workspace
+from local_mcp_server.workspace import broker as workspace_broker
+from local_mcp_server.workspace import service as workspace_service
+from local_mcp_server.workspace import validation as workspace_validation
 
 
 @pytest.fixture
-def workspace_root(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
+def workspace_root(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+):
+    resolved = tmp_path.resolve()
+
     monkeypatch.setattr(
-        workspace,
+        workspace_service,
         "WORKSPACE_ROOT",
-        tmp_path.resolve(),
+        resolved,
+    )
+
+    monkeypatch.setattr(
+        workspace_validation,
+        "WORKSPACE_ROOT",
+        resolved,
     )
 
     return tmp_path
@@ -24,17 +37,27 @@ def test_delete_workspace_directory(
 ) -> None:
     target = workspace_root / "repository"
 
-    (target / "src").mkdir(parents=True)
-    (target / "README.md").write_text(
+    (
+        target / "src"
+    ).mkdir(
+        parents=True,
+    )
+
+    (
+        target / "README.md"
+    ).write_text(
         "test",
         encoding="utf-8",
     )
-    (target / "src" / "main.py").write_text(
+
+    (
+        target / "src" / "main.py"
+    ).write_text(
         "print('test')",
         encoding="utf-8",
     )
 
-    result = workspace.delete_workspace_directory(
+    result = workspace_service.delete_workspace_directory(
         "repository",
     )
 
@@ -49,7 +72,9 @@ def test_delete_workspace_directory_rejects_workspace_root(
         ValueError,
         match="workspace root",
     ):
-        workspace.delete_workspace_directory(".")
+        workspace_service.delete_workspace_directory(
+            ".",
+        )
 
 
 def test_delete_workspace_directory_rejects_path_outside_workspace(
@@ -62,7 +87,9 @@ def test_delete_workspace_directory_rejects_path_outside_workspace(
         ValueError,
         match="outside the workspace",
     ):
-        workspace.delete_workspace_directory("../outside")
+        workspace_service.delete_workspace_directory(
+            "../outside",
+        )
 
 
 def test_delete_workspace_directory_rejects_missing_directory(
@@ -72,7 +99,7 @@ def test_delete_workspace_directory_rejects_missing_directory(
         ValueError,
         match="does not exist",
     ):
-        workspace.delete_workspace_directory(
+        workspace_service.delete_workspace_directory(
             "missing",
         )
 
@@ -91,7 +118,7 @@ def test_delete_workspace_directory_rejects_regular_file(
         ValueError,
         match="not a directory",
     ):
-        workspace.delete_workspace_directory(
+        workspace_service.delete_workspace_directory(
             "file.txt",
         )
 
@@ -116,7 +143,7 @@ def test_delete_workspace_directory_rejects_symlink(
         ValueError,
         match="symbolic link",
     ):
-        workspace.delete_workspace_directory(
+        workspace_service.delete_workspace_directory(
             "directory-link",
         )
 
@@ -131,6 +158,7 @@ def test_create_workspace_file_rejects_symlink(
     workspace_root: Path,
 ) -> None:
     target = workspace_root / "real-file.txt"
+
     target.write_text(
         "original",
         encoding="utf-8",
@@ -143,12 +171,18 @@ def test_create_workspace_file_rejects_symlink(
         ValueError,
         match="symbolic link",
     ):
-        workspace.create_workspace_file(
+        workspace_service.create_workspace_file(
             "file-link.txt",
             "replacement",
         )
 
-    assert target.read_text(encoding="utf-8") == "original"
+    assert (
+        target.read_text(
+            encoding="utf-8",
+        )
+        == "original"
+    )
+
     assert link.is_symlink()
 
 
@@ -172,7 +206,7 @@ def test_canonicalize_host_workspace_rejects_sensitive_paths() -> None:
             ValueError,
             match="not allowed|filesystem root",
         ):
-            workspace.canonicalize_host_workspace(
+            workspace_validation.canonicalize_host_workspace(
                 str(path),
             )
 
@@ -184,7 +218,7 @@ def test_canonicalize_host_workspace_requires_absolute_directory(
         ValueError,
         match="absolute",
     ):
-        workspace.canonicalize_host_workspace(
+        workspace_validation.canonicalize_host_workspace(
             "relative/path",
         )
 
@@ -194,7 +228,7 @@ def test_canonicalize_host_workspace_requires_absolute_directory(
         ValueError,
         match="does not exist",
     ):
-        workspace.canonicalize_host_workspace(
+        workspace_validation.canonicalize_host_workspace(
             str(missing),
         )
 
@@ -216,7 +250,7 @@ def test_canonicalize_host_workspace_resolves_symlink(
     )
 
     assert (
-        workspace.canonicalize_host_workspace(
+        workspace_validation.canonicalize_host_workspace(
             str(link),
         )
         == real.resolve()
@@ -228,7 +262,7 @@ def test_create_workspace_grant_rejects_read_only_process(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     monkeypatch.setattr(
-        workspace,
+        workspace_broker,
         "GRANTS_READ_ONLY",
         True,
     )
@@ -237,7 +271,7 @@ def test_create_workspace_grant_rejects_read_only_process(
         RuntimeError,
         match="read-only",
     ):
-        workspace.create_workspace_grant(
+        workspace_broker.create_workspace_grant(
             str(tmp_path),
         )
 
@@ -249,32 +283,51 @@ def test_create_workspace_grant_round_trip(
     grants_file = tmp_path / "grants.json"
 
     monkeypatch.setattr(
-        workspace,
+        workspace_service,
         "WORKSPACE_GRANTS_FILE",
         grants_file,
     )
+
     monkeypatch.setattr(
-        workspace,
+        workspace_service,
         "GRANTS_READ_ONLY",
         False,
     )
 
-    grant = workspace.create_workspace_grant(
+    monkeypatch.setattr(
+        workspace_broker,
+        "GRANTS_READ_ONLY",
+        False,
+    )
+
+    grant = workspace_broker.create_workspace_grant(
         str(tmp_path),
         create_volume=False,
     )
 
-    assert grant["workspace_id"].startswith("ws_")
-    assert grant["volume_name"].startswith("mcp-ws-")
-    assert grant["target"] == "/workspace/project"
-    assert grant["read_only"] is False
-    assert grant["host_path"] == str(tmp_path.resolve())
-
-    resolved_vol = workspace.resolve_workspace_grant(
-        str(grant["workspace_id"]),
+    assert grant["workspace_id"].startswith(
+        "ws_",
     )
 
-    assert resolved_vol == grant["volume_name"]
+    assert grant["volume_name"].startswith(
+        "mcp-ws-",
+    )
+
+    assert grant["target"] == "/workspace/project"
+    assert grant["read_only"] is False
+    assert grant["host_path"] == str(
+        tmp_path.resolve(),
+    )
+
+    resolved_vol = workspace_service.resolve_workspace_grant(
+        str(
+            grant["workspace_id"],
+        ),
+    )
+
+    assert resolved_vol == grant[
+        "volume_name"
+    ]
 
 
 def test_list_workspace_grants_does_not_require_host_path_visibility(
@@ -298,12 +351,12 @@ def test_list_workspace_grants_does_not_require_host_path_visibility(
     )
 
     monkeypatch.setattr(
-        workspace,
+        workspace_service,
         "WORKSPACE_GRANTS_FILE",
         grants_file,
     )
 
-    grants = workspace.list_workspace_grants()
+    grants = workspace_service.list_workspace_grants()
 
     assert grants == [
         {
@@ -337,16 +390,17 @@ def test_resolve_workspace_grant_does_not_require_host_path_visibility(
     )
 
     monkeypatch.setattr(
-        workspace,
+        workspace_service,
         "WORKSPACE_GRANTS_FILE",
         grants_file,
     )
 
-    resolved = workspace.resolve_workspace_grant(
-        "ws_test123",
+    assert (
+        workspace_service.resolve_workspace_grant(
+            "ws_test123",
+        )
+        == "mcp-ws-test123"
     )
-
-    assert resolved == "mcp-ws-test123"
 
 
 def test_resolve_workspace_grant_rejects_invalid_and_nonexistent_ids(
@@ -354,10 +408,14 @@ def test_resolve_workspace_grant_rejects_invalid_and_nonexistent_ids(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     grants_file = tmp_path / "grants.json"
-    grants_file.write_text("{}", encoding="utf-8")
+
+    grants_file.write_text(
+        "{}",
+        encoding="utf-8",
+    )
 
     monkeypatch.setattr(
-        workspace,
+        workspace_service,
         "WORKSPACE_GRANTS_FILE",
         grants_file,
     )
@@ -366,19 +424,23 @@ def test_resolve_workspace_grant_rejects_invalid_and_nonexistent_ids(
         ValueError,
         match="workspace_id must not be empty",
     ):
-        workspace.resolve_workspace_grant("")
+        workspace_service.resolve_workspace_grant("")
 
     with pytest.raises(
         ValueError,
         match="workspace_id has an invalid format",
     ):
-        workspace.resolve_workspace_grant("invalid_prefix")
+        workspace_service.resolve_workspace_grant(
+            "invalid_prefix",
+        )
 
     with pytest.raises(
         ValueError,
         match="was not found",
     ):
-        workspace.resolve_workspace_grant("ws_missing")
+        workspace_service.resolve_workspace_grant(
+            "ws_missing",
+        )
 
 
 def test_revoke_workspace_grant_round_trip(
@@ -388,25 +450,40 @@ def test_revoke_workspace_grant_round_trip(
     grants_file = tmp_path / "grants.json"
 
     monkeypatch.setattr(
-        workspace,
+        workspace_service,
         "WORKSPACE_GRANTS_FILE",
         grants_file,
     )
+
     monkeypatch.setattr(
-        workspace,
+        workspace_service,
         "GRANTS_READ_ONLY",
         False,
     )
 
-    grant = workspace.create_workspace_grant(
+    monkeypatch.setattr(
+        workspace_broker,
+        "GRANTS_READ_ONLY",
+        False,
+    )
+
+    grant = workspace_broker.create_workspace_grant(
         str(tmp_path),
         create_volume=False,
     )
 
-    ws_id = str(grant["workspace_id"])
-    assert workspace.resolve_workspace_grant(ws_id) == grant["volume_name"]
+    ws_id = str(
+        grant["workspace_id"],
+    )
 
-    revoked = workspace.revoke_workspace_grant(
+    assert (
+        workspace_service.resolve_workspace_grant(
+            ws_id,
+        )
+        == grant["volume_name"]
+    )
+
+    revoked = workspace_broker.revoke_workspace_grant(
         ws_id,
         remove_volume=False,
     )
@@ -418,7 +495,9 @@ def test_revoke_workspace_grant_round_trip(
         ValueError,
         match="was not found",
     ):
-        workspace.resolve_workspace_grant(ws_id)
+        workspace_service.resolve_workspace_grant(
+            ws_id,
+        )
 
 
 def test_revoke_workspace_grant_rejects_read_only_process(
@@ -426,7 +505,7 @@ def test_revoke_workspace_grant_rejects_read_only_process(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     monkeypatch.setattr(
-        workspace,
+        workspace_broker,
         "GRANTS_READ_ONLY",
         True,
     )
@@ -435,6 +514,6 @@ def test_revoke_workspace_grant_rejects_read_only_process(
         RuntimeError,
         match="read-only",
     ):
-        workspace.revoke_workspace_grant(
+        workspace_broker.revoke_workspace_grant(
             "ws_test",
         )

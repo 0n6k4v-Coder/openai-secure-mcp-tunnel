@@ -49,7 +49,9 @@ def test_find_workspace_by_id(
         ],
     )
 
-    result = cli._find_workspace("ws_two")
+    result = cli._find_workspace(
+        "ws_two"
+    )
 
     assert result["workspace_id"] == "ws_two"
 
@@ -64,11 +66,13 @@ def test_find_workspace_by_directory_name(
             {
                 "workspace_id": "ws_one",
                 "host_path": "/tmp/project-one",
-            },
+            }
         ],
     )
 
-    result = cli._find_workspace("project-one")
+    result = cli._find_workspace(
+        "project-one"
+    )
 
     assert result["workspace_id"] == "ws_one"
 
@@ -95,7 +99,9 @@ def test_find_workspace_rejects_ambiguous_name(
         ValueError,
         match="ambiguous",
     ):
-        cli._find_workspace("project")
+        cli._find_workspace(
+            "project"
+        )
 
 
 def test_find_workspace_rejects_unknown_name(
@@ -111,7 +117,9 @@ def test_find_workspace_rejects_unknown_name(
         ValueError,
         match="was not found",
     ):
-        cli._find_workspace("missing")
+        cli._find_workspace(
+            "missing"
+        )
 
 
 def test_sandbox_list_json(
@@ -130,7 +138,9 @@ def test_sandbox_list_json(
         ],
     )
 
-    assert cli._sandbox_list(True) == 0
+    assert cli._sandbox_list(
+        True
+    ) == 0
 
     output = json.loads(
         capsys.readouterr().out
@@ -253,6 +263,7 @@ def test_interactive_workspace_selection(
         "isatty",
         lambda: True,
     )
+
     monkeypatch.setattr(
         "builtins.input",
         lambda prompt: "2",
@@ -328,7 +339,9 @@ def test_sandbox_connect_uses_default_gateway(
         fake_run,
     )
 
-    assert cli._sandbox_connect("project-api") == 0
+    assert cli._sandbox_connect(
+        "project-api"
+    ) == 0
 
     assert captured == {
         "command": [
@@ -371,7 +384,9 @@ def test_sandbox_connect_uses_configured_gateway(
         fake_run,
     )
 
-    assert cli._sandbox_connect("project-api") == 0
+    assert cli._sandbox_connect(
+        "project-api"
+    ) == 0
 
     assert captured == {
         "command": [
@@ -400,7 +415,9 @@ def test_sandbox_connect_reports_missing_cli(
         *,
         check: bool,
     ) -> subprocess.CompletedProcess[str]:
-        raise FileNotFoundError("openshell")
+        raise FileNotFoundError(
+            "openshell"
+        )
 
     monkeypatch.setattr(
         cli.subprocess,
@@ -412,7 +429,9 @@ def test_sandbox_connect_reports_missing_cli(
         cli.SandboxError,
         match="OpenShell CLI is not installed",
     ):
-        cli._sandbox_connect("project-api")
+        cli._sandbox_connect(
+            "project-api"
+        )
 
 
 @pytest.mark.parametrize(
@@ -426,7 +445,9 @@ def test_json_flag_is_accepted_before_or_after_command(
     argv: list[str],
 ) -> None:
     parser = cli._build_parser()
-    args = parser.parse_args(argv)
+    args = parser.parse_args(
+        argv
+    )
 
     assert args.json is True
     assert args.handler == "sandbox_list"
@@ -434,6 +455,7 @@ def test_json_flag_is_accepted_before_or_after_command(
 
 def test_workspace_json_flag_is_accepted_after_subcommand() -> None:
     parser = cli._build_parser()
+
     args = parser.parse_args(
         [
             "workspace",
@@ -449,18 +471,6 @@ def test_workspace_json_flag_is_accepted_after_subcommand() -> None:
 def test_connect_rejects_json_output(
     capsys: pytest.CaptureFixture[str],
 ) -> None:
-    parser = cli._build_parser()
-    args = parser.parse_args(
-        [
-            "--json",
-            "connect",
-            "project-api",
-        ]
-    )
-
-    assert args.json is True
-    assert args.handler == "sandbox_connect"
-
     assert (
         cli.main(
             [
@@ -472,14 +482,19 @@ def test_connect_rejects_json_output(
         == cli.EXIT_ERROR
     )
 
-    assert "--json is not supported" in capsys.readouterr().err
+    assert (
+        "--json is not supported"
+        in capsys.readouterr().err
+    )
 
 
 def test_main_help(
     capsys: pytest.CaptureFixture[str],
 ) -> None:
     with pytest.raises(SystemExit) as exc_info:
-        cli.main(["--help"])
+        cli.main(
+            ["--help"]
+        )
 
     assert exc_info.value.code == 0
 

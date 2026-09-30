@@ -68,7 +68,10 @@ def _load_state() -> dict[str, dict[str, object]]:
                 encoding="utf-8",
             )
         )
-    except (OSError, json.JSONDecodeError) as exc:
+    except (
+        OSError,
+        json.JSONDecodeError,
+    ) as exc:
         raise InstallationError(
             "Installation approval state could not be read."
         ) from exc
@@ -214,9 +217,6 @@ def _validate_install_command(
             "install_command is too long."
         )
 
-    # Do not permit the approval broker to become a generic shell execution
-    # endpoint. Installation commands must be shell commands whose first
-    # executable is explicitly approved by the installation policy below.
     try:
         tokens = shlex.split(
             command,
@@ -232,7 +232,9 @@ def _validate_install_command(
             "install_command is empty."
         )
 
-    first = Path(tokens[0]).name
+    first = Path(
+        tokens[0]
+    ).name
 
     allowed_entrypoints = {
         "apt-get",
@@ -338,7 +340,9 @@ def create_installation_request(
             "state": "pending",
         }
 
-        _save_state(state)
+        _save_state(
+            state
+        )
 
     return request
 
@@ -349,7 +353,9 @@ def approve_installation(
     with _INSTALLATION_LOCK:
         state = _load_state()
 
-        entry = state.get(request_id)
+        entry = state.get(
+            request_id
+        )
 
         if entry is None:
             raise InstallationError(
@@ -363,7 +369,9 @@ def approve_installation(
 
         entry["state"] = "approved"
 
-        _save_state(state)
+        _save_state(
+            state
+        )
 
     return _request_from_state(
         request_id,
@@ -377,7 +385,9 @@ def deny_installation(
     with _INSTALLATION_LOCK:
         state = _load_state()
 
-        entry = state.get(request_id)
+        entry = state.get(
+            request_id
+        )
 
         if entry is None:
             raise InstallationError(
@@ -391,7 +401,9 @@ def deny_installation(
 
         entry["state"] = "denied"
 
-        _save_state(state)
+        _save_state(
+            state
+        )
 
 
 def consume_installation_approval(
@@ -400,13 +412,14 @@ def consume_installation_approval(
     """
     Atomically consume an approval.
 
-    This is intentionally a destructive state transition. Once consumed,
-    the same approval can never authorize another installation.
+    Once consumed, the same approval cannot authorize another installation.
     """
     with _INSTALLATION_LOCK:
         state = _load_state()
 
-        entry = state.get(request_id)
+        entry = state.get(
+            request_id
+        )
 
         if entry is None:
             raise InstallationError(
@@ -420,7 +433,9 @@ def consume_installation_approval(
 
         entry["state"] = "consumed"
 
-        _save_state(state)
+        _save_state(
+            state
+        )
 
     return _request_from_state(
         request_id,
@@ -436,7 +451,9 @@ def mark_installation_finished(
     with _INSTALLATION_LOCK:
         state = _load_state()
 
-        entry = state.get(request_id)
+        entry = state.get(
+            request_id
+        )
 
         if entry is None:
             raise InstallationError(
@@ -454,7 +471,9 @@ def mark_installation_finished(
             else "failed"
         )
 
-        _save_state(state)
+        _save_state(
+            state
+        )
 
 
 def _request_from_state(

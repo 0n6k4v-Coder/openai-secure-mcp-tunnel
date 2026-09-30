@@ -21,12 +21,12 @@ services:
           create_host_path: true
 
       - type: bind
-        source: ./openshell/gateway.toml
+        source: ../openshell/gateway.toml
         target: /etc/openshell/gateway.toml
         read_only: true
 
       - type: bind
-        source: ./openshell/jwt
+        source: ../openshell/jwt
         target: /etc/openshell/jwt
         read_only: true
 
@@ -46,8 +46,8 @@ services:
 
   mcp-server:
     build:
-      context: .
-      dockerfile: docker/mcp-server/Dockerfile
+      context: ..
+      dockerfile: deploy/docker/mcp-server/Dockerfile
 
     user: "${MCP_UID:-1000}:${MCP_GID:-1000}"
 
@@ -66,11 +66,11 @@ services:
       - /tmp:rw,noexec,nosuid,nodev
 
     volumes:
-      - ./workspace:/app/workspace:rw
+      - ../workspace:/app/workspace:rw
 
-      - ${MCP_INSTALLATION_STATE_FILE:-./.state/installations.json}:/var/lib/local-mcp-server/installations.json:rw
+      - ${MCP_INSTALLATION_STATE_FILE:-../.state/installations.json}:/var/lib/local-mcp-server/installations.json:rw
 
-      - ${WORKSPACE_GRANTS_DIR:-./.state/workspace-grants}:/var/lib/local-mcp-server/workspace-grants:ro
+      - ${WORKSPACE_GRANTS_DIR:-../.state/workspace-grants}:/var/lib/local-mcp-server/workspace-grants:ro
 
     networks:
       - mcp-internal
@@ -156,4 +156,4 @@ networks:
 
 secrets:
   control_plane_api_key:
-    file: .secrets/control-plane-api-key
+    file: ../.secrets/control-plane-api-key

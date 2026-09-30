@@ -11,8 +11,6 @@ ENV PYTHONDONTWRITEBYTECODE=1 \
     PLAYWRIGHT_BROWSERS_PATH=/ms-playwright \
     PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD=1
 
-# Copy the complete Node.js installation so node/npm/npx retain
-# their expected relative paths.
 COPY --from=node /usr/local /usr/local
 
 RUN npm install --global npm@12.1.0

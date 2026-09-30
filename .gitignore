@@ -55,7 +55,6 @@ coverage.xml
 *.cover
 *.py,cover
 .hypothesis/
-.pytest_cache/
 
 # Type checkers / linters
 
@@ -96,9 +95,6 @@ venv.bak/
 .DS_Store
 .AppleDouble
 .LSOverride
-
-# macOS resource forks
-
 ._*
 
 # Windows
@@ -169,14 +165,20 @@ test-results/
 *.rej
 
 # Runtime state
+
 .state/
 
 # OpenShell Gateway JWT credentials & private keys
+
 openshell/jwt/*.pem
 openshell/jwt/kid
+deploy/openshell/jwt/*.pem
+deploy/openshell/jwt/kid
 openshell/policy-drafts/
+deploy/openshell/policy-drafts/
 
 # SQLite WAL and journal files (OpenShell gateway database)
+
 *.db-wal
 *.db-shm
 *.db-journal
