@@ -1,148 +1,91 @@
 # OpenAI Secure MCP Tunnel
 
-**Repository:** `0n6k4v-Coder/openai-secure-mcp-tunnel`     
-**Scope:** Private Python MCP server in Docker, connected to ChatGPT through OpenAI Secure MCP Tunnel.
+Private Python MCP server connected to ChatGPT through OpenAI Secure MCP Tunnel.
 
----
-
-## Set Up
-
-### Step 1 - Clone the repository
-
-```bash
-git clone https://github.com/0n6k4v-Coder/openai-secure-mcp-tunnel.git
-cd openai-secure-mcp-tunnel
-```
-
-### Step 2 - Create and Configure OpenAI Tunnel
-
-* Open: https://platform.openai.com/settings/organization/tunnels
-* Find `Create tunnel`.
-* Create a new tunnel with a name such as:
+## Architecture
 
 ```text
-openai-secure-mcp-tunnel
+ChatGPT
+   │ MCP
+   ▼
+OpenAI tunnel-client
+   │
+   ▼
+MCP server
+   │
+   │ internal OpenShell API
+   ▼
+OpenShell Gateway
+   │
+   │ Docker compute driver
+   ▼
+OpenShell Supervisor
+   │
+   ▼
+Per-request sandbox
 ```
 
-* After creating the tunnel, copy the Tunnel ID:
+The MCP server does not receive the Docker socket. The trusted OpenShell Gateway owns Docker lifecycle and creates sandbox containers.
 
-```text
-tunnel_xxx
-```
+## Prerequisites
 
-* Create a `.env` file at the project's root.
-* Add:
+- Docker Engine and Docker Compose.
+- An OpenAI Secure MCP Tunnel.
+- OpenShell v0.1.1.
+- A writable OpenShell state directory, normally `/var/lib/openshell`.
 
-```env
-CONTROL_PLANE_TUNNEL_ID=<Copied Tunnel ID>
-```
-
-### Step 3 - Create and Configure OpenAI Control Plane API Key
-
-* Open the OpenAI API Keys page:
-  https://platform.openai.com/api-keys
-
-* Create a new API key with the permissions required for the tunnel.
-
-* Copy the API key immediately after creating it.
-
-* Create the secrets directory:
+Install OpenShell:
 
 ```bash
-mkdir -p .secrets
+curl -LsSf https://raw.githubusercontent.com/NVIDIA/OpenShell/main/install.sh | OPENSHELL_VERSION=v0.1.1 sh
 ```
 
-* Create the API key file:
+Verify:
 
 ```bash
-touch .secrets/control-plane-api-key
+openshell --version
+openshell status
 ```
 
-* Open `.secrets/control-plane-api-key` and paste the API key into the file.
+## Configuration
 
-The file should contain only the API key:
+Copy `.env.example` to `.env` and set the existing tunnel ID.
 
-```text
-sk-xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx
-```
+Create `.secrets/control-plane-api-key` containing only the OpenAI control-plane API key.
 
-* Save the file.
-
-* Do not commit this file to Git.
-
-### Step 4 - Create and Configure Terminal Agent Token
-
-* Create the `.secrets` directory if it does not already exist:
+Before the first build, regenerate the dependency lock because the repository now declares `openshell==0.1.1`:
 
 ```bash
-mkdir -p .secrets
+uv lock
 ```
 
-* Generate a secure token:
+## Build the Sandbox Image
 
 ```bash
-openssl rand -hex 32 > .secrets/terminal-agent-token
+docker build -f docker/openshell-sandbox/Dockerfile -t local-mcp-openshell-sandbox:1.0.0 .
 ```
 
-* Make sure the file contains only the generated token.
+The image contains Python, Node/npm, Playwright, bundled Chromium, Git and common development tools. It does not contain Docker or a Docker socket.
 
-* Do not commit this file to Git.
-
-### Step 5 - Start the MCP Server and Tunnel
-
-* Start the services:
+## Start
 
 ```bash
+docker compose build --no-cache mcp-server
 docker compose up -d
-```
-
-* Check the service status:
-
-```bash
 docker compose ps
 ```
 
-* Make sure these services are running:
+Expected services:
 
 ```text
+openshell-gateway
 mcp-server
-terminal-executor
 tunnel-client
 ```
 
-### Step 6 - Check the Tunnel
+The old `terminal-executor` service is no longer part of the Compose stack.
 
-* Follow the tunnel logs:
-
-```bash
-docker compose logs -f tunnel-client
-```
-
-* Wait until you see:
-
-```text
-🟢 tunnel-client started
-```
-
-* Confirm that the log shows the Tunnel ID created in Step 2.
-
-### Step 7 - Connect the Tunnel to ChatGPT
-
-* Open: [https://chatgpt.com/plugins](https://chatgpt.com/plugins)
-* Click the `+` button.
-* Select `Create App`.
-* Click `Create MCP App`.
-* Enter a name for the app.
-* Select `Tunnel` for the connection type.
-* Select the Tunnel created in Step 2.
-* Select `No Auth` for authentication.
-* Check `I understand and want to continue`.
-* Click `Create`.
-
-### Step 8 - Verify the MCP Tools
-
-* Open the connected MCP connector in ChatGPT.
-* Verify that these tools are available:
+## MCP Tools
 
 ```text
 get_system_info
@@ -153,184 +96,75 @@ write_workspace_file
 create_workspace_directory
 rename_workspace_path
 delete_workspace_file
-execute_terminal_command
+delete_workspace_directory
+
+create_sandbox
+list_sandboxes
+sandbox_status
+execute_sandbox_command
+delete_sandbox
 ```
 
----
+The old `execute_terminal_command` tool is no longer registered.
 
-## Update MCP Server Tools
+## Sandbox Workflow
 
-### Docker
+Create a sandbox:
 
-1. `docker compose build --no-cache mcp-server`
-   → **Rebuild the Docker image** so the latest MCP code and tools are included.
-
-2. `docker compose up -d --force-recreate mcp-server`
-   → **Recreate and restart the MCP container** using the newly built image.
-
-3. `docker compose ps`
-   → Check that the MCP server and related services are **running and healthy**.
-
-4. `docker compose logs --tail=200 mcp-server`
-   or
-   `docker compose logs -f mcp-server`
-   → Check that the MCP server **started successfully without errors**.
-
-   * `--tail=200` = show the latest 200 log lines
-   * `-f` = follow logs in real time
-
-5. `docker compose logs --tail=100 tunnel-client`
-   → Check that **tunnel-client is still running and connected to the existing tunnel**.
-
-### ChatGPT
-
-**Settings**      
-→ **Apps / Connectors**    
-→ **Our MCP App**    
-→ **Refresh**
-
-→ This forces ChatGPT to **rediscover the MCP tools** and load the latest tool list.
-
-### If Refresh Still Doesn't Show the New Tool
-
-Do **not** create a new API key or tunnel immediately.
-
-**Delete only the MCP App/Connector**
-→ **Create it again**
-→ Select the **same existing tunnel**
-→ Check the tool list again.
-
-**Remember:**
-`Rebuild → Recreate → Check
-
----
-
-## Quick Start
-
-### 1. Start the MCP server and tunnel
-
-```bash
-docker compose up -d
+```text
+create_sandbox("my-sandbox")
 ```
 
-### 2. Check that the services are running
+Execute inside it:
+
+```text
+execute_sandbox_command("my-sandbox", "python -c \\"print('hello from sandbox')\\"")
+```
+
+Delete it when finished:
+
+```text
+delete_sandbox("my-sandbox")
+```
+
+OpenShell applies the sandbox isolation, filesystem policy, process policy, network policy and credential boundary.
+
+## Security Boundary
+
+```text
+MCP server
+    │
+    │ no Docker socket
+    ▼
+OpenShell Gateway
+    │
+    │ Docker socket
+    ▼
+Docker
+    │
+    ▼
+OpenShell Supervisor
+    │
+    ▼
+Sandbox workload
+```
+
+Only the trusted OpenShell Gateway receives `/var/run/docker.sock`.
+
+## Updating MCP Tools
 
 ```bash
+uv lock
+docker compose build --no-cache mcp-server
+docker compose up -d --force-recreate mcp-server
 docker compose ps
-```
-
-The expected services are:
-
-```text
-mcp-server
-terminal-executor
-tunnel-client
-```
-
-`mcp-server` and `terminal-executor` should become `healthy`.
-
-### 3. Check the tunnel logs
-
-```bash
-docker compose logs -f tunnel-client
-```
-
-Look for:
-
-```text
-🟢 tunnel-client started
-```
-
-You should also see your Tunnel ID in the tunnel URL:
-
-```text
-tunnel_url=https://api.openai.com/v1/tunnel/<Tunnel ID>
-```
-
-### 4. Connect the tunnel to ChatGPT
-
-In ChatGPT:
-
-* Add a new MCP Connector.
-* Select the OpenAI Secure MCP Tunnel connection.
-* Use the Tunnel ID created in Step 2.
-* Complete the connection.
-
-### 5. Verify the MCP tools
-
-The MCP server currently provides:
-
-```text
-get_system_info
-list_workspace_files
-read_workspace_text_file
-create_workspace_file
-write_workspace_file
-create_workspace_directory
-rename_workspace_path
-delete_workspace_file
-execute_terminal_command
-```
-
-## Stop
-
-Stop and remove the containers and network:
-
-```bash
-docker compose down
-```
-
-## Restart
-
-Start everything again:
-
-```bash
-docker compose up -d
-```
-
-Check the status:
-
-```bash
-docker compose ps
-```
-
-Check the tunnel:
-
-```bash
-docker compose logs -f tunnel-client
-```
-
-## Troubleshooting
-
-### Tunnel is not starting
-
-Check the tunnel logs:
-
-```bash
+docker compose logs --tail=200 mcp-server
 docker compose logs --tail=100 tunnel-client
 ```
 
-Verify that:
+Then refresh the MCP application/connector in ChatGPT so the tool registry is rediscovered.
 
-```env
-CONTROL_PLANE_TUNNEL_ID=<Correct Tunnel ID>
-```
-
-is present in `.env`.
-
-### ChatGPT shows an old tool list
-
-Create a **new OpenAI Tunnel** and connect ChatGPT to the new Tunnel ID.
-
-Do not change the MCP server code or Docker configuration until the new tunnel has been tested.
-
-### Rebuild the containers
-
-```bash
-docker compose up -d --build
-```
-
-### Completely stop the stack
+## Stop
 
 ```bash
 docker compose down
