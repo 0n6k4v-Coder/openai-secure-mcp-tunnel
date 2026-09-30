@@ -23,6 +23,10 @@ MAX_READ_BYTES = 1_000_000
 MAX_WRITE_BYTES = 1_000_000
 
 _GRANTS_LOCK = Lock()
+GRANTS_READ_ONLY = os.environ.get(
+    "WORKSPACE_GRANTS_READ_ONLY",
+    "false",
+).strip().lower() in {"1", "true", "yes", "on"}
 
 
 def _ensure_grants_directory() -> None:
@@ -69,6 +73,12 @@ def _load_workspace_grants() -> dict[str, str]:
 
 
 def _save_workspace_grants(grants: dict[str, str]) -> None:
+    if GRANTS_READ_ONLY:
+        raise RuntimeError(
+            "Workspace grants are read-only in this process. "
+            "Run the host workspace broker to authorize a workspace."
+        )
+
     _ensure_grants_directory()
 
     temporary = WORKSPACE_GRANTS_FILE.with_suffix(
@@ -166,8 +176,8 @@ def create_workspace_grant(host_path: str) -> dict[str, str]:
     """
     Create a capability representing one user-authorized host workspace.
 
-    The caller is responsible for obtaining human authorization before
-    invoking this function.
+    This function is intended for the host-only workspace broker.
+    The MCP server process must run with WORKSPACE_GRANTS_READ_ONLY=true.
     """
     resolved = canonicalize_host_workspace(host_path)
 
