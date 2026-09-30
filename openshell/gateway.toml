@@ -24,5 +24,5 @@ default_image = "nvcr.io/nvidia/base/ubuntu:24.04"
 image_pull_policy = "if_not_present"
 sandbox_label = "openshell"
 sandbox_pids_limit = 2048
-grpc_endpoint = "http://host.openshell.internal:8080"
+grpc_endpoint = "http://127.0.0.1:8080"
 enable_bind_mounts = false
