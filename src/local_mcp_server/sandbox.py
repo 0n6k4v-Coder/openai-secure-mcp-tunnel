@@ -15,7 +15,7 @@ SANDBOX_IMAGE = os.environ.get(
     "local-mcp-openshell-sandbox:1.0.0",
 )
 DEFAULT_CPU = os.environ.get("SANDBOX_DEFAULT_CPU", "1")
-DEFAULT_MEMORY = os.environ.get("SANDBOX_DEFAULT_MEMORY", "1GiB")
+DEFAULT_MEMORY = os.environ.get("SANDBOX_DEFAULT_MEMORY", "1Gi")
 MAX_COMMAND_BYTES = 32 * 1024
 
 _SANDBOX_NAME = re.compile(r"^[a-z0-9][a-z0-9-]{0,62}$")
