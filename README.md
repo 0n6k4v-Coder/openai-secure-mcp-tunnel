@@ -482,7 +482,11 @@ This rebuilds the image using the current MCP source code.
 ### 2. Recreate the MCP server
 
 ```bash
+docker compose up -d --force-recreate --remove-orphans openshell-gateway
+
 docker compose up -d --force-recreate --remove-orphans mcp-server
+
+docker compose up -d --force-recreate --remove-orphans tunnel-client
 ```
 
 The `--remove-orphans` option ensures that old Compose services, such as the former `terminal-executor`, are cleaned up.

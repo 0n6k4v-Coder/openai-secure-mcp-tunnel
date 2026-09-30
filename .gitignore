@@ -170,3 +170,13 @@ test-results/
 
 # Runtime state
 .state/
+
+# OpenShell Gateway JWT credentials & private keys
+openshell/jwt/*.pem
+openshell/jwt/kid
+openshell/policy-drafts/
+
+# SQLite WAL and journal files (OpenShell gateway database)
+*.db-wal
+*.db-shm
+*.db-journal
