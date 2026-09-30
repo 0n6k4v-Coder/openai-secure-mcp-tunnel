@@ -25,6 +25,11 @@ services:
         target: /etc/openshell/gateway.toml
         read_only: true
 
+      - type: bind
+        source: ./openshell/jwt
+        target: /etc/openshell/jwt
+        read_only: true
+
     environment:
       OPENSHELL_GATEWAY_CONFIG: /etc/openshell/gateway.toml
       OPENSHELL_DB_URL: sqlite:/var/lib/openshell/gateway.db?mode=rwc

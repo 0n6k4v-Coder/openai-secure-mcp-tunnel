@@ -335,7 +335,7 @@ dev = [
 [package.metadata]
 requires-dist = [
     { name = "mcp", extras = ["cli"], specifier = "==2.2.0" },
-    { name = "openshell", specifier = "==0.1.1" },
+    { name = "openshell", specifier = "==0.1.2" },
     { name = "starlette" },
 ]
 
@@ -412,7 +412,7 @@ wheels = [
 
 [[package]]
 name = "openshell"
-version = "0.1.1"
+version = "0.1.2"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "cloudpickle" },
@@ -422,7 +422,7 @@ dependencies = [
     { name = "protobuf" },
 ]
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/78/33/41337a22e96bcf4b224eb56c68e977870146eb33d68319d7f3a0469c94d0/openshell-0.1.1-py3-none-any.whl", hash = "sha256:91b385c53b57c6d4997e92bceb3403934fa4bf8137133272c9eaaa7c134e8ca6", size = 150873, upload-time = "2026-09-26T03:41:38.227Z" },
+    { url = "https://files.pythonhosted.org/packages/9e/0d/9f0c2e133bd4bfc96b9e261b870d58230d7d98fc6c51ae8f7f71f8520157/openshell-0.1.2-py3-none-any.whl", hash = "sha256:8c409da4f176d42418d92366fe201f47cceef2c0fa432bfbce2bf938649d59cf", size = 150901, upload-time = "2026-09-28T03:58:28.39Z" },
 ]
 
 [[package]]
