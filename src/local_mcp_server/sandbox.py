@@ -3,11 +3,10 @@ from __future__ import annotations
 import json
 import os
 import re
-import subprocess
-from typing import Any
+
+from openshell import SandboxClient
 
 
-OPEN_SHELL_GATEWAY = os.environ.get("OPEN_SHELL_GATEWAY", "")
 OPEN_SHELL_WORKSPACE = os.environ.get("OPEN_SHELL_WORKSPACE", "default")
 SANDBOX_IMAGE = os.environ.get(
     "SANDBOX_IMAGE",
@@ -45,104 +44,99 @@ def _validate_command(command: str) -> str:
     return command
 
 
-def _run_openshell(args: list[str], timeout: int = 60) -> str:
-    command = ["openshell"]
-
-    if OPEN_SHELL_GATEWAY:
-        command.extend(["--gateway-endpoint", OPEN_SHELL_GATEWAY])
-
-    command.extend(args)
-
+def _client() -> SandboxClient:
     try:
-        result = subprocess.run(
-            command,
-            check=False,
-            capture_output=True,
-            text=True,
-            timeout=timeout,
-            env={
-                **os.environ,
-                "NO_COLOR": "1",
-            },
-        )
-    except subprocess.TimeoutExpired as exc:
-        raise SandboxError("OpenShell command timed out") from exc
-    except OSError as exc:
-        raise SandboxError("OpenShell CLI is not available") from exc
-
-    stdout = result.stdout.strip()
-    stderr = result.stderr.strip()
-
-    if result.returncode != 0:
-        detail = stderr or stdout or "unknown OpenShell error"
+        return SandboxClient.from_active_cluster()
+    except Exception as exc:
         raise SandboxError(
-            f"OpenShell command failed with exit code "
-            f"{result.returncode}: {detail}"
-        )
+            "Could not connect to the configured OpenShell gateway."
+        ) from exc
 
-    return stdout
+
+def _sandbox_to_dict(sandbox) -> dict[str, object]:
+    return {
+        "id": getattr(sandbox, "id", None),
+        "name": getattr(sandbox, "name", None),
+        "workspace": getattr(sandbox, "workspace", OPEN_SHELL_WORKSPACE),
+        "phase": getattr(sandbox, "phase", None),
+        "labels": getattr(sandbox, "labels", None),
+    }
 
 
 def create_sandbox(name: str) -> str:
     """Create a policy-enforced OpenShell sandbox."""
     name = _validate_name(name)
 
-    output = _run_openshell(
-        [
-            "sandbox",
-            "create",
-            "--name",
-            name,
-            "--from",
-            SANDBOX_IMAGE,
-            "--cpu",
-            DEFAULT_CPU,
-            "--memory",
-            DEFAULT_MEMORY,
-            "--no-auto-providers",
-            "--no-tty",
-            "--",
-            "sleep",
-            "infinity",
-        ],
-        timeout=120,
-    )
+    try:
+        with _client() as client:
+            sandbox = client.create(
+                workspace=OPEN_SHELL_WORKSPACE,
+                name=name,
+                image=SANDBOX_IMAGE,
+                cpu=DEFAULT_CPU,
+                memory=DEFAULT_MEMORY,
+            )
 
-    return output or json.dumps(
-        {
-            "name": name,
-            "workspace": OPEN_SHELL_WORKSPACE,
-            "image": SANDBOX_IMAGE,
-            "status": "created",
-        }
-    )
+            client.wait_ready(
+                sandbox.name,
+                workspace=OPEN_SHELL_WORKSPACE,
+                timeout_seconds=120,
+            )
+
+            return json.dumps(
+                _sandbox_to_dict(sandbox),
+                ensure_ascii=False,
+                indent=2,
+            )
+
+    except ValueError:
+        raise
+    except Exception as exc:
+        raise SandboxError(f"Failed to create sandbox '{name}'.") from exc
 
 
 def list_sandboxes() -> str:
     """List OpenShell sandboxes in the configured workspace."""
-    return _run_openshell(
-        [
-            "sandbox",
-            "list",
-            "--output",
-            "json",
-        ]
-    )
+    try:
+        with _client() as client:
+            sandboxes = client.list_all(
+                workspace=OPEN_SHELL_WORKSPACE,
+            )
+
+            return json.dumps(
+                [_sandbox_to_dict(sandbox) for sandbox in sandboxes],
+                ensure_ascii=False,
+                indent=2,
+            )
+
+    except Exception as exc:
+        raise SandboxError("Failed to list OpenShell sandboxes.") from exc
 
 
 def sandbox_status(name: str) -> str:
     """Return OpenShell sandbox metadata."""
     name = _validate_name(name)
 
-    return _run_openshell(
-        [
-            "sandbox",
-            "get",
-            name,
-            "--output",
-            "json",
-        ]
-    )
+    try:
+        with _client() as client:
+            sandboxes = client.list_all(
+                workspace=OPEN_SHELL_WORKSPACE,
+            )
+
+            for sandbox in sandboxes:
+                if sandbox.name == name:
+                    return json.dumps(
+                        _sandbox_to_dict(sandbox),
+                        ensure_ascii=False,
+                        indent=2,
+                    )
+
+    except ValueError:
+        raise
+    except Exception as exc:
+        raise SandboxError(f"Failed to inspect sandbox '{name}'.") from exc
+
+    raise SandboxError(f"Sandbox '{name}' was not found.")
 
 
 def execute_sandbox(
@@ -165,34 +159,61 @@ def execute_sandbox(
             f"{MAX_COMMAND_TIMEOUT}"
         )
 
-    return _run_openshell(
-        [
-            "sandbox",
-            "exec",
-            "--name",
-            name,
-            "--no-tty",
-            "--no-login-shell",
-            "--timeout",
-            str(timeout_seconds),
-            "--",
-            "sh",
-            "-lc",
-            command,
-        ],
-        timeout=timeout_seconds + 30,
-    )
+    try:
+        with _client() as client:
+            result = client.exec(
+                name,
+                ["sh", "-lc", command],
+                workspace=OPEN_SHELL_WORKSPACE,
+            )
+
+            return json.dumps(
+                {
+                    "stdout": result.stdout,
+                    "stderr": result.stderr,
+                    "return_code": result.return_code,
+                    "timeout_seconds": timeout_seconds,
+                },
+                ensure_ascii=False,
+                indent=2,
+            )
+
+    except ValueError:
+        raise
+    except Exception as exc:
+        raise SandboxError(
+            f"Failed to execute command in sandbox '{name}'."
+        ) from exc
 
 
 def delete_sandbox(name: str) -> str:
     """Delete an OpenShell sandbox and release its managed resources."""
     name = _validate_name(name)
 
-    return _run_openshell(
-        [
-            "sandbox",
-            "delete",
-            name,
-        ],
-        timeout=120,
-    )
+    try:
+        with _client() as client:
+            deletion = client.delete(
+                name,
+                workspace=OPEN_SHELL_WORKSPACE,
+            )
+
+            client.wait_deleted(
+                name,
+                workspace=OPEN_SHELL_WORKSPACE,
+                expected_sandbox_id=deletion.sandbox_id,
+            )
+
+            return json.dumps(
+                {
+                    "name": name,
+                    "deleted": True,
+                    "sandbox_id": deletion.sandbox_id,
+                },
+                ensure_ascii=False,
+                indent=2,
+            )
+
+    except ValueError:
+        raise
+    except Exception as exc:
+        raise SandboxError(f"Failed to delete sandbox '{name}'.") from exc
