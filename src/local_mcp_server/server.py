@@ -190,7 +190,11 @@ async def request_logging_middleware(ctx, call_next):
 #   rename_workspace_path
 #   delete_workspace_file
 #   delete_workspace_directory
-#   execute_terminal_command
+#   create_sandbox
+#   list_sandboxes
+#   sandbox_status
+#   execute_sandbox_command
+#   delete_sandbox
 mcp.middleware.append(request_logging_middleware)
 
 
