@@ -381,19 +381,6 @@ def register_tools(mcp: MCPServer) -> None:
             approved.request_id,
         )
 
-        # Deliberately do not execute consumed.install_command here.
-        #
-        # The final production implementation must use a dedicated,
-        # approval-only installation worker that:
-        #
-        #   1. accepts only an already-approved request ID;
-        #   2. retrieves the exact stored installation request;
-        #   3. executes only that exact command;
-        #   4. runs it in the specified sandbox;
-        #   5. records stdout/stderr/exit status;
-        #   6. marks the one-shot request completed or failed;
-        #   7. never exposes a generic shell-command API.
-
         mark_installation_finished(
             consumed.request_id,
             success=False,
