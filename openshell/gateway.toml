@@ -1,4 +1,7 @@
 # OpenShell Gateway configuration for the Docker compute driver.
+#
+# This follows the official container-Gateway layout. The Gateway owns the
+# Docker socket; sandbox workloads never receive that socket.
 
 [openshell]
 version = 1
@@ -16,3 +19,4 @@ supervisor_image = "ghcr.io/nvidia/openshell/supervisor:v0.1.1"
 image_pull_policy = "IfNotPresent"
 sandbox_namespace = "openshell"
 grpc_endpoint = "http://host.openshell.internal:8080"
+enable_bind_mounts = false

@@ -1,38 +1,52 @@
-# Command
+# Command Reference
 
-## OpenShell Commands
+## 1. Prepare OpenShell CLI
 
-### OpenShell — Version
+The project uses OpenShell v0.1.1. Install that CLI version if it is not already installed.
 
-```bash
-openshell --version
-```
+The official installer normally starts a local Gateway. This project uses the Docker Compose Gateway instead, so only one Gateway should be active for this host.
 
-### OpenShell — Status
+## 2. Configure the Repository
 
-```bash
-openshell status
-```
-
-### OpenShell — List Sandboxes
+Copy the example environment file:
 
 ```bash
-openshell sandbox list
+cp .env.example .env
 ```
 
-### OpenShell — Delete Sandbox
+Set:
+
+```text
+CONTROL_PLANE_TUNNEL_ID=<existing-tunnel-id>
+DOCKER_GID=<numeric-gid-of-/var/run/docker.sock>
+```
+
+Create:
+
+```text
+.secrets/control-plane-api-key
+```
+
+with only the OpenAI control-plane API key.
+
+## 3. Update the Python Lock
+
+The repository declares `openshell==0.1.1`. Regenerate the lock before building:
 
 ```bash
-openshell sandbox delete <sandbox-name>
+uv lock
 ```
 
----
+## 4. Python Quality Checks
 
-## Docker Commands
+```bash
+uv run ruff format .
+uv run ruff check . --fix
+uv run pytest
+uv run python -m compileall src tests
+```
 
-### Docker — Build OpenShell Sandbox Image
-
-Build the workload image used by OpenShell:
+## 5. Build the OpenShell Sandbox Image
 
 ```bash
 docker build \
@@ -41,31 +55,15 @@ docker build \
   .
 ```
 
-### Docker — Build Compose Services
+The image provides Python, Node.js 24.21.0, npm 12.1.0, Playwright 1.63.0, browsers, Git, and common development tools.
 
-Build the locally maintained Compose images:
-
-```bash
-docker compose build
-```
-
-### Docker — Start
-
-Start the complete stack:
+## 6. Validate Compose
 
 ```bash
-docker compose up -d
+docker compose config
 ```
 
-### Docker — Status
-
-Check the running Compose services:
-
-```bash
-docker compose ps
-```
-
-Expected services:
+The configuration should show:
 
 ```text
 openshell-gateway
@@ -73,304 +71,110 @@ mcp-server
 tunnel-client
 ```
 
-There should be no `terminal-executor` service.
+There must be no `terminal-executor` service.
 
-### Docker — MCP Server Logs
-
-```bash
-docker compose logs -f mcp-server
-```
-
-### Docker — OpenShell Gateway Logs
+## 7. Start the Stack
 
 ```bash
-docker compose logs -f openshell-gateway
+docker compose up -d
 ```
 
-### Docker — Tunnel Client Logs
+Then:
 
 ```bash
-docker compose logs -f tunnel-client
+docker compose ps
 ```
 
-### Docker — All Logs
+## 8. Register the Compose Gateway
+
+NVIDIA's documented container-Gateway flow registers the local listener with the CLI:
+
+```bash
+openshell gateway add http://127.0.0.1:8080 --local --name local-mcp
+openshell gateway select local-mcp
+openshell status
+```
+
+urlOpenShell container Gateway documentationturn0search0
+
+## 9. List Sandboxes
+
+```bash
+openshell sandbox list
+```
+
+## 10. Inspect Logs
+
+MCP server:
+
+```bash
+docker compose logs --tail=200 mcp-server
+```
+
+OpenShell Gateway:
+
+```bash
+docker compose logs --tail=200 openshell-gateway
+```
+
+Tunnel client:
+
+```bash
+docker compose logs --tail=100 tunnel-client
+```
+
+All services:
 
 ```bash
 docker compose logs -f
 ```
 
-### Docker — Stop
+## 11. Test the MCP Sandbox Workflow
 
-Stop the Compose stack:
+From ChatGPT:
+
+```text
+create_sandbox("smoke-test")
+```
+
+Then:
+
+```text
+execute_sandbox_command(
+    "smoke-test",
+    "python -c \\"print('OpenShell OK')\\"",
+)
+```
+
+Then:
+
+```text
+delete_sandbox("smoke-test")
+```
+
+## 12. Stop
 
 ```bash
 docker compose down
 ```
 
----
-
-## Python Commands
-
-### Python — Update Dependency Lock
-
-Run this after changing Python dependencies:
-
-```bash
-uv lock
-```
-
-### Python — Auto-format + Auto-fix Linting
-
-```bash
-uv run ruff format . && \
-uv run ruff check . --fix
-```
-
-### Python — Run Tests
-
-```bash
-uv run pytest
-```
-
-### Python — Compile Check
-
-```bash
-uv run python -m compileall src tests
-```
-
----
-
-## Verification Commands
-
-### Verify — Compose Configuration
-
-Validate the final Compose configuration before starting:
-
-```bash
-docker compose config
-```
-
-### Verify — Compose Services
-
-```bash
-docker compose ps
-```
-
-Expected:
-
-```text
-openshell-gateway
-mcp-server
-tunnel-client
-```
-
-### Verify — OpenShell
-
-```bash
-openshell status
-```
-
-### Verify — Sandboxes
-
-```bash
-openshell sandbox list
-```
-
-### Verify — MCP Server
-
-```bash
-docker compose logs --tail=200 mcp-server
-```
-
-The MCP server should start without Python import or configuration errors.
-
-### Verify — OpenShell Gateway
-
-```bash
-docker compose logs --tail=200 openshell-gateway
-```
-
-The Gateway should start successfully and initialize its Docker compute driver.
-
-### Verify — Tunnel Client
-
-```bash
-docker compose logs --tail=100 tunnel-client
-```
-
-The tunnel client should connect to the existing OpenAI tunnel and reach:
-
-```text
-http://mcp-server:8000/mcp
-```
-
----
-
-## Git Commands
-
-### Git — Review Changes
-
-```bash
-git status --short && \
-git diff HEAD
-```
-
-### Git — Review Only Changed Files
+## 13. Git Review
 
 ```bash
 git status --short
-```
-
-### Git — Review Full Diff
-
-```bash
 git diff HEAD
 ```
 
-### Git — Review Staged Diff
-
-```bash
-git diff --cached
-```
-
-### Git — Add Changes
+Then stage and review:
 
 ```bash
 git add .
-```
-
-### Git — Review Staged Changes
-
-```bash
 git diff --cached
 ```
 
-### Git — Commit
+Commit after all checks pass:
 
 ```bash
-git commit -m "Replace terminal executor with OpenShell sandboxes"
-```
-
----
-
-## Recommended Execution Order
-
-### 1. Update Python dependency lock
-
-```bash
-uv lock
-```
-
-### 2. Format and lint
-
-```bash
-uv run ruff format . && \
-uv run ruff check . --fix
-```
-
-### 3. Run tests
-
-```bash
-uv run pytest
-```
-
-### 4. Compile-check Python
-
-```bash
-uv run python -m compileall src tests
-```
-
-### 5. Review Git changes
-
-```bash
-git status --short && \
-git diff HEAD
-```
-
-### 6. Build the OpenShell sandbox image
-
-```bash
-docker build \
-  -f docker/openshell-sandbox/Dockerfile \
-  -t local-mcp-openshell-sandbox:1.0.0 \
-  .
-```
-
-### 7. Validate Compose configuration
-
-```bash
-docker compose config
-```
-
-### 8. Build Compose services
-
-```bash
-docker compose build
-```
-
-### 9. Start the stack
-
-```bash
-docker compose up -d
-```
-
-### 10. Check Compose status
-
-```bash
-docker compose ps
-```
-
-### 11. Check OpenShell
-
-```bash
-openshell status
-```
-
-### 12. Check existing sandboxes
-
-```bash
-openshell sandbox list
-```
-
-### 13. Check MCP server
-
-```bash
-docker compose logs --tail=200 mcp-server
-```
-
-### 14. Check OpenShell Gateway
-
-```bash
-docker compose logs --tail=200 openshell-gateway
-```
-
-### 15. Check tunnel client
-
-```bash
-docker compose logs --tail=100 tunnel-client
-```
-
-### 16. Refresh the MCP application/connector in ChatGPT
-
-Refresh the existing MCP connection so the new sandbox tools are discovered.
-
-### 17. Review final Git state
-
-```bash
-git status --short && \
-git diff HEAD
-```
-
-### 18. Commit
-
-```bash
-git add .
-```
-
-```bash
-git diff --cached
-```
-
-```bash
-git commit -m "Replace terminal executor with OpenShell sandboxes"
+git commit -m "Harden OpenShell sandbox integration" \
+  -m "Align the Docker Gateway with NVIDIA's container deployment model, add the required Docker socket group and persistent state path, fix sandbox command execution, restore Node/npm tooling in the sandbox image, and update the setup and verification documentation."
 ```

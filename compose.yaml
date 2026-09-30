@@ -3,13 +3,16 @@ services:
     image: ghcr.io/nvidia/openshell/gateway:v0.1.1
     restart: unless-stopped
     command: []
-    user: "0"
+    group_add:
+      - "${DOCKER_GID:?DOCKER_GID is required}"
     ports:
       - "127.0.0.1:${OPENSHELL_PORT:-8080}:8080"
       - "127.0.0.1:${OPENSHELL_HEALTH_PORT:-8081}:8081"
     volumes:
+      # This path must be identical inside and outside the Gateway container.
+      # The Docker daemon resolves supervisor bind mounts on the host.
+      - /var/lib/openshell:/var/lib/openshell
       - /var/run/docker.sock:/var/run/docker.sock
-      - ${OPENSHELL_DATA_DIR:-/var/lib/openshell}:/var/lib/openshell
       - ./openshell/gateway.toml:/etc/openshell/gateway.toml:ro
     environment:
       OPENSHELL_GATEWAY_CONFIG: /etc/openshell/gateway.toml
@@ -21,6 +24,7 @@ services:
       - "host.openshell.internal:host-gateway"
     networks:
       - openshell-internal
+
   mcp-server:
     build:
       context: .

@@ -77,15 +77,9 @@ def register_tools(mcp: MCPServer) -> None:
             openWorldHint=False,
         )
     )
-    def create_workspace_file(
-        relative_path: str,
-        content: str,
-    ) -> str:
+    def create_workspace_file(relative_path: str, content: str) -> str:
         """Create a new UTF-8 text file in the workspace."""
-        return create_workspace_file_impl(
-            relative_path,
-            content,
-        )
+        return create_workspace_file_impl(relative_path, content)
 
     @mcp.tool(
         annotations=ToolAnnotations(
@@ -95,15 +89,9 @@ def register_tools(mcp: MCPServer) -> None:
             openWorldHint=False,
         )
     )
-    def write_workspace_file(
-        relative_path: str,
-        content: str,
-    ) -> str:
+    def write_workspace_file(relative_path: str, content: str) -> str:
         """Replace the contents of an existing UTF-8 text file."""
-        return write_workspace_file_impl(
-            relative_path,
-            content,
-        )
+        return write_workspace_file_impl(relative_path, content)
 
     @mcp.tool(
         annotations=ToolAnnotations(
@@ -130,10 +118,7 @@ def register_tools(mcp: MCPServer) -> None:
         new_relative_path: str,
     ) -> str:
         """Rename a file or directory inside the workspace."""
-        return rename_workspace_path_impl(
-            relative_path,
-            new_relative_path,
-        )
+        return rename_workspace_path_impl(relative_path, new_relative_path)
 
     @mcp.tool(
         annotations=ToolAnnotations(
@@ -203,13 +188,10 @@ def register_tools(mcp: MCPServer) -> None:
             openWorldHint=False,
         )
     )
-    def execute_sandbox_command(
-        name: str,
-        command: str,
-    ) -> str:
+    def execute_sandbox_command(name: str, command: str) -> str:
         """Execute a command inside an OpenShell sandbox."""
         return execute_sandbox_impl(
-            sandbox_name=name,
+            name=name,
             command=command,
         )
 
