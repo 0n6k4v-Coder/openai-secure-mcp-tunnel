@@ -22,8 +22,9 @@
                     │  request audit          │
                     └────────────┬────────────┘
                                  │
-                          authenticated
-                          OpenShell API
+                    plaintext internal HTTP
+                    OpenShell API
+                    (TLS disabled in deployment)
                                  │
                                  ▼
                     ┌─────────────────────────┐

@@ -74,6 +74,11 @@ def create_workspace_file(
     content: str,
 ) -> str:
     """Create a new UTF-8 text file in the workspace."""
+    requested = WORKSPACE_ROOT / relative_path
+
+    if requested.is_symlink():
+        raise ValueError("Requested path must not be a symbolic link.")
+
     target = resolve_workspace_path(relative_path)
 
     if target.exists():

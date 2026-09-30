@@ -121,3 +121,32 @@ def test_delete_workspace_directory_rejects_symlink(
         )
 
     assert target.exists()
+
+
+@pytest.mark.skipif(
+    not hasattr(os, "symlink"),
+    reason="Symbolic links are not supported.",
+)
+def test_create_workspace_file_rejects_symlink(
+    workspace_root: Path,
+) -> None:
+    target = workspace_root / "real-file.txt"
+    target.write_text(
+        "original",
+        encoding="utf-8",
+    )
+
+    link = workspace_root / "file-link.txt"
+    link.symlink_to(target)
+
+    with pytest.raises(
+        ValueError,
+        match="symbolic link",
+    ):
+        workspace.create_workspace_file(
+            "file-link.txt",
+            "replacement",
+        )
+
+    assert target.read_text(encoding="utf-8") == "original"
+    assert link.is_symlink()

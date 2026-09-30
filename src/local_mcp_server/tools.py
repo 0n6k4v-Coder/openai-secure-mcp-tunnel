@@ -183,7 +183,7 @@ def register_tools(mcp: MCPServer) -> None:
     @mcp.tool(
         annotations=ToolAnnotations(
             readOnlyHint=False,
-            destructiveHint=False,
+            destructiveHint=True,
             idempotentHint=False,
             openWorldHint=False,
         )
