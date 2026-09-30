@@ -35,7 +35,10 @@ async def _tool_registry_snapshot() -> tuple[list[str], str]:
     """
     tools = await mcp.list_tools()
 
-    names = sorted(tool.name for tool in tools)
+    names = sorted(
+        tool.name
+        for tool in tools
+    )
 
     fingerprint = hashlib.sha256(
         json.dumps(
@@ -48,24 +51,34 @@ async def _tool_registry_snapshot() -> tuple[list[str], str]:
     return names, fingerprint
 
 
-def _get_request_value(ctx, name: str, default=None):
+def _get_request_value(
+    ctx,
+    name: str,
+    default=None,
+):
     """
     Safely read an attribute from ServerRequestContext.
-
-    Different MCP SDK versions expose slightly different context fields,
-    so diagnostics must never cause the actual MCP request to fail.
     """
     try:
-        return getattr(ctx, name, default)
+        return getattr(
+            ctx,
+            name,
+            default,
+        )
     except Exception:
         return default
 
 
-def _extract_tool_name(ctx) -> str | None:
+def _extract_tool_name(
+    ctx,
+) -> str | None:
     """
-    Extract the requested MCP tool name from request params when available.
+    Extract the requested MCP tool name from request params.
     """
-    params = _get_request_value(ctx, "params")
+    params = _get_request_value(
+        ctx,
+        "params",
+    )
 
     if isinstance(params, Mapping):
         name = params.get("name")
@@ -76,25 +89,45 @@ def _extract_tool_name(ctx) -> str | None:
     return None
 
 
-async def request_logging_middleware(ctx, call_next):
+async def request_logging_middleware(
+    ctx,
+    call_next,
+):
     """
-    Log every MCP request and the state of the tool registry at that moment.
-
-    This middleware covers all current and future MCP tools without requiring
-    logging code inside each individual tool.
+    Log every MCP request and the state of the tool registry.
     """
-    request_id = _get_request_value(ctx, "request_id")
-    method = _get_request_value(ctx, "method")
-    protocol_version = _get_request_value(ctx, "protocol_version")
-    session_id = _get_request_value(ctx, "session_id")
+    request_id = _get_request_value(
+        ctx,
+        "request_id",
+    )
+    method = _get_request_value(
+        ctx,
+        "method",
+    )
+    protocol_version = _get_request_value(
+        ctx,
+        "protocol_version",
+    )
+    session_id = _get_request_value(
+        ctx,
+        "session_id",
+    )
 
-    tool_name = _extract_tool_name(ctx)
+    tool_name = _extract_tool_name(
+        ctx
+    )
 
     try:
-        tool_names, registry_fingerprint = await _tool_registry_snapshot()
+        (
+            tool_names,
+            registry_fingerprint,
+        ) = await _tool_registry_snapshot()
+
     except Exception:
         tool_names = []
-        registry_fingerprint = "registry-read-error"
+        registry_fingerprint = (
+            "registry-read-error"
+        )
 
         logger.exception(
             "MCP registry inspection failed "
@@ -105,7 +138,11 @@ async def request_logging_middleware(ctx, call_next):
             request_id,
         )
 
-    tool_registered = tool_name in tool_names if tool_name is not None else None
+    tool_registered = (
+        tool_name in tool_names
+        if tool_name is not None
+        else None
+    )
 
     logger.info(
         "MCP REQUEST "
@@ -130,11 +167,16 @@ async def request_logging_middleware(ctx, call_next):
         tool_registered,
         len(tool_names),
         registry_fingerprint,
-        json.dumps(tool_names, separators=(",", ":")),
+        json.dumps(
+            tool_names,
+            separators=(",", ":"),
+        ),
     )
 
     try:
-        result = await call_next(ctx)
+        result = await call_next(
+            ctx
+        )
 
         logger.info(
             "MCP RESPONSE "
@@ -176,33 +218,16 @@ async def request_logging_middleware(ctx, call_next):
         raise
 
 
-# Register the middleware once.
-#
-# Because this middleware runs at the MCP request layer, every MCP request
-# is logged, including:
-#
-#   get_system_info
-#   list_workspace_files
-#   read_workspace_text_file
-#   create_workspace_file
-#   write_workspace_file
-#   create_workspace_directory
-#   rename_workspace_path
-#   delete_workspace_file
-#   delete_workspace_directory
-#   create_sandbox
-#   list_sandboxes
-#   sandbox_status
-#   execute_sandbox_command
-#   delete_sandbox
-mcp.middleware.append(request_logging_middleware)
+mcp.middleware.append(
+    request_logging_middleware
+)
 
 
-@mcp.custom_route("/healthz", methods=["GET"])
+@mcp.custom_route(
+    "/healthz",
+    methods=["GET"],
+)
 async def healthz(_request):
-    """
-    Simple HTTP health endpoint.
-    """
     from starlette.responses import JSONResponse
 
     return JSONResponse(
@@ -216,17 +241,23 @@ async def healthz(_request):
     )
 
 
-# Register all application tools.
-register_tools(mcp)
+register_tools(
+    mcp
+)
 
 
 def main() -> None:
-    """
-    Start the local MCP server.
-    """
     logging.basicConfig(
-        level=os.environ.get("LOG_LEVEL", "INFO").upper(),
-        format=("%(asctime)s %(levelname)s %(name)s %(message)s"),
+        level=os.environ.get(
+            "LOG_LEVEL",
+            "INFO",
+        ).upper(),
+        format=(
+            "%(asctime)s "
+            "%(levelname)s "
+            "%(name)s "
+            "%(message)s"
+        ),
     )
 
     logger.info(
@@ -245,11 +276,13 @@ def main() -> None:
         platform.python_version(),
     )
 
-    transport_security = TransportSecuritySettings(
-        enable_dns_rebinding_protection=True,
-        allowed_hosts=[
-            "mcp-server:8000",
-        ],
+    transport_security = (
+        TransportSecuritySettings(
+            enable_dns_rebinding_protection=True,
+            allowed_hosts=[
+                "mcp-server:8000",
+            ],
+        )
     )
 
     mcp.run(
