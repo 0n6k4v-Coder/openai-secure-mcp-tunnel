@@ -7,6 +7,7 @@ import re
 from openshell import SandboxClient
 
 
+OPEN_SHELL_GATEWAY = os.environ.get("OPEN_SHELL_GATEWAY", "")
 OPEN_SHELL_WORKSPACE = os.environ.get("OPEN_SHELL_WORKSPACE", "default")
 SANDBOX_IMAGE = os.environ.get(
     "SANDBOX_IMAGE",
@@ -44,6 +45,9 @@ def _validate_command(command: str) -> str:
 
 def _client() -> SandboxClient:
     try:
+        if OPEN_SHELL_GATEWAY:
+            return SandboxClient(OPEN_SHELL_GATEWAY)
+
         return SandboxClient.from_active_cluster()
     except Exception as exc:
         raise SandboxError(
