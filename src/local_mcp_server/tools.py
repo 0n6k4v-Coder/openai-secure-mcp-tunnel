@@ -6,8 +6,12 @@ import sys
 from mcp.server import MCPServer
 from mcp.types import ToolAnnotations
 
-from .terminal import (
-    execute_terminal_command_impl,
+from .sandbox import (
+    create_sandbox as create_sandbox_impl,
+    delete_sandbox as delete_sandbox_impl,
+    execute_sandbox as execute_sandbox_impl,
+    list_sandboxes as list_sandboxes_impl,
+    sandbox_status as sandbox_status_impl,
 )
 from .workspace import (
     create_workspace_directory as create_workspace_directory_impl,
@@ -158,22 +162,65 @@ def register_tools(mcp: MCPServer) -> None:
     @mcp.tool(
         annotations=ToolAnnotations(
             readOnlyHint=False,
+            destructiveHint=False,
+            idempotentHint=False,
+            openWorldHint=False,
+        )
+    )
+    def create_sandbox(name: str) -> str:
+        """Create and wait for an OpenShell sandbox."""
+        return create_sandbox_impl(name)
+
+    @mcp.tool(
+        annotations=ToolAnnotations(
+            readOnlyHint=True,
+            destructiveHint=False,
+            idempotentHint=True,
+            openWorldHint=False,
+        )
+    )
+    def list_sandboxes() -> str:
+        """List OpenShell sandboxes."""
+        return list_sandboxes_impl()
+
+    @mcp.tool(
+        annotations=ToolAnnotations(
+            readOnlyHint=True,
+            destructiveHint=False,
+            idempotentHint=True,
+            openWorldHint=False,
+        )
+    )
+    def sandbox_status(name: str) -> str:
+        """Return the status of an OpenShell sandbox."""
+        return sandbox_status_impl(name)
+
+    @mcp.tool(
+        annotations=ToolAnnotations(
+            readOnlyHint=False,
+            destructiveHint=False,
+            idempotentHint=False,
+            openWorldHint=False,
+        )
+    )
+    def execute_sandbox_command(
+        name: str,
+        command: str,
+    ) -> str:
+        """Execute a command inside an OpenShell sandbox."""
+        return execute_sandbox_impl(
+            sandbox_name=name,
+            command=command,
+        )
+
+    @mcp.tool(
+        annotations=ToolAnnotations(
+            readOnlyHint=False,
             destructiveHint=True,
             idempotentHint=True,
             openWorldHint=False,
         )
     )
-    def execute_terminal_command(
-        command: str,
-        timeout_seconds: int = 30,
-    ) -> str:
-        """
-        Execute an arbitrary command on the host operating system.
-
-        This is a high-impact tool. The MCP client must be configured to
-        require user approval before each invocation.
-        """
-        return execute_terminal_command_impl(
-            command=command,
-            timeout_seconds=timeout_seconds,
-        )
+    def delete_sandbox(name: str) -> str:
+        """Delete an OpenShell sandbox and its managed resources."""
+        return delete_sandbox_impl(name)
