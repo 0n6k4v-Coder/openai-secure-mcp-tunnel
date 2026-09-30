@@ -15,8 +15,6 @@ SANDBOX_IMAGE = os.environ.get(
 DEFAULT_CPU = os.environ.get("SANDBOX_DEFAULT_CPU", "1")
 DEFAULT_MEMORY = os.environ.get("SANDBOX_DEFAULT_MEMORY", "1GiB")
 MAX_COMMAND_BYTES = 32 * 1024
-MAX_COMMAND_TIMEOUT = 300
-
 _SANDBOX_NAME = re.compile(r"^[a-z0-9][a-z0-9-]{0,62}$")
 
 
@@ -142,22 +140,10 @@ def sandbox_status(name: str) -> str:
 def execute_sandbox(
     name: str,
     command: str,
-    timeout_seconds: int = 30,
 ) -> str:
     """Execute a command inside an existing OpenShell sandbox."""
     name = _validate_name(name)
     command = _validate_command(command)
-
-    if (
-        isinstance(timeout_seconds, bool)
-        or not isinstance(timeout_seconds, int)
-        or timeout_seconds < 1
-        or timeout_seconds > MAX_COMMAND_TIMEOUT
-    ):
-        raise ValueError(
-            f"timeout_seconds must be an integer between 1 and "
-            f"{MAX_COMMAND_TIMEOUT}"
-        )
 
     try:
         with _client() as client:
@@ -172,7 +158,6 @@ def execute_sandbox(
                     "stdout": result.stdout,
                     "stderr": result.stderr,
                     "return_code": result.return_code,
-                    "timeout_seconds": timeout_seconds,
                 },
                 ensure_ascii=False,
                 indent=2,
