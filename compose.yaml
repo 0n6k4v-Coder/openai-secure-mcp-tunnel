@@ -1,30 +1,55 @@
 services:
   openshell-gateway:
-    image: ghcr.io/nvidia/openshell/gateway:v0.1.1
+    image: ghcr.io/nvidia/openshell/gateway:${OPENSHELL_IMAGE_TAG:-v0.1.1}
     restart: unless-stopped
     command: []
-    # The official container-Gateway deployment runs the trusted Gateway as
-    # root because it must write persistent state and access Docker's socket.
     user: "0"
+
     ports:
       - "127.0.0.1:${OPENSHELL_PORT:-8080}:8080"
       - "127.0.0.1:${OPENSHELL_HEALTH_PORT:-8081}:8081"
+
     volumes:
-      # This path must be identical inside and outside the Gateway container.
-      # The Docker daemon resolves supervisor bind mounts on the host.
-      - /var/lib/openshell:/var/lib/openshell
-      - /var/run/docker.sock:/var/run/docker.sock
-      - ./openshell/gateway.toml:/etc/openshell/gateway.toml:ro
+      - type: bind
+        source: /var/run/docker.sock
+        target: /var/run/docker.sock
+      - type: bind
+        source: /var/lib/openshell
+        target: /var/lib/openshell
+        bind:
+          create_host_path: true
+      - type: bind
+        source: ./openshell/gateway.toml
+        target: /etc/openshell/gateway.toml
+        read_only: true
+
     environment:
       OPENSHELL_GATEWAY_CONFIG: /etc/openshell/gateway.toml
       OPENSHELL_DB_URL: sqlite:/var/lib/openshell/gateway.db?mode=rwc
       XDG_DATA_HOME: /var/lib/openshell
       HOME: /var/lib/openshell
+
     extra_hosts:
       - "host.docker.internal:host-gateway"
       - "host.openshell.internal:host-gateway"
+
     networks:
       - openshell-internal
+
+    healthcheck:
+      test:
+        [
+          "CMD",
+          "wget",
+          "--no-verbose",
+          "--tries=1",
+          "--spider",
+          "http://127.0.0.1:8081/healthz"
+        ]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 10s
 
   mcp-server:
     build:
@@ -45,7 +70,7 @@ services:
       - openshell-internal
     depends_on:
       openshell-gateway:
-        condition: service_started
+        condition: service_healthy
     environment:
       OPEN_SHELL_GATEWAY: openshell-gateway:8080
       OPEN_SHELL_WORKSPACE: ${OPEN_SHELL_WORKSPACE:-default}

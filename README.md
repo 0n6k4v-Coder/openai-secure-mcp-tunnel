@@ -2,6 +2,16 @@
 
 Private Python MCP server connected to ChatGPT through OpenAI Secure MCP Tunnel.
 
+## OpenShell version policy
+
+This repository pins the OpenShell stack to **v0.1.1**:
+
+- Python SDK: `openshell==0.1.1`
+- Gateway image: `ghcr.io/nvidia/openshell/gateway:v0.1.1`
+- Supervisor image: `ghcr.io/nvidia/openshell/supervisor:v0.1.1`
+
+Keeping these components on the same release avoids mixing incompatible Gateway, Supervisor, and SDK schemas.
+
 ## Architecture
 
 ```text
@@ -13,7 +23,7 @@ OpenAI tunnel-client
    ▼
 MCP server
    │
-   │ internal HTTP
+   │ private Compose network
    ▼
 OpenShell Gateway
    │
@@ -28,33 +38,60 @@ OpenShell Supervisor
 Per-request sandbox
 ```
 
-The MCP server never receives the Docker socket. Only the trusted OpenShell Gateway receives it and uses the Docker compute driver to create sibling sandbox containers. OpenShell Supervisor provides the sandbox enforcement boundary. This follows NVIDIA's documented container-Gateway pattern. citeturn0search0turn16search1
+The MCP server never receives the Docker socket. Only the trusted OpenShell Gateway receives it and uses the Docker compute driver to create sibling sandbox containers.
+
+## Sandbox resource limits
+
+Each sandbox is created with explicit CPU and memory limits.
+
+Defaults:
+
+```text
+SANDBOX_DEFAULT_CPU=1
+SANDBOX_DEFAULT_MEMORY=1GiB
+```
+
+Override them in `.env` when required.
+
+The Python integration builds an OpenShell `SandboxSpec` with:
+
+```text
+template.image
+template.resources.limits.cpu
+template.resources.limits.memory
+```
+
+The values are validated before the create request is sent to the Gateway.
 
 ## Prerequisites
 
-- Docker Engine 28.0 or later and Docker Compose.
+- Docker Engine and Docker Compose.
 - An OpenAI Secure MCP Tunnel.
 - OpenShell CLI v0.1.1.
 - A writable host directory at `/var/lib/openshell`.
 - Access to the host Docker socket.
 
-The OpenShell Python SDK is installed in the MCP server from PyPI. The SDK should be kept on the same OpenShell release as the Gateway when possible. citeturn8search0
-
 ## Configuration
 
 Copy `.env.example` to `.env`.
 
-Set `CONTROL_PLANE_TUNNEL_ID` to the existing tunnel ID. Adjust the sandbox resource defaults only if needed.
+Set `CONTROL_PLANE_TUNNEL_ID` to the existing tunnel ID.
 
 Create `.secrets/control-plane-api-key` containing only the OpenAI control-plane API key.
 
-The Gateway state directory is intentionally fixed to `/var/lib/openshell` on both the host and inside the Gateway container. NVIDIA requires the supervisor path to resolve identically from the Gateway and the host Docker daemon. citeturn0search0turn16search1
+The Gateway state directory is fixed to `/var/lib/openshell` on both the host and inside the Gateway container.
 
 ## OpenShell CLI
 
-The OpenShell installer normally starts its own local Gateway. This project instead runs the Gateway in Docker Compose, so do not leave a second OpenShell Gateway competing for the same host resources.
+This project runs its Gateway in Docker Compose, so do not run a second Gateway on the same host.
 
-Install/use the OpenShell CLI at v0.1.1, then register this Compose Gateway:
+Install the matching CLI:
+
+```bash
+curl -LsSf https://raw.githubusercontent.com/NVIDIA/OpenShell/main/install.sh | OPENSHELL_VERSION=v0.1.1 sh
+```
+
+Register the Compose Gateway:
 
 ```bash
 openshell gateway add http://127.0.0.1:8080 --local --name local-mcp
@@ -62,17 +99,18 @@ openshell gateway select local-mcp
 openshell status
 ```
 
-NVIDIA documents this registration flow for a containerized Gateway. citeturn0search0
-
 ## Python Dependency Lock
 
-The repository pins `openshell==0.1.1`. Regenerate the lock file before the first Docker build:
+The MCP server uses:
+
+- `mcp[cli]==2.2.0`
+- `openshell==0.1.1`
+
+Regenerate `uv.lock` after dependency changes:
 
 ```bash
 uv lock
 ```
-
-The Docker build intentionally uses `--locked`, so it will reject a stale lock file.
 
 ## Build the Sandbox Image
 
@@ -83,14 +121,7 @@ docker build \
   .
 ```
 
-The sandbox image contains:
-
-- Python
-- Node.js 24.21.0
-- npm 12.1.0
-- Playwright 1.63.0
-- bundled Playwright browsers
-- Git and common development tools
+The sandbox image contains Python, Node.js 24.21.0, npm 12.1.0, Playwright 1.63.0, Git and common development tools.
 
 It does not contain Docker and does not receive the Docker socket.
 
@@ -98,7 +129,6 @@ It does not contain Docker and does not receive the Docker socket.
 
 ```bash
 docker compose config
-docker compose build --no-cache mcp-server
 docker compose up -d
 docker compose ps
 ```
@@ -158,7 +188,7 @@ Delete:
 delete_sandbox("my-sandbox")
 ```
 
-OpenShell manages sandbox lifecycle and applies its filesystem, process, network, and credential controls. citeturn11search1turn8search1
+OpenShell manages sandbox lifecycle and applies its filesystem, process, network and credential controls.
 
 ## Security Boundary
 
@@ -180,11 +210,11 @@ OpenShell Supervisor
 Sandbox workload
 ```
 
-The Gateway is the only service that can control the host Docker daemon. The sandbox image itself cannot create sibling Docker containers.
+The Gateway is the only service that can control the host Docker daemon.
 
-The Docker driver has arbitrary host bind mounts disabled with `enable_bind_mounts = false`. NVIDIA warns that arbitrary host bind mounts can negate sandbox isolation. citeturn15search1
+The Docker driver has arbitrary host bind mounts disabled with `enable_bind_mounts = false`.
 
-## Updating MCP Tools
+## Verification
 
 ```bash
 uv lock
@@ -193,15 +223,25 @@ uv run ruff check . --fix
 uv run pytest
 uv run python -m compileall src tests
 
+docker compose config
 docker compose build --no-cache mcp-server
-docker compose up -d --force-recreate mcp-server
+docker compose up -d
 docker compose ps
-docker compose logs --tail=200 mcp-server
 docker compose logs --tail=200 openshell-gateway
+docker compose logs --tail=200 mcp-server
 docker compose logs --tail=100 tunnel-client
 ```
 
-Then refresh the existing MCP application/connector in ChatGPT.
+Then test the sandbox lifecycle through ChatGPT:
+
+```text
+create_sandbox("smoke-test")
+execute_sandbox_command(
+    "smoke-test",
+    "python -c \\"print('OpenShell OK')\\"",
+)
+delete_sandbox("smoke-test")
+```
 
 ## Stop
 
@@ -211,4 +251,6 @@ docker compose down
 
 ## Important Security Note
 
-The Gateway is configured with plaintext HTTP because the MCP server and Gateway communicate only over the private Compose network and the host-published listener is bound to `127.0.0.1`. NVIDIA documents that disabling TLS removes Gateway authentication; do not expose this Gateway beyond the trusted local host without enabling mTLS/OIDC and appropriate network controls. citeturn0search0
+The Gateway uses plaintext HTTP only for this trusted local deployment. Its published listeners are bound to `127.0.0.1`, and the internal MCP-to-Gateway connection is restricted to the private Compose network.
+
+Do not expose this Gateway beyond the trusted local host without enabling TLS/mTLS or an appropriate authenticated deployment.

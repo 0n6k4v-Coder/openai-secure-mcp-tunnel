@@ -5,6 +5,7 @@ import os
 import re
 
 from openshell import SandboxClient
+from openshell._proto import openshell_pb2
 
 
 OPEN_SHELL_GATEWAY = os.environ.get("OPEN_SHELL_GATEWAY", "")
@@ -16,7 +17,10 @@ SANDBOX_IMAGE = os.environ.get(
 DEFAULT_CPU = os.environ.get("SANDBOX_DEFAULT_CPU", "1")
 DEFAULT_MEMORY = os.environ.get("SANDBOX_DEFAULT_MEMORY", "1GiB")
 MAX_COMMAND_BYTES = 32 * 1024
+
 _SANDBOX_NAME = re.compile(r"^[a-z0-9][a-z0-9-]{0,62}$")
+_CPU_QUANTITY = re.compile(r"^(?:\d+(?:\.\d+)?|\d+m)$")
+_MEMORY_QUANTITY = re.compile(r"^\d+(?:\.\d+)?(?:Ki|Mi|Gi|Ti|Pi|Ei|K|M|G|T|P|E)$")
 
 
 class SandboxError(RuntimeError):
@@ -31,6 +35,22 @@ def _validate_name(name: str) -> str:
         )
 
     return name
+
+
+def _validate_cpu(value: str) -> str:
+    if not isinstance(value, str) or not _CPU_QUANTITY.fullmatch(value):
+        raise ValueError(
+            "CPU must be a Kubernetes-style quantity such as 500m, 1, or 2.5"
+        )
+
+    return value
+
+
+def _validate_memory(value: str) -> str:
+    if not isinstance(value, str) or not _MEMORY_QUANTITY.fullmatch(value):
+        raise ValueError("memory must be a quantity such as 512Mi, 4Gi, or 8G")
+
+    return value
 
 
 def _validate_command(command: str) -> str:
@@ -56,17 +76,39 @@ def _client() -> SandboxClient:
 
 
 def _sandbox_to_dict(sandbox) -> dict[str, object]:
+    status = getattr(sandbox, "status", None)
+
     return {
         "id": getattr(sandbox, "id", None),
         "name": getattr(sandbox, "name", None),
-        "workspace": getattr(sandbox, "workspace", OPEN_SHELL_WORKSPACE),
+        "workspace": OPEN_SHELL_WORKSPACE,
         "phase": getattr(sandbox, "phase", None),
+        "status": getattr(status, "phase", None),
         "labels": getattr(sandbox, "labels", None),
     }
 
 
+def _build_sandbox_spec() -> openshell_pb2.SandboxSpec:
+    """Build the v0.1.x inline workload specification."""
+    cpu = _validate_cpu(DEFAULT_CPU)
+    memory = _validate_memory(DEFAULT_MEMORY)
+
+    spec = openshell_pb2.SandboxSpec()
+    spec.template.image = SANDBOX_IMAGE
+    spec.template.resources.update(
+        {
+            "limits": {
+                "cpu": cpu,
+                "memory": memory,
+            }
+        }
+    )
+
+    return spec
+
+
 def create_sandbox(name: str) -> str:
-    """Create a policy-enforced OpenShell sandbox."""
+    """Create and wait for an OpenShell sandbox."""
     name = _validate_name(name)
 
     try:
@@ -74,19 +116,17 @@ def create_sandbox(name: str) -> str:
             sandbox = client.create(
                 workspace=OPEN_SHELL_WORKSPACE,
                 name=name,
-                image=SANDBOX_IMAGE,
-                cpu=DEFAULT_CPU,
-                memory=DEFAULT_MEMORY,
+                spec=_build_sandbox_spec(),
             )
 
-            client.wait_ready(
+            ready = client.wait_ready(
                 sandbox.name,
                 workspace=OPEN_SHELL_WORKSPACE,
                 timeout_seconds=120,
             )
 
             return json.dumps(
-                _sandbox_to_dict(sandbox),
+                _sandbox_to_dict(ready),
                 ensure_ascii=False,
                 indent=2,
             )
@@ -161,7 +201,7 @@ def execute_sandbox(
                 {
                     "stdout": result.stdout,
                     "stderr": result.stderr,
-                    "return_code": result.return_code,
+                    "return_code": result.exit_code,
                 },
                 ensure_ascii=False,
                 indent=2,
@@ -170,13 +210,11 @@ def execute_sandbox(
     except ValueError:
         raise
     except Exception as exc:
-        raise SandboxError(
-            f"Failed to execute command in sandbox '{name}'."
-        ) from exc
+        raise SandboxError(f"Failed to execute command in sandbox '{name}'.") from exc
 
 
 def delete_sandbox(name: str) -> str:
-    """Delete an OpenShell sandbox and release its managed resources."""
+    """Delete an OpenShell sandbox and wait for deletion to complete."""
     name = _validate_name(name)
 
     try:
