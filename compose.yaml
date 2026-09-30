@@ -65,6 +65,8 @@ services:
     volumes:
       - ./workspace:/app/workspace:rw
 
+      - ${MCP_STATE_DIR:-./.state}:/var/lib/local-mcp-server:rw
+
     networks:
       - mcp-internal
       - openshell-internal
@@ -76,9 +78,16 @@ services:
     environment:
       OPEN_SHELL_GATEWAY: ${OPEN_SHELL_GATEWAY:-openshell-gateway:8080}
       OPEN_SHELL_WORKSPACE: ${OPEN_SHELL_WORKSPACE:-default}
+
       SANDBOX_IMAGE: ${SANDBOX_IMAGE:-local-mcp-openshell-sandbox:1.0.0}
       SANDBOX_DEFAULT_CPU: ${SANDBOX_DEFAULT_CPU:-1}
       SANDBOX_DEFAULT_MEMORY: ${SANDBOX_DEFAULT_MEMORY:-1Gi}
+
+      WORKSPACE_DIR: /app/workspace
+      WORKSPACE_GRANTS_FILE: /var/lib/local-mcp-server/workspace-grants.json
+
+      INSTALLATION_STATE_FILE: /var/lib/local-mcp-server/installations.json
+
       LOG_LEVEL: INFO
 
     healthcheck:

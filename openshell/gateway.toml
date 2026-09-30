@@ -25,4 +25,9 @@ image_pull_policy = "if_not_present"
 sandbox_label = "openshell"
 sandbox_pids_limit = 2048
 grpc_endpoint = "http://127.0.0.1:8080"
-enable_bind_mounts = false
+
+allow_driver_config = true
+enable_bind_mounts = true
+
+[openshell.drivers.docker.resource_admission]
+enabled = false
