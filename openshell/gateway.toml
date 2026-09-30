@@ -1,0 +1,18 @@
+# OpenShell Gateway configuration for the Docker compute driver.
+
+[openshell]
+version = 1
+
+[openshell.gateway]
+bind_address = "127.0.0.1:8080"
+health_bind_address = "127.0.0.1:8081"
+log_level = "info"
+compute_drivers = ["docker"]
+disable_tls = true
+
+[openshell.drivers.docker]
+default_image = "local-mcp-openshell-sandbox:1.0.0"
+supervisor_image = "ghcr.io/nvidia/openshell/supervisor:v0.1.1"
+image_pull_policy = "IfNotPresent"
+sandbox_namespace = "openshell"
+grpc_endpoint = "http://host.openshell.internal:8080"
