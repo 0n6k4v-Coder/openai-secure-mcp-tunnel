@@ -2,10 +2,9 @@ from __future__ import annotations
 
 import platform
 import sys
-from typing import Annotated
 
 from mcp.server import MCPServer
-from mcp.server.mcpserver import Context, Elicit
+from mcp.server.mcpserver import Context
 from mcp.types import ToolAnnotations
 from pydantic import BaseModel
 
@@ -70,29 +69,23 @@ async def _installation_approval(
     )
 
     if result.action != "accept":
-        deny_installation(
-            request_id
-        )
+        deny_installation(request_id)
 
         return InstallationApproval(
-            approved=False
+            approved=False,
         )
 
     if result.data is None:
-        deny_installation(
-            request_id
-        )
+        deny_installation(request_id)
 
         return InstallationApproval(
-            approved=False
+            approved=False,
         )
 
     return result.data
 
 
-def register_tools(
-    mcp: MCPServer,
-) -> None:
+def register_tools(mcp: MCPServer) -> None:
     """Register all MCP tools exposed by the local server."""
 
     @mcp.tool(
@@ -137,7 +130,7 @@ def register_tools(
     ) -> str:
         """Read a UTF-8 text file from the MCP workspace."""
         return read_workspace_text_file_impl(
-            relative_path
+            relative_path,
         )
 
     @mcp.tool(
@@ -189,7 +182,7 @@ def register_tools(
     ) -> str:
         """Create a directory inside the MCP workspace."""
         return create_workspace_directory_impl(
-            relative_path
+            relative_path,
         )
 
     @mcp.tool(
@@ -223,7 +216,7 @@ def register_tools(
     ) -> str:
         """Delete a regular file inside the MCP workspace."""
         return delete_workspace_file_impl(
-            relative_path
+            relative_path,
         )
 
     @mcp.tool(
@@ -239,7 +232,7 @@ def register_tools(
     ) -> str:
         """Delete a directory tree inside the MCP workspace."""
         return delete_workspace_directory_impl(
-            relative_path
+            relative_path,
         )
 
     @mcp.tool(
@@ -256,12 +249,11 @@ def register_tools(
         """
         Create a workspace capability for a host directory.
 
-        The MCP client must treat this operation as a human authorization
-        boundary. The returned workspace_id is the only value accepted by
+        The returned workspace_id is the only value accepted by
         create_sandbox().
         """
         return create_workspace_grant(
-            host_path
+            host_path,
         )
 
     @mcp.tool(
@@ -321,7 +313,7 @@ def register_tools(
     ) -> str:
         """Return the status of an OpenShell sandbox."""
         return sandbox_status_impl(
-            name
+            name,
         )
 
     @mcp.tool(
@@ -368,6 +360,11 @@ def register_tools(
 
         The installation does not execute unless the MCP client explicitly
         accepts the elicitation request.
+
+        Note:
+            The current implementation deliberately stops after approval.
+            The approved installation worker must be implemented separately
+            before this feature is considered production-complete.
         """
         request = create_installation_request(
             sandbox_name=sandbox_name,
@@ -399,29 +396,25 @@ def register_tools(
             }
 
         approved = approve_installation(
-            request.request_id
+            request.request_id,
         )
 
         consumed = consume_installation_approval(
-            approved.request_id
+            approved.request_id,
         )
 
-        # IMPORTANT:
+        # Deliberately do not execute consumed.install_command here.
         #
-        # This function intentionally does not call execute_sandbox().
+        # The final production implementation must use a dedicated,
+        # approval-only installation worker that:
         #
-        # A production installation worker must be the only component allowed
-        # to consume InstallationRequest objects. It must:
-        #
-        #   1. execute consumed.install_command;
-        #   2. capture stdout/stderr/exit status;
-        #   3. mark_installation_finished();
-        #   4. never expose a generic shell command endpoint.
-        #
-        # Returning the consumed request here prevents accidentally turning
-        # this MCP tool into an unrestricted shell execution primitive.
-        #
-        # The worker should be implemented as a separately supervised service.
+        #   1. accepts only an already-approved request ID;
+        #   2. retrieves the exact stored installation request;
+        #   3. executes only that exact command;
+        #   4. runs it in the specified sandbox;
+        #   5. records stdout/stderr/exit status;
+        #   6. marks the one-shot request completed or failed;
+        #   7. never exposes a generic shell-command API.
 
         mark_installation_finished(
             consumed.request_id,
@@ -441,7 +434,7 @@ def register_tools(
 
     @mcp.tool(
         annotations=ToolAnnotations(
-            readOnly=False,
+            readOnlyHint=False,
             destructiveHint=True,
             idempotentHint=True,
             openWorldHint=False,
@@ -452,5 +445,5 @@ def register_tools(
     ) -> str:
         """Delete an OpenShell sandbox and its managed resources."""
         return delete_sandbox_impl(
-            name
+            name,
         )
