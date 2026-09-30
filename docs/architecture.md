@@ -1,49 +1,62 @@
 # Architecture
 
 ```text
-                              INTERNET
+                              ChatGPT
                                  │
-                         HTTPS outbound only
+                                 │ MCP
+                                 ▼
+                    ┌─────────────────────────┐
+                    │     OpenAI Tunnel       │
+                    │      tunnel-client      │
+                    │                         │
+                    │       transport         │
+                    └────────────┬────────────┘
                                  │
                                  ▼
                     ┌─────────────────────────┐
-                    │ OpenAI Secure MCP       │
-                    │ Tunnel Service          │
+                    │       MCP SERVER        │
+                    │                         │
+                    │  MCP API                │
+                    │  tool authorization     │
+                    │  sandbox API            │
+                    │  request audit          │
                     └────────────┬────────────┘
+                                 │
+                          authenticated
+                          OpenShell API
                                  │
                                  ▼
                     ┌─────────────────────────┐
-                    │ tunnel-client           │
-                    │ Docker container        │
+                    │   OpenShell Gateway     │
                     │                         │
-                    │ MCP_SERVER_URL          │
-                    │ http://mcp-server:8000  │
+                    │  sandbox lifecycle      │
+                    │  policy                 │
+                    │  Docker driver          │
+                    │  sandbox registry       │
                     └────────────┬────────────┘
                                  │
-                         private Docker
-                           mcp-internal
+              ┌──────────────────┼──────────────────┐
+              │                  │                  │
+              ▼                  ▼                  ▼
+       ┌─────────────┐    ┌─────────────┐    ┌─────────────┐
+       │ Supervisor  │    │ Supervisor  │    │ Supervisor  │
+       │      A      │    │      B      │    │      C      │
+       └──────┬──────┘    └──────┬──────┘    └──────┬──────┘
+              │                  │                  │
+              ▼                  ▼                  ▼
+       ┌─────────────┐    ┌─────────────┐    ┌─────────────┐
+       │ Sandbox A   │    │ Sandbox B   │    │ Sandbox C   │
+       │             │    │             │    │             │
+       │ Python      │    │ Node        │    │ Playwright  │
+       │ Node        │    │ npm         │    │ Chromium    │
+       │ workspace   │    │ workspace   │    │ workspace   │
+       └──────┬──────┘    └──────┬──────┘    └──────┬──────┘
+              │                  │                  │
+              └──────────────────┼──────────────────┘
                                  │
-                         Streamable HTTP
-                             /mcp
-                                 │
-                    ┌────────────▼────────────┐
-                    │ mcp-server              │
-                    │ Docker container        │
-                    │                         │
-                    │ Python 3.14.7           │
-                    │ MCP SDK 2.2.0           │
-                    │                         │
-                    │ get_system_info()       │
-                    │ list_allowed_files()    │
-                    │ read_allowed_text_file()│
-                    └────────────┬────────────┘
-                                 │
-                            read-only mount
+                         OpenShell network
+                              policy
                                  │
                                  ▼
-                         ./workspace
+                              Internet
 ```
-
-There is no published MCP port to the Internet.
-
-The MCP container is reachable only through the private Docker network. The tunnel-client container is the component that reaches OpenAI externally. OpenAI documents outbound HTTPS connectivity for the tunnel and no inbound public MCP listener requirement.
