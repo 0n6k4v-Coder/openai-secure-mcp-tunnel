@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from pathlib import Path
+
 import pytest
 
 from local_mcp_server import sandbox
@@ -22,9 +24,37 @@ def test_memory_quantity_rejects_gib_suffix() -> None:
         sandbox._validate_memory("1GiB")
 
 
-def test_build_sandbox_spec_uses_valid_memory_limit() -> None:
-    spec = sandbox._build_sandbox_spec()
+def test_build_sandbox_spec_uses_valid_memory_limit(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(
+        sandbox,
+        "resolve_workspace_grant",
+        lambda workspace_id: tmp_path,
+    )
+
+    spec = sandbox._build_sandbox_spec(
+        "ws_test",
+    )
 
     assert spec.template.image == sandbox.SANDBOX_IMAGE
-    assert spec.template.resources["limits"]["memory"] == "1Gi"
-    assert spec.template.resources["limits"]["cpu"] == sandbox.DEFAULT_CPU
+    assert (
+        spec.template.resources["limits"]["memory"]
+        == "1Gi"
+    )
+    assert (
+        spec.template.resources["limits"]["cpu"]
+        == sandbox.DEFAULT_CPU
+    )
+
+    docker_config = spec.template.driver_config["docker"]
+
+    assert len(docker_config["mounts"]) == 1
+
+    mount = docker_config["mounts"][0]
+
+    assert mount["type"] == "bind"
+    assert mount["source"] == str(tmp_path)
+    assert mount["target"] == "/workspace/project"
+    assert mount["read_only"] is False
