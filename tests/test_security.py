@@ -150,3 +150,125 @@ def test_create_workspace_file_rejects_symlink(
 
     assert target.read_text(encoding="utf-8") == "original"
     assert link.is_symlink()
+
+
+def test_canonicalize_host_workspace_rejects_sensitive_paths() -> None:
+    sensitive = (
+        Path("/"),
+        Path("/etc"),
+        Path("/proc"),
+        Path("/sys"),
+        Path("/dev"),
+        Path("/run"),
+        Path("/var/run"),
+        Path("/var/lib/docker"),
+    )
+
+    for path in sensitive:
+        if not path.exists():
+            continue
+
+        with pytest.raises(
+            ValueError,
+            match="not allowed|filesystem root",
+        ):
+            workspace.canonicalize_host_workspace(
+                str(path),
+            )
+
+
+def test_canonicalize_host_workspace_requires_absolute_directory(
+    tmp_path: Path,
+) -> None:
+    with pytest.raises(
+        ValueError,
+        match="absolute",
+    ):
+        workspace.canonicalize_host_workspace(
+            "relative/path",
+        )
+
+    missing = tmp_path / "missing"
+
+    with pytest.raises(
+        ValueError,
+        match="does not exist",
+    ):
+        workspace.canonicalize_host_workspace(
+            str(missing),
+        )
+
+
+@pytest.mark.skipif(
+    not hasattr(os, "symlink"),
+    reason="Symbolic links are not supported.",
+)
+def test_canonicalize_host_workspace_resolves_symlink(
+    tmp_path: Path,
+) -> None:
+    real = tmp_path / "real-workspace"
+    real.mkdir()
+
+    link = tmp_path / "workspace-link"
+    link.symlink_to(
+        real,
+        target_is_directory=True,
+    )
+
+    assert (
+        workspace.canonicalize_host_workspace(
+            str(link),
+        )
+        == real.resolve()
+    )
+
+
+def test_create_workspace_grant_rejects_read_only_process(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(
+        workspace,
+        "GRANTS_READ_ONLY",
+        True,
+    )
+
+    with pytest.raises(
+        RuntimeError,
+        match="read-only",
+    ):
+        workspace.create_workspace_grant(
+            str(tmp_path),
+        )
+
+
+def test_create_workspace_grant_round_trip(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    grants_file = tmp_path / "grants.json"
+
+    monkeypatch.setattr(
+        workspace,
+        "WORKSPACE_GRANTS_FILE",
+        grants_file,
+    )
+    monkeypatch.setattr(
+        workspace,
+        "GRANTS_READ_ONLY",
+        False,
+    )
+
+    grant = workspace.create_workspace_grant(
+        str(tmp_path),
+    )
+
+    assert grant["target"] == "/workspace/project"
+    assert grant["read_only"] == "false"
+    assert grant["host_path"] == str(tmp_path.resolve())
+
+    resolved = workspace.resolve_workspace_grant(
+        grant["workspace_id"],
+    )
+
+    assert resolved == tmp_path.resolve()
