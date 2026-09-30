@@ -1,19 +1,18 @@
 [openshell]
-version = 1
+version = 2
 
 [openshell.gateway]
 bind_address = "127.0.0.1:8080"
 health_bind_address = "127.0.0.1:8081"
 log_level = "info"
-compute_drivers = ["docker"]
+compute_driver = "docker"
 disable_tls = true
 
 [openshell.drivers.docker]
 socket_path = "/var/run/docker.sock"
 default_image = "local-mcp-openshell-sandbox:1.0.0"
-supervisor_image = "ghcr.io/nvidia/openshell/supervisor:v0.1.1"
-image_pull_policy = "IfNotPresent"
-sandbox_namespace = "openshell"
+image_pull_policy = "if_not_present"
+sandbox_label = "openshell"
 grpc_endpoint = "http://host.openshell.internal:8080"
 enable_bind_mounts = false
 sandbox_pids_limit = 2048
