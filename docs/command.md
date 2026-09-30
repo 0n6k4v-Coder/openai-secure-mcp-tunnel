@@ -14,12 +14,7 @@ Copy the example environment file:
 cp .env.example .env
 ```
 
-Set:
-
-```text
-CONTROL_PLANE_TUNNEL_ID=<existing-tunnel-id>
-DOCKER_GID=<numeric-gid-of-/var/run/docker.sock>
-```
+Set the existing tunnel ID in `.env`.
 
 Create:
 
@@ -176,5 +171,5 @@ Commit after all checks pass:
 
 ```bash
 git commit -m "Harden OpenShell sandbox integration" \
-  -m "Align the Docker Gateway with NVIDIA's container deployment model, add the required Docker socket group and persistent state path, fix sandbox command execution, restore Node/npm tooling in the sandbox image, and update the setup and verification documentation."
+  -m "Align the Docker Gateway with NVIDIA's container deployment model, add the required persistent state path, fix sandbox command execution, restore Node/npm tooling in the sandbox image, and update the setup and verification documentation."
 ```

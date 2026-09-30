@@ -28,31 +28,27 @@ OpenShell Supervisor
 Per-request sandbox
 ```
 
-The MCP server never receives the Docker socket. Only the trusted OpenShell Gateway receives it and uses the Docker compute driver to create sibling sandbox containers. OpenShell Supervisor provides the sandbox enforcement boundary. This follows NVIDIA's documented container-Gateway pattern. citeturn0search0turn1search1
+The MCP server never receives the Docker socket. Only the trusted OpenShell Gateway receives it and uses the Docker compute driver to create sibling sandbox containers. OpenShell Supervisor provides the sandbox enforcement boundary. This follows NVIDIA's documented container-Gateway pattern. citeturn0search0turn16search1
 
 ## Prerequisites
 
-- Docker Engine and Docker Compose.
+- Docker Engine 28.0 or later and Docker Compose.
 - An OpenAI Secure MCP Tunnel.
 - OpenShell CLI v0.1.1.
-- A host directory at `/var/lib/openshell`.
+- A writable host directory at `/var/lib/openshell`.
 - Access to the host Docker socket.
 
-The OpenShell Python SDK is installed in the MCP server from PyPI. The CLI and Gateway are separate components. NVIDIA documents that the Python SDK should be kept on the same OpenShell release as the Gateway when possible. citeturn8search0
+The OpenShell Python SDK is installed in the MCP server from PyPI. The SDK should be kept on the same OpenShell release as the Gateway when possible. citeturn8search0
 
 ## Configuration
 
 Copy `.env.example` to `.env`.
 
-Set:
-
-- `CONTROL_PLANE_TUNNEL_ID` to the existing tunnel ID.
-- `DOCKER_GID` to the numeric group ID of the host Docker socket.
-- The sandbox resource defaults if you want to change them.
+Set `CONTROL_PLANE_TUNNEL_ID` to the existing tunnel ID. Adjust the sandbox resource defaults only if needed.
 
 Create `.secrets/control-plane-api-key` containing only the OpenAI control-plane API key.
 
-The Gateway state directory is intentionally fixed to `/var/lib/openshell` on both the host and inside the Gateway container. NVIDIA requires the supervisor path to resolve identically from the Gateway and the host Docker daemon. citeturn0search0turn1search0
+The Gateway state directory is intentionally fixed to `/var/lib/openshell` on both the host and inside the Gateway container. NVIDIA requires the supervisor path to resolve identically from the Gateway and the host Docker daemon. citeturn0search0turn16search1
 
 ## OpenShell CLI
 
@@ -66,11 +62,11 @@ openshell gateway select local-mcp
 openshell status
 ```
 
-NVIDIA documents this registration flow for containerized Gateways. citeturn0search0
+NVIDIA documents this registration flow for a containerized Gateway. citeturn0search0
 
 ## Python Dependency Lock
 
-The repository pins `openshell==0.1.1`. After this dependency was added, regenerate the lock file before the first Docker build:
+The repository pins `openshell==0.1.1`. Regenerate the lock file before the first Docker build:
 
 ```bash
 uv lock

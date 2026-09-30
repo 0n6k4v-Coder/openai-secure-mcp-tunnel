@@ -3,8 +3,9 @@ services:
     image: ghcr.io/nvidia/openshell/gateway:v0.1.1
     restart: unless-stopped
     command: []
-    group_add:
-      - "${DOCKER_GID:?DOCKER_GID is required}"
+    # The official container-Gateway deployment runs the trusted Gateway as
+    # root because it must write persistent state and access Docker's socket.
+    user: "0"
     ports:
       - "127.0.0.1:${OPENSHELL_PORT:-8080}:8080"
       - "127.0.0.1:${OPENSHELL_HEALTH_PORT:-8081}:8081"
