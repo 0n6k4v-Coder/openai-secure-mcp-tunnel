@@ -306,7 +306,8 @@ def test_list_workspace_grants_does_not_require_host_path_visibility(
         }
     ]
 
-    def test_resolve_workspace_grant_does_not_require_host_path_visibility(
+
+def test_resolve_workspace_grant_does_not_require_host_path_visibility(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
