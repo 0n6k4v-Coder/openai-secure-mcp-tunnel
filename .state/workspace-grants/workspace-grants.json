@@ -11,6 +11,12 @@
     "target": "/workspace/project",
     "volume_name": "mcp-ws-40c8f931fc0e75bccaffef6e"
   },
+  "ws_5c8831d8c8df4a2688520c98": {
+    "host_path": "/tmp/mcp-restructure-workspace",
+    "read_only": false,
+    "target": "/workspace/project",
+    "volume_name": "mcp-ws-5c8831d8c8df4a2688520c98"
+  },
   "ws_8ce8db884be6bbd70fcb41ae": {
     "host_path": "/tmp/pytest-of-kawee/pytest-22/test_create_workspace_grant_re0",
     "read_only": false,

@@ -471,10 +471,15 @@ When MCP server code or tool definitions change, rebuild the MCP server image an
 
 ## Docker
 
+All commands below assume that `.env` is located at the repository root and the Compose file is `deploy/compose.yaml`.
+
 ### 1. Rebuild the MCP server image
 
 ```bash
-docker compose build --no-cache mcp-server
+docker compose \
+  --env-file .env \
+  -f deploy/compose.yaml \
+  build --no-cache mcp-server
 ```
 
 This rebuilds the image using the current MCP source code.
@@ -482,19 +487,23 @@ This rebuilds the image using the current MCP source code.
 ### 2. Recreate the MCP server
 
 ```bash
-docker compose up -d --force-recreate --remove-orphans openshell-gateway
-
-docker compose up -d --force-recreate --remove-orphans mcp-server
-
-docker compose up -d --force-recreate --remove-orphans tunnel-client
+docker compose \
+  --env-file .env \
+  -f deploy/compose.yaml \
+  up -d --force-recreate --remove-orphans mcp-server
 ```
 
 The `--remove-orphans` option ensures that old Compose services, such as the former `terminal-executor`, are cleaned up.
 
+If the OpenShell gateway or tunnel client is not already running, Compose will start required dependent services as needed.
+
 ### 3. Check the service status
 
 ```bash
-docker compose ps
+docker compose \
+  --env-file .env \
+  -f deploy/compose.yaml \
+  ps
 ```
 
 Expected services:
@@ -510,13 +519,19 @@ The MCP server should become healthy.
 ### 4. Check the MCP server logs
 
 ```bash
-docker compose logs --tail=200 mcp-server
+docker compose \
+  --env-file .env \
+  -f deploy/compose.yaml \
+  logs --tail=200 mcp-server
 ```
 
 Or follow the logs:
 
 ```bash
-docker compose logs -f mcp-server
+docker compose \
+  --env-file .env \
+  -f deploy/compose.yaml \
+  logs -f mcp-server
 ```
 
 Check for startup errors.
@@ -524,10 +539,26 @@ Check for startup errors.
 ### 5. Check the tunnel client
 
 ```bash
-docker compose logs --tail=100 tunnel-client
+docker compose \
+  --env-file .env \
+  -f deploy/compose.yaml \
+  logs --tail=100 tunnel-client
 ```
 
 Confirm that the tunnel client remains connected to the existing tunnel.
+
+### 6. Verify Compose environment loading
+
+If Compose reports that `CONTROL_PLANE_TUNNEL_ID` is missing, verify that the root `.env` file is being used:
+
+```bash
+docker compose \
+  --env-file .env \
+  -f deploy/compose.yaml \
+  config --environment | grep '^CONTROL_PLANE_TUNNEL_ID='
+```
+
+The command should print the variable name with a value.
 
 ---
 
