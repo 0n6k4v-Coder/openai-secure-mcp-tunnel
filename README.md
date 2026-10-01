@@ -490,7 +490,21 @@ This rebuilds the image using the current MCP source code.
 docker compose \
   --env-file .env \
   -f deploy/compose.yaml \
+  up -d --force-recreate --remove-orphans openshell-gateway
+```
+
+```bash
+docker compose \
+  --env-file .env \
+  -f deploy/compose.yaml \
   up -d --force-recreate --remove-orphans mcp-server
+```
+
+```bash
+docker compose \
+  --env-file .env \
+  -f deploy/compose.yaml \
+  up -d --force-recreate --remove-orphans tunnel-client
 ```
 
 The `--remove-orphans` option ensures that old Compose services, such as the former `terminal-executor`, are cleaned up.
