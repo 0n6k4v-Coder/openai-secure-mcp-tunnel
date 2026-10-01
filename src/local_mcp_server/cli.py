@@ -26,19 +26,18 @@ EXIT_ERROR = 2
 def _workspace_name(
     grant: dict[str, object],
 ) -> str:
-    host_path = grant.get(
-        "host_path"
-    )
+    host_path = grant.get("host_path")
 
-    if isinstance(
-        host_path,
-        str,
-    ) and host_path:
+    if (
+        isinstance(
+            host_path,
+            str,
+        )
+        and host_path
+    ):
         return Path(host_path).name or host_path
 
-    workspace_id = grant.get(
-        "workspace_id"
-    )
+    workspace_id = grant.get("workspace_id")
 
     if isinstance(
         workspace_id,
@@ -69,10 +68,7 @@ def _print_table(
         print("No results.")
         return
 
-    widths = [
-        len(header)
-        for header in headers
-    ]
+    widths = [len(header) for header in headers]
 
     for row in rows:
         for index, value in enumerate(row):
@@ -82,41 +78,24 @@ def _print_table(
             )
 
     print(
-        "  ".join(
-            header.ljust(widths[index])
-            for index, header in enumerate(headers)
-        )
+        "  ".join(header.ljust(widths[index]) for index, header in enumerate(headers))
     )
 
-    print(
-        "  ".join(
-            "-" * width
-            for width in widths
-        )
-    )
+    print("  ".join("-" * width for width in widths))
 
     for row in rows:
-        print(
-            "  ".join(
-                value.ljust(widths[index])
-                for index, value in enumerate(row)
-            )
-        )
+        print("  ".join(value.ljust(widths[index]) for index, value in enumerate(row)))
 
 
 def _sandbox_status_value(
     sandbox: dict[str, object],
 ) -> str:
-    status = sandbox.get(
-        "status"
-    )
+    status = sandbox.get("status")
 
     if status is not None and status != "":
         return str(status)
 
-    phase = sandbox.get(
-        "phase"
-    )
+    phase = sandbox.get("phase")
 
     if phase is not None and phase != "":
         return str(phase)
@@ -125,23 +104,15 @@ def _sandbox_status_value(
 
 
 def _sandbox_records() -> list[dict[str, object]]:
-    data = json.loads(
-        list_sandboxes()
-    )
+    data = json.loads(list_sandboxes())
 
     if not isinstance(
         data,
         list,
     ):
-        raise RuntimeError(
-            "OpenShell returned an invalid sandbox list."
-        )
+        raise RuntimeError("OpenShell returned an invalid sandbox list.")
 
-    return [
-        item
-        for item in data
-        if isinstance(item, dict)
-    ]
+    return [item for item in data if isinstance(item, dict)]
 
 
 def _workspace_records() -> list[dict[str, object]]:
@@ -153,20 +124,12 @@ def _find_workspace(
 ) -> dict[str, object]:
     grants = _workspace_records()
 
-    exact_id = [
-        grant
-        for grant in grants
-        if grant.get("workspace_id") == selector
-    ]
+    exact_id = [grant for grant in grants if grant.get("workspace_id") == selector]
 
     if len(exact_id) == 1:
         return exact_id[0]
 
-    name_matches = [
-        grant
-        for grant in grants
-        if _workspace_name(grant) == selector
-    ]
+    name_matches = [grant for grant in grants if _workspace_name(grant) == selector]
 
     if len(name_matches) == 1:
         return name_matches[0]
@@ -215,26 +178,18 @@ def _run_workspace_broker(
                 f"with exit code {completed.returncode}."
             )
 
-        raise RuntimeError(
-            message
-        )
+        raise RuntimeError(message)
 
     try:
-        result = json.loads(
-            completed.stdout
-        )
+        result = json.loads(completed.stdout)
     except json.JSONDecodeError as exc:
-        raise RuntimeError(
-            "The host workspace broker returned invalid JSON."
-        ) from exc
+        raise RuntimeError("The host workspace broker returned invalid JSON.") from exc
 
     if not isinstance(
         result,
         (dict, list),
     ):
-        raise RuntimeError(
-            "The host workspace broker returned an invalid result."
-        )
+        raise RuntimeError("The host workspace broker returned an invalid result.")
 
     return result
 
@@ -276,9 +231,7 @@ def _workspace_list(
     ]
 
     if not rows:
-        print(
-            "No authorized host workspaces."
-        )
+        print("No authorized host workspaces.")
         return EXIT_OK
 
     _print_table(
@@ -317,22 +270,12 @@ def _workspace_add(
         _print_json(grant)
         return EXIT_OK
 
-    print(
-        "Host workspace authorized."
-    )
+    print("Host workspace authorized.")
     print()
-    print(
-        f"Name:             {_workspace_name(grant)}"
-    )
-    print(
-        f"Host workspace ID: {grant['workspace_id']}"
-    )
-    print(
-        f"Host directory:    {grant['host_path']}"
-    )
-    print(
-        f"Sandbox path:      {grant['target']}"
-    )
+    print(f"Name:             {_workspace_name(grant)}")
+    print(f"Host workspace ID: {grant['workspace_id']}")
+    print(f"Host directory:    {grant['host_path']}")
+    print(f"Sandbox path:      {grant['target']}")
     print(
         "Access:            "
         + (
@@ -373,19 +316,17 @@ def _workspace_revoke(
         _print_json(result)
         return EXIT_OK
 
-    print(
-        f"Host workspace revoked: "
-        f"{result['workspace_id']}"
-    )
+    print(f"Host workspace revoked: {result['workspace_id']}")
 
-    volume_name = result.get(
-        "volume_name"
-    )
+    volume_name = result.get("volume_name")
 
-    if isinstance(
-        volume_name,
-        str,
-    ) and volume_name:
+    if (
+        isinstance(
+            volume_name,
+            str,
+        )
+        and volume_name
+    ):
         print(
             "Managed volume removal was requested by "
             "the host workspace broker: "
@@ -407,9 +348,7 @@ def _sandbox_list(
     rows = []
 
     for sandbox in records:
-        host_workspace_id = sandbox.get(
-            "host_workspace_id"
-        )
+        host_workspace_id = sandbox.get("host_workspace_id")
 
         if not isinstance(
             host_workspace_id,
@@ -425,9 +364,7 @@ def _sandbox_list(
                         "",
                     )
                 ),
-                _sandbox_status_value(
-                    sandbox
-                ),
+                _sandbox_status_value(sandbox),
                 host_workspace_id,
                 str(
                     sandbox.get(
@@ -439,9 +376,7 @@ def _sandbox_list(
         )
 
     if not rows:
-        print(
-            "No sandboxes found."
-        )
+        print("No sandboxes found.")
         return EXIT_OK
 
     _print_table(
@@ -455,9 +390,7 @@ def _sandbox_list(
     )
 
     print()
-    print(
-        f"{len(rows)} sandbox(es)."
-    )
+    print(f"{len(rows)} sandbox(es).")
 
     return EXIT_OK
 
@@ -466,89 +399,53 @@ def _sandbox_inspect(
     name: str,
     json_output: bool,
 ) -> int:
-    data = json.loads(
-        sandbox_status(name)
-    )
+    data = json.loads(sandbox_status(name))
 
     if not isinstance(
         data,
         dict,
     ):
-        raise RuntimeError(
-            "OpenShell returned invalid sandbox metadata."
-        )
+        raise RuntimeError("OpenShell returned invalid sandbox metadata.")
 
     if json_output:
         _print_json(data)
         return EXIT_OK
 
-    print(
-        "Sandbox"
-    )
-    print(
-        "-------"
-    )
-    print(
-        f"Name:      {data.get('name', name)}"
-    )
-    print(
-        "OpenShell workspace: "
-        f"{data.get('workspace', '')}"
-    )
-    print(
-        "Status:    "
-        f"{_sandbox_status_value(data)}"
-    )
-    print(
-        f"ID:        {data.get('id', '')}"
-    )
+    print("Sandbox")
+    print("-------")
+    print(f"Name:      {data.get('name', name)}")
+    print(f"OpenShell workspace: {data.get('workspace', '')}")
+    print(f"Status:    {_sandbox_status_value(data)}")
+    print(f"ID:        {data.get('id', '')}")
 
-    host_workspace_id = data.get(
-        "host_workspace_id"
-    )
+    host_workspace_id = data.get("host_workspace_id")
 
     if isinstance(
         host_workspace_id,
         str,
     ):
-        print(
-            "Host workspace ID: "
-            f"{host_workspace_id}"
-        )
+        print(f"Host workspace ID: {host_workspace_id}")
 
-    host_workspace = data.get(
-        "host_workspace"
-    )
+    host_workspace = data.get("host_workspace")
 
     if isinstance(
         host_workspace,
         dict,
     ):
-        print(
-            "Host workspace authorized: "
-            f"{host_workspace.get('authorized', False)}"
-        )
+        print(f"Host workspace authorized: {host_workspace.get('authorized', False)}")
 
-        host_path = host_workspace.get(
-            "host_path"
-        )
+        host_path = host_workspace.get("host_path")
 
         if isinstance(
             host_path,
             str,
         ):
-            print(
-                f"Host directory: {host_path}"
-            )
+            print(f"Host directory: {host_path}")
 
-    labels = data.get(
-        "labels"
-    )
+    labels = data.get("labels")
 
     if labels:
-        print(
-            f"Labels:    {labels}"
-        )
+        print(f"Labels:    {labels}")
 
     return EXIT_OK
 
@@ -558,50 +455,35 @@ def _select_workspace_interactively(
 ) -> dict[str, object]:
     if not sys.stdin.isatty():
         raise ValueError(
-            "--host-workspace is required when stdin is not interactive."
+            "--workspace is required: --host-workspace must be provided "
+            "when stdin is not interactive."
         )
 
-    print(
-        "Select an authorized host workspace:"
-    )
+    print("Select an authorized host workspace:")
     print()
 
     for index, grant in enumerate(
         grants,
         start=1,
     ):
-        print(
-            f"{index}. "
-            f"{_workspace_name(grant)} "
-            f"({grant.get('host_path', '')})"
-        )
+        print(f"{index}. {_workspace_name(grant)} ({grant.get('host_path', '')})")
 
     print()
 
     try:
-        answer = input(
-            f"Host workspace [1-{len(grants)}]: "
-        ).strip()
+        answer = input(f"Host workspace [1-{len(grants)}]: ").strip()
     except EOFError as exc:
-        raise ValueError(
-            "Host workspace selection was cancelled."
-        ) from exc
+        raise ValueError("Host workspace selection was cancelled.") from exc
 
     try:
         selected = int(answer)
     except ValueError as exc:
-        raise ValueError(
-            "Host workspace selection must be a number."
-        ) from exc
+        raise ValueError("Host workspace selection must be a number.") from exc
 
     if selected < 1 or selected > len(grants):
-        raise ValueError(
-            "Host workspace selection is out of range."
-        )
+        raise ValueError("Host workspace selection is out of range.")
 
-    return grants[
-        selected - 1
-    ]
+    return grants[selected - 1]
 
 
 def _sandbox_create(
@@ -618,25 +500,20 @@ def _sandbox_create(
         )
 
     if workspace_selector:
-        grant = _find_workspace(
-            workspace_selector
-        )
+        grant = _find_workspace(workspace_selector)
     else:
-        grant = _select_workspace_interactively(
-            grants
-        )
+        grant = _select_workspace_interactively(grants)
 
-    workspace_id = grant.get(
-        "workspace_id"
-    )
+    workspace_id = grant.get("workspace_id")
 
-    if not isinstance(
-        workspace_id,
-        str,
-    ) or not workspace_id:
-        raise RuntimeError(
-            "Selected host workspace has no workspace ID."
+    if (
+        not isinstance(
+            workspace_id,
+            str,
         )
+        or not workspace_id
+    ):
+        raise RuntimeError("Selected host workspace has no workspace ID.")
 
     data = json.loads(
         create_sandbox(
@@ -649,35 +526,19 @@ def _sandbox_create(
         data,
         dict,
     ):
-        raise RuntimeError(
-            "OpenShell returned invalid sandbox metadata."
-        )
+        raise RuntimeError("OpenShell returned invalid sandbox metadata.")
 
     if json_output:
         _print_json(data)
         return EXIT_OK
 
-    print(
-        "Sandbox created."
-    )
+    print("Sandbox created.")
     print()
-    print(
-        f"Name:                {data.get('name', name)}"
-    )
-    print(
-        "OpenShell workspace: "
-        f"{data.get('workspace', 'default')}"
-    )
-    print(
-        f"Host workspace ID:   {workspace_id}"
-    )
-    print(
-        "Sandbox path:        /workspace/project"
-    )
-    print(
-        "Status:              "
-        f"{_sandbox_status_value(data)}"
-    )
+    print(f"Name:                {data.get('name', name)}")
+    print(f"OpenShell workspace: {data.get('workspace', 'default')}")
+    print(f"Host workspace ID:   {workspace_id}")
+    print("Sandbox path:        /workspace/project")
+    print(f"Status:              {_sandbox_status_value(data)}")
 
     return EXIT_OK
 
@@ -686,25 +547,19 @@ def _sandbox_delete(
     name: str,
     json_output: bool,
 ) -> int:
-    result = json.loads(
-        delete_sandbox(name)
-    )
+    result = json.loads(delete_sandbox(name))
 
     if not isinstance(
         result,
         dict,
     ):
-        raise RuntimeError(
-            "OpenShell returned invalid deletion metadata."
-        )
+        raise RuntimeError("OpenShell returned invalid deletion metadata.")
 
     if json_output:
         _print_json(result)
         return EXIT_OK
 
-    print(
-        f"Sandbox deleted: {result['name']}"
-    )
+    print(f"Sandbox deleted: {result['name']}")
 
     return EXIT_OK
 
@@ -783,38 +638,25 @@ def _build_parser() -> argparse.ArgumentParser:
         "list",
         help="List all OpenShell sandboxes.",
     )
-    _add_json_argument(
-        list_parser
-    )
-    list_parser.set_defaults(
-        handler="sandbox_list"
-    )
+    _add_json_argument(list_parser)
+    list_parser.set_defaults(handler="sandbox_list")
 
     inspect_parser = subparsers.add_parser(
         "inspect",
         help="Show one OpenShell sandbox.",
     )
-    _add_json_argument(
-        inspect_parser
-    )
+    _add_json_argument(inspect_parser)
     inspect_parser.add_argument(
         "name",
         help="Sandbox name.",
     )
-    inspect_parser.set_defaults(
-        handler="sandbox_inspect"
-    )
+    inspect_parser.set_defaults(handler="sandbox_inspect")
 
     create_parser = subparsers.add_parser(
         "create",
-        help=(
-            "Create a sandbox using an authorized "
-            "host workspace grant."
-        ),
+        help=("Create a sandbox using an authorized host workspace grant."),
     )
-    _add_json_argument(
-        create_parser
-    )
+    _add_json_argument(create_parser)
     create_parser.add_argument(
         "name",
         help="Sandbox name.",
@@ -833,9 +675,7 @@ def _build_parser() -> argparse.ArgumentParser:
         dest="workspace",
         help=argparse.SUPPRESS,
     )
-    create_parser.set_defaults(
-        handler="sandbox_create"
-    )
+    create_parser.set_defaults(handler="sandbox_create")
 
     connect_parser = subparsers.add_parser(
         "connect",
@@ -845,144 +685,96 @@ def _build_parser() -> argparse.ArgumentParser:
         "name",
         help="Sandbox name.",
     )
-    connect_parser.set_defaults(
-        handler="sandbox_connect"
-    )
+    connect_parser.set_defaults(handler="sandbox_connect")
 
     delete_parser = subparsers.add_parser(
         "delete",
         help="Delete an OpenShell sandbox.",
     )
-    _add_json_argument(
-        delete_parser
-    )
+    _add_json_argument(delete_parser)
     delete_parser.add_argument(
         "name",
         help="Sandbox name.",
     )
-    delete_parser.set_defaults(
-        handler="sandbox_delete"
-    )
+    delete_parser.set_defaults(handler="sandbox_delete")
 
     host_workspace_parser = subparsers.add_parser(
         "host-workspace",
-        help=(
-            "Manage human-authorized host workspace grants."
-        ),
+        help=("Manage human-authorized host workspace grants."),
     )
 
-    host_workspace_subparsers = (
-        host_workspace_parser.add_subparsers(
-            dest="workspace_command",
-            required=True,
-        )
+    host_workspace_subparsers = host_workspace_parser.add_subparsers(
+        dest="workspace_command",
+        required=True,
     )
 
-    host_workspace_list_parser = (
-        host_workspace_subparsers.add_parser(
-            "list",
-            help="List authorized host workspace grants.",
-        )
+    host_workspace_list_parser = host_workspace_subparsers.add_parser(
+        "list",
+        help="List authorized host workspace grants.",
     )
-    _add_json_argument(
-        host_workspace_list_parser
-    )
-    host_workspace_list_parser.set_defaults(
-        handler="workspace_list"
-    )
+    _add_json_argument(host_workspace_list_parser)
+    host_workspace_list_parser.set_defaults(handler="workspace_list")
 
-    host_workspace_add_parser = (
-        host_workspace_subparsers.add_parser(
-            "add",
-            help="Authorize one host directory.",
-        )
+    host_workspace_add_parser = host_workspace_subparsers.add_parser(
+        "add",
+        help="Authorize one host directory.",
     )
-    _add_json_argument(
-        host_workspace_add_parser
-    )
+    _add_json_argument(host_workspace_add_parser)
     host_workspace_add_parser.add_argument(
         "host_path",
         help="Host directory to authorize.",
     )
-    host_workspace_add_parser.set_defaults(
-        handler="workspace_add"
-    )
+    host_workspace_add_parser.set_defaults(handler="workspace_add")
 
-    host_workspace_revoke_parser = (
-        host_workspace_subparsers.add_parser(
-            "revoke",
-            help="Revoke one host workspace grant.",
-        )
+    host_workspace_revoke_parser = host_workspace_subparsers.add_parser(
+        "revoke",
+        help="Revoke one host workspace grant.",
     )
-    _add_json_argument(
-        host_workspace_revoke_parser
-    )
+    _add_json_argument(host_workspace_revoke_parser)
     host_workspace_revoke_parser.add_argument(
         "workspace_id",
         help="Host workspace grant ID beginning with ws_.",
     )
-    host_workspace_revoke_parser.set_defaults(
-        handler="workspace_revoke"
-    )
+    host_workspace_revoke_parser.set_defaults(handler="workspace_revoke")
 
     workspace_parser = subparsers.add_parser(
         "workspace",
         help=argparse.SUPPRESS,
     )
 
-    workspace_subparsers = (
-        workspace_parser.add_subparsers(
-            dest="workspace_command",
-            required=True,
-        )
+    workspace_subparsers = workspace_parser.add_subparsers(
+        dest="workspace_command",
+        required=True,
     )
 
-    workspace_list_parser = (
-        workspace_subparsers.add_parser(
-            "list",
-            help=argparse.SUPPRESS,
-        )
+    workspace_list_parser = workspace_subparsers.add_parser(
+        "list",
+        help=argparse.SUPPRESS,
     )
-    _add_json_argument(
-        workspace_list_parser
-    )
-    workspace_list_parser.set_defaults(
-        handler="workspace_list"
-    )
+    _add_json_argument(workspace_list_parser)
+    workspace_list_parser.set_defaults(handler="workspace_list")
 
-    workspace_add_parser = (
-        workspace_subparsers.add_parser(
-            "add",
-            help=argparse.SUPPRESS,
-        )
+    workspace_add_parser = workspace_subparsers.add_parser(
+        "add",
+        help=argparse.SUPPRESS,
     )
-    _add_json_argument(
-        workspace_add_parser
-    )
+    _add_json_argument(workspace_add_parser)
     workspace_add_parser.add_argument(
         "host_path",
         help=argparse.SUPPRESS,
     )
-    workspace_add_parser.set_defaults(
-        handler="workspace_add"
-    )
+    workspace_add_parser.set_defaults(handler="workspace_add")
 
-    workspace_revoke_parser = (
-        workspace_subparsers.add_parser(
-            "revoke",
-            help=argparse.SUPPRESS,
-        )
+    workspace_revoke_parser = workspace_subparsers.add_parser(
+        "revoke",
+        help=argparse.SUPPRESS,
     )
-    _add_json_argument(
-        workspace_revoke_parser
-    )
+    _add_json_argument(workspace_revoke_parser)
     workspace_revoke_parser.add_argument(
         "workspace_id",
         help=argparse.SUPPRESS,
     )
-    workspace_revoke_parser.set_defaults(
-        handler="workspace_revoke"
-    )
+    workspace_revoke_parser.set_defaults(handler="workspace_revoke")
 
     return parser
 
@@ -991,15 +783,11 @@ def main(
     argv: list[str] | None = None,
 ) -> int:
     parser = _build_parser()
-    args = parser.parse_args(
-        argv
-    )
+    args = parser.parse_args(argv)
 
     try:
         if args.handler == "workspace_list":
-            return _workspace_list(
-                args.json
-            )
+            return _workspace_list(args.json)
 
         if args.handler == "workspace_add":
             return _workspace_add(
@@ -1014,15 +802,10 @@ def main(
             )
 
         if args.handler == "sandbox_list":
-            return _sandbox_list(
-                args.json
-            )
+            return _sandbox_list(args.json)
 
         if args.handler == "sandbox_inspect":
-            return _sandbox_inspect(
-                args.name,
-                args.json
-            )
+            return _sandbox_inspect(args.name, args.json)
 
         if args.handler == "sandbox_create":
             return _sandbox_create(
@@ -1039,17 +822,11 @@ def main(
 
         if args.handler == "sandbox_connect":
             if args.json:
-                raise ValueError(
-                    "--json is not supported with 'connect'."
-                )
+                raise ValueError("--json is not supported with 'connect'.")
 
-            return _sandbox_connect(
-                args.name
-            )
+            return _sandbox_connect(args.name)
 
-        parser.error(
-            f"unsupported command: {args.handler}"
-        )
+        parser.error(f"unsupported command: {args.handler}")
 
     except (
         ValueError,
@@ -1065,6 +842,4 @@ def main(
 
 
 if __name__ == "__main__":
-    raise SystemExit(
-        main()
-    )
+    raise SystemExit(main())
