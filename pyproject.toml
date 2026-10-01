@@ -16,7 +16,7 @@ workspace-broker = "local_mcp_server.workspace.broker:main"
 
 [dependency-groups]
 dev = [
-    "pytest>=9,<10",
+    "pytest>=9.1.1,<10",
     "ruff>=0.13,<0.14",
 ]
 
