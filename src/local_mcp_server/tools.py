@@ -28,11 +28,13 @@ from .workspace import (
     create_workspace_file as create_workspace_file_impl,
     delete_workspace_directory as delete_workspace_directory_impl,
     delete_workspace_file as delete_workspace_file_impl,
-    list_workspace_files as list_workspace_files_impl,
     list_workspace_grants,
-    read_workspace_text_file as read_workspace_text_file_impl,
     rename_workspace_path as rename_workspace_path_impl,
     write_workspace_file as write_workspace_file_impl,
+)
+from .workspace.sandbox_files import (
+    list_sandbox_workspace_files,
+    read_sandbox_workspace_text_file,
 )
 
 
@@ -142,9 +144,15 @@ def register_tools(
             openWorldHint=False,
         )
     )
-    def list_workspace_files() -> list[str]:
-        """List regular files below the MCP workspace."""
-        return list_workspace_files_impl()
+    def list_workspace_files(
+        sandbox_name: str,
+    ) -> list[str]:
+        """
+        List regular files inside the selected OpenShell sandbox workspace.
+
+        The sandbox name explicitly identifies the target sandbox.
+        """
+        return list_sandbox_workspace_files(sandbox_name)
 
     @mcp.tool(
         annotations=ToolAnnotations(
@@ -155,10 +163,16 @@ def register_tools(
         )
     )
     def read_workspace_text_file(
+        sandbox_name: str,
         relative_path: str,
     ) -> str:
-        """Read a UTF-8 text file from the MCP workspace."""
-        return read_workspace_text_file_impl(relative_path)
+        """
+        Read a UTF-8 text file from the selected OpenShell sandbox workspace.
+        """
+        return read_sandbox_workspace_text_file(
+            sandbox_name,
+            relative_path,
+        )
 
     @mcp.tool(
         annotations=ToolAnnotations(
