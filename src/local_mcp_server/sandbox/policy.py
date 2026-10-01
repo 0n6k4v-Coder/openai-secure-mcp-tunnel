@@ -5,7 +5,7 @@ import re
 
 from openshell._proto import openshell_pb2
 
-from ..workspace import resolve_workspace_grant
+from ..workspace import get_workspace_grant
 
 
 SANDBOX_IMAGE = os.environ.get(
@@ -93,15 +93,44 @@ def build_sandbox_spec(
     Build the OpenShell sandbox specification.
 
     The host path is never supplied directly by the model. It is resolved
-    through an opaque, previously authorized workspace capability into a
-    system-managed Docker volume name.
+    through an opaque, previously authorized workspace capability into the
+    system-managed Docker volume, mount target, and access mode stored in
+    the grant database.
     """
     cpu = validate_cpu(DEFAULT_CPU)
     memory = validate_memory(DEFAULT_MEMORY)
 
-    volume_name = resolve_workspace_grant(
+    grant = get_workspace_grant(
         workspace_id
     )
+
+    volume_name = grant["volume_name"]
+    target = grant["target"]
+    read_only = grant["read_only"]
+
+    if (
+        not isinstance(volume_name, str)
+        or not volume_name.strip()
+    ):
+        raise ValueError(
+            f"Workspace grant '{workspace_id}' has no valid volume name."
+        )
+
+    if (
+        not isinstance(target, str)
+        or not target.strip()
+    ):
+        raise ValueError(
+            f"Workspace grant '{workspace_id}' has no valid mount target."
+        )
+
+    if not isinstance(
+        read_only,
+        bool,
+    ):
+        raise ValueError(
+            f"Workspace grant '{workspace_id}' has an invalid read_only value."
+        )
 
     spec = openshell_pb2.SandboxSpec()
 
@@ -123,8 +152,8 @@ def build_sandbox_spec(
                     {
                         "type": "volume",
                         "source": volume_name,
-                        "target": "/workspace/project",
-                        "read_only": False,
+                        "target": target,
+                        "read_only": read_only,
                     }
                 ]
             }
@@ -151,7 +180,7 @@ def build_sandbox_spec(
         [
             "/tmp",
             "/dev/null",
-            "/workspace/project",
+            target,
         ]
     )
 

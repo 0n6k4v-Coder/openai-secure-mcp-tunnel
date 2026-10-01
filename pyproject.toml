@@ -20,6 +20,14 @@ dev = [
     "ruff>=0.13,<0.14",
 ]
 
+[tool.pytest.ini_options]
+addopts = [
+    "--import-mode=importlib",
+]
+markers = [
+    "integration: tests that require externally running MCP, OpenShell, or Docker services",
+]
+
 [build-system]
 requires = ["uv_build>=0.12.19,<0.13"]
 build-backend = "uv_build"

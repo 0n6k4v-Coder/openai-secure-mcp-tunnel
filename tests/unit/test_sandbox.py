@@ -38,8 +38,14 @@ def test_build_sandbox_spec_emits_volume_mount_and_policy(
 ) -> None:
     monkeypatch.setattr(
         policy,
-        "resolve_workspace_grant",
-        lambda workspace_id: "mcp-ws-testvolume123",
+        "get_workspace_grant",
+        lambda workspace_id: {
+            "workspace_id": workspace_id,
+            "host_path": "/tmp/test-workspace",
+            "volume_name": "mcp-ws-testvolume123",
+            "target": "/workspace/project",
+            "read_only": False,
+        },
     )
 
     spec = policy.build_sandbox_spec(

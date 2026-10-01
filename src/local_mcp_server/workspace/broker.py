@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import secrets
+import shutil
 import subprocess
 
 from . import service as _service
@@ -14,12 +15,60 @@ from .validation import canonicalize_host_workspace
 
 GRANTS_READ_ONLY = _service.GRANTS_READ_ONLY
 
+SANDBOX_UID = "10001"
+SANDBOX_ACL_TOOL = "setfacl"
+
 
 def _grants_read_only() -> bool:
     """Return the broker's current workspace-grant write policy."""
     return bool(
         GRANTS_READ_ONLY
     )
+
+
+def _prepare_workspace_permissions(
+    host_path: str,
+) -> None:
+    """
+    Grant the sandbox workload identity access to an authorized host workspace.
+
+    The host directory remains owned by the human operator. POSIX ACLs provide
+    the sandbox process, which runs as UID 10001, with read/write/search access.
+    """
+    setfacl = shutil.which(
+        SANDBOX_ACL_TOOL
+    )
+
+    if setfacl is None:
+        raise RuntimeError(
+            "setfacl is required to authorize a host workspace."
+        )
+
+    result = subprocess.run(
+        [
+            setfacl,
+            "-m",
+            f"u:{SANDBOX_UID}:rwx",
+            host_path,
+        ],
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+        text=True,
+        check=False,
+    )
+
+    if result.returncode != 0:
+        detail = result.stderr.strip()
+
+        if detail:
+            raise RuntimeError(
+                "Failed to grant sandbox access to workspace: "
+                f"{detail}"
+            )
+
+        raise RuntimeError(
+            "Failed to grant sandbox access to workspace."
+        )
 
 
 def _create_docker_volume(
@@ -132,6 +181,10 @@ def create_workspace_grant(
 
     resolved = canonicalize_host_workspace(
         host_path
+    )
+
+    _prepare_workspace_permissions(
+        str(resolved)
     )
 
     token = secrets.token_hex(
