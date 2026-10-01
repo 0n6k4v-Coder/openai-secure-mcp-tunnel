@@ -5,7 +5,7 @@ import re
 
 from openshell._proto import openshell_pb2
 
-from ..workspace import get_workspace_grant
+from ..workspace.service import get_workspace_grant
 
 
 SANDBOX_IMAGE = os.environ.get(
@@ -135,6 +135,11 @@ def build_sandbox_spec(
     spec = openshell_pb2.SandboxSpec()
 
     spec.template.image = SANDBOX_IMAGE
+
+    spec.command.extend([
+        "sleep",
+        "infinity",
+    ])
 
     spec.template.resources.update(
         {

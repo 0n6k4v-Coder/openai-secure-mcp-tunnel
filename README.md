@@ -391,7 +391,7 @@ write_workspace_file
 
 The sandbox-related tools are backed by OpenShell.
 
-The workspace tools operate within the configured workspace boundary.
+The workspace tools operate directly within the selected OpenShell sandbox's mounted workspace (`/workspace/project`).
 
 ---
 

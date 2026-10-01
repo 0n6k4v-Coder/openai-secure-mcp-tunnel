@@ -10,7 +10,7 @@ from .policy import (
     validate_command,
     validate_name,
 )
-from ..workspace import get_workspace_grant
+from ..workspace.service import get_workspace_grant
 
 
 OPEN_SHELL_GATEWAY = os.environ.get(
@@ -308,6 +308,8 @@ def sandbox_status(
 def execute_sandbox(
     name: str,
     command: str,
+    *,
+    stdin: bytes | str | None = None,
 ) -> str:
     """
     Execute a normal command inside an existing sandbox.
@@ -324,6 +326,12 @@ def execute_sandbox(
         command
     )
 
+    stdin_bytes: bytes | None = None
+    if isinstance(stdin, str):
+        stdin_bytes = stdin.encode("utf-8")
+    elif isinstance(stdin, (bytes, bytearray)):
+        stdin_bytes = bytes(stdin)
+
     try:
         with _client() as client:
             result = client.exec(
@@ -334,6 +342,7 @@ def execute_sandbox(
                     command,
                 ],
                 workspace=OPEN_SHELL_WORKSPACE,
+                stdin=stdin_bytes,
             )
 
             return json.dumps(

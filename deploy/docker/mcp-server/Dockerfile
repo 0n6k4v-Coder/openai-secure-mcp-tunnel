@@ -31,7 +31,6 @@ WORKDIR /app
 ENV PATH="/app/.venv/bin:$PATH" \
     PYTHONDONTWRITEBYTECODE=1 \
     PYTHONUNBUFFERED=1 \
-    WORKSPACE_DIR=/app/workspace \
     LOG_LEVEL=INFO
 
 RUN groupadd \

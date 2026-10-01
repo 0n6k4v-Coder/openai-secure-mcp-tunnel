@@ -183,11 +183,13 @@ def register_tools(
         )
     )
     def create_workspace_file(
+        sandbox_name: str,
         relative_path: str,
         content: str,
     ) -> str:
-        """Create a new UTF-8 text file in the MCP workspace."""
+        """Create a new UTF-8 text file in the selected OpenShell sandbox workspace."""
         return create_workspace_file_impl(
+            sandbox_name,
             relative_path,
             content,
         )
@@ -201,11 +203,13 @@ def register_tools(
         )
     )
     def write_workspace_file(
+        sandbox_name: str,
         relative_path: str,
         content: str,
     ) -> str:
-        """Replace the contents of an existing UTF-8 text file."""
+        """Replace the contents of an existing UTF-8 text file in the selected OpenShell sandbox workspace."""
         return write_workspace_file_impl(
+            sandbox_name,
             relative_path,
             content,
         )
@@ -219,10 +223,14 @@ def register_tools(
         )
     )
     def create_workspace_directory(
+        sandbox_name: str,
         relative_path: str,
     ) -> str:
-        """Create a directory inside the workspace."""
-        return create_workspace_directory_impl(relative_path)
+        """Create a directory inside the selected OpenShell sandbox workspace."""
+        return create_workspace_directory_impl(
+            sandbox_name,
+            relative_path,
+        )
 
     @mcp.tool(
         annotations=ToolAnnotations(
@@ -233,11 +241,13 @@ def register_tools(
         )
     )
     def rename_workspace_path(
+        sandbox_name: str,
         relative_path: str,
         new_relative_path: str,
     ) -> str:
-        """Rename a file or directory inside the workspace."""
+        """Rename a file or directory inside the selected OpenShell sandbox workspace."""
         return rename_workspace_path_impl(
+            sandbox_name,
             relative_path,
             new_relative_path,
         )
@@ -251,10 +261,14 @@ def register_tools(
         )
     )
     def delete_workspace_file(
+        sandbox_name: str,
         relative_path: str,
     ) -> str:
-        """Delete a regular file inside the workspace."""
-        return delete_workspace_file_impl(relative_path)
+        """Delete a regular file inside the selected OpenShell sandbox workspace."""
+        return delete_workspace_file_impl(
+            sandbox_name,
+            relative_path,
+        )
 
     @mcp.tool(
         annotations=ToolAnnotations(
@@ -265,10 +279,14 @@ def register_tools(
         )
     )
     def delete_workspace_directory(
+        sandbox_name: str,
         relative_path: str,
     ) -> str:
-        """Delete a directory tree inside the workspace."""
-        return delete_workspace_directory_impl(relative_path)
+        """Delete a directory tree inside the selected OpenShell sandbox workspace."""
+        return delete_workspace_directory_impl(
+            sandbox_name,
+            relative_path,
+        )
 
     @mcp.tool(
         annotations=ToolAnnotations(

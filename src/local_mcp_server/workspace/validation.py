@@ -1,15 +1,6 @@
 from __future__ import annotations
 
-import os
 from pathlib import Path
-
-
-WORKSPACE_ROOT = Path(
-    os.environ.get(
-        "WORKSPACE_DIR",
-        "/app/workspace",
-    )
-).resolve()
 
 
 def canonicalize_host_workspace(
@@ -73,27 +64,5 @@ def canonicalize_host_workspace(
         raise ValueError(
             f"Mounting host path '{resolved}' is not allowed."
         )
-
-    return resolved
-
-
-def resolve_workspace_path(
-    relative_path: str,
-) -> Path:
-    """Resolve a user-supplied path while enforcing the workspace boundary."""
-    if not relative_path:
-        raise ValueError(
-            "Path must not be empty."
-        )
-
-    candidate = WORKSPACE_ROOT / relative_path
-    resolved = candidate.resolve()
-
-    try:
-        resolved.relative_to(WORKSPACE_ROOT)
-    except ValueError as exc:
-        raise ValueError(
-            "Requested path is outside the workspace."
-        ) from exc
 
     return resolved
