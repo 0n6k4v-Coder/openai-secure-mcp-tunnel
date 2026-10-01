@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import json
+
 import pytest
 
 from local_mcp_server.sandbox import policy
@@ -112,6 +114,85 @@ def test_build_sandbox_spec_emits_volume_mount_and_policy(
         spec.policy.landlock.compatibility
         == "hard_requirement"
     )
+
+
+def test_host_workspace_metadata_does_not_expose_host_path_or_volume(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(
+        service,
+        "get_workspace_grant",
+        lambda workspace_id: {
+            "workspace_id": workspace_id,
+            "host_path": "/home/user/private-repository",
+            "volume_name": "mcp-ws-secret-volume",
+            "target": "/workspace/project",
+            "read_only": False,
+        },
+    )
+
+    metadata = service._host_workspace_metadata(
+        "ws_test"
+    )
+
+    assert metadata == {
+        "workspace_id": "ws_test",
+        "authorized": True,
+        "target": "/workspace/project",
+        "read_only": False,
+    }
+
+    assert "host_path" not in metadata
+    assert "volume_name" not in metadata
+
+
+def test_sandbox_to_dict_does_not_expose_host_path_or_volume(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(
+        service,
+        "get_workspace_grant",
+        lambda workspace_id: {
+            "workspace_id": workspace_id,
+            "host_path": "/home/user/private-repository",
+            "volume_name": "mcp-ws-secret-volume",
+            "target": "/workspace/project",
+            "read_only": False,
+        },
+    )
+
+    class Sandbox:
+        id = "sandbox-id"
+        name = "test-sandbox"
+        phase = "running"
+        status = type(
+            "Status",
+            (),
+            {"phase": "running"},
+        )()
+        labels = {
+            service.HOST_WORKSPACE_LABEL: "ws_test",
+        }
+
+    result = service._sandbox_to_dict(
+        Sandbox()
+    )
+
+    metadata = result["host_workspace"]
+
+    assert metadata == {
+        "workspace_id": "ws_test",
+        "authorized": True,
+        "target": "/workspace/project",
+        "read_only": False,
+    }
+
+    serialized = json.dumps(
+        result
+    )
+
+    assert "/home/user/private-repository" not in serialized
+    assert "mcp-ws-secret-volume" not in serialized
 
 
 def test_create_sandbox_rejects_arbitrary_host_path() -> None:

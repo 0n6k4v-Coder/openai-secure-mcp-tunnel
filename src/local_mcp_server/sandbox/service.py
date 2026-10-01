@@ -72,6 +72,13 @@ def _host_workspace_id_from_labels(
 def _host_workspace_metadata(
     host_workspace_id: str | None,
 ) -> dict[str, object] | None:
+    """
+    Return only MCP-safe metadata for an authorized host workspace.
+
+    The exact host filesystem path and Docker volume name are intentionally
+    excluded from MCP tool results. Those values remain application-only
+    implementation details.
+    """
     if not host_workspace_id:
         return None
 
@@ -88,8 +95,6 @@ def _host_workspace_metadata(
     return {
         "workspace_id": host_workspace_id,
         "authorized": True,
-        "host_path": grant["host_path"],
-        "volume_name": grant["volume_name"],
         "target": grant["target"],
         "read_only": grant["read_only"],
     }
@@ -159,10 +164,10 @@ def create_sandbox(
     """
     Create and wait for an OpenShell sandbox.
 
-    workspace_id is the internal name retained by the existing workspace
-    grant service. At the MCP boundary it is exposed as
-    host_workspace_id because it represents a human-authorized host
-    directory capability, not an OpenShell workspace.
+    workspace_id identifies a human-authorized host workspace capability.
+
+    The exact host filesystem path and Docker volume name are resolved by
+    the trusted application layer and are never returned to the MCP client.
     """
     name = validate_name(
         name
@@ -211,8 +216,6 @@ def create_sandbox(
             result["host_workspace"] = {
                 "workspace_id": workspace_id,
                 "authorized": True,
-                "host_path": grant["host_path"],
-                "volume_name": grant["volume_name"],
                 "target": grant["target"],
                 "read_only": grant["read_only"],
             }

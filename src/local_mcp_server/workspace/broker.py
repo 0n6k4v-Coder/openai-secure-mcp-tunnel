@@ -1,313 +1,709 @@
 from __future__ import annotations
 
-import secrets
+import argparse
+import json
+import os
 import shutil
 import subprocess
+import uuid
+from pathlib import Path
 
-from . import service as _service
 from .service import (
-    _GRANTS_LOCK,
-    _load_workspace_grants,
-    _save_workspace_grants,
+    GRANTS_READ_ONLY,
+    WORKSPACE_GRANTS_FILE,
 )
 from .validation import canonicalize_host_workspace
 
 
-GRANTS_READ_ONLY = _service.GRANTS_READ_ONLY
+SANDBOX_UID = 10001
+SANDBOX_GID = 10001
+SANDBOX_TARGET = "/workspace/project"
 
-SANDBOX_UID = "10001"
-SANDBOX_ACL_TOOL = "setfacl"
+PROTECTED_WORKSPACE_PATHS = (
+    Path(".env"),
+    Path(".secrets"),
+    Path(".state"),
+    Path("deploy/openshell/jwt"),
+)
+
+OWNER_ONLY_DIRECTORY_MODE = 0o700
+OWNER_ONLY_FILE_MODE = 0o600
 
 
-def _grants_read_only() -> bool:
-    """Return the broker's current workspace-grant write policy."""
-    return bool(
-        GRANTS_READ_ONLY
-    )
+def _load_grants() -> dict[str, dict[str, object]]:
+    if not WORKSPACE_GRANTS_FILE.exists():
+        return {}
 
-
-def _prepare_workspace_permissions(
-    host_path: str,
-) -> None:
-    """
-    Grant the sandbox workload identity access to an authorized host workspace.
-
-    The host directory remains owned by the human operator. POSIX ACLs provide
-    the sandbox process, which runs as UID 10001, with read/write/search access.
-    """
-    setfacl = shutil.which(
-        SANDBOX_ACL_TOOL
-    )
-
-    if setfacl is None:
+    try:
+        data = json.loads(
+            WORKSPACE_GRANTS_FILE.read_text(
+                encoding="utf-8",
+            )
+        )
+    except json.JSONDecodeError as exc:
         raise RuntimeError(
-            "setfacl is required to authorize a host workspace."
+            "Workspace grants file contains invalid JSON."
+        ) from exc
+
+    if not isinstance(data, dict):
+        raise RuntimeError(
+            "Workspace grants file must contain a JSON object."
         )
 
-    result = subprocess.run(
-        [
-            setfacl,
-            "-m",
-            f"u:{SANDBOX_UID}:rwx",
-            host_path,
-        ],
-        stdout=subprocess.PIPE,
-        stderr=subprocess.PIPE,
-        text=True,
-        check=False,
+    grants: dict[str, dict[str, object]] = {}
+
+    for workspace_id, grant in data.items():
+        if not isinstance(
+            workspace_id,
+            str,
+        ):
+            continue
+
+        if not isinstance(
+            grant,
+            dict,
+        ):
+            continue
+
+        grants[workspace_id] = grant
+
+    return grants
+
+
+def _save_grants(
+    grants: dict[str, dict[str, object]],
+) -> None:
+    WORKSPACE_GRANTS_FILE.parent.mkdir(
+        parents=True,
+        exist_ok=True,
     )
 
-    if result.returncode != 0:
-        detail = result.stderr.strip()
+    temporary_path = WORKSPACE_GRANTS_FILE.with_suffix(
+        ".tmp"
+    )
 
-        if detail:
-            raise RuntimeError(
-                "Failed to grant sandbox access to workspace: "
-                f"{detail}"
+    temporary_path.write_text(
+        json.dumps(
+            grants,
+            ensure_ascii=False,
+            indent=2,
+            sort_keys=True,
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+
+    os.replace(
+        temporary_path,
+        WORKSPACE_GRANTS_FILE,
+    )
+
+
+def _workspace_id() -> str:
+    return f"ws_{uuid.uuid4().hex}"
+
+
+def _volume_name(
+    workspace_id: str,
+) -> str:
+    return f"mcp-{workspace_id}"
+
+
+def _run_command(
+    command: list[str],
+) -> subprocess.CompletedProcess[str]:
+    try:
+        return subprocess.run(
+            command,
+            check=False,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            text=True,
+        )
+    except FileNotFoundError as exc:
+        raise RuntimeError(
+            f"Required host command is unavailable: {command[0]}"
+        ) from exc
+
+
+def _require_setfacl() -> str:
+    executable = shutil.which("setfacl")
+
+    if executable is None:
+        raise RuntimeError(
+            "setfacl is required on the trusted host to provision "
+            "workspace permissions."
+        )
+
+    return executable
+
+
+def _run_setfacl(
+    setfacl: str,
+    arguments: list[str],
+) -> None:
+    completed = _run_command(
+        [
+            setfacl,
+            *arguments,
+        ]
+    )
+
+    if completed.returncode != 0:
+        message = completed.stderr.strip()
+
+        if not message:
+            message = (
+                "setfacl failed "
+                f"with exit code {completed.returncode}."
             )
 
         raise RuntimeError(
-            "Failed to grant sandbox access to workspace."
+            message
         )
 
 
-def _create_docker_volume(
-    volume_name: str,
-    canonical_host_path: str,
-) -> None:
-    cmd = [
-        "docker",
-        "volume",
-        "create",
-        "--driver",
-        "local",
-        "--opt",
-        "type=none",
-        "--opt",
-        "o=bind",
-        "--opt",
-        f"device={canonical_host_path}",
-        volume_name,
-    ]
-
+def _is_protected_path(
+    path: Path,
+    root: Path,
+) -> bool:
     try:
-        proc = subprocess.run(
-            cmd,
-            stdout=subprocess.PIPE,
-            stderr=subprocess.PIPE,
-            text=True,
-            check=False,
+        relative = path.relative_to(
+            root
         )
-    except OSError as exc:
-        raise RuntimeError(
-            f"Failed to execute docker command: {exc}"
-        ) from exc
+    except ValueError:
+        return True
 
-    if proc.returncode != 0:
+    for protected in PROTECTED_WORKSPACE_PATHS:
+        if (
+            relative == protected
+            or protected in relative.parents
+        ):
+            return True
+
+    return False
+
+
+def _validate_protected_path_permissions(
+    host_path: Path,
+) -> None:
+    for relative in PROTECTED_WORKSPACE_PATHS:
+        protected_path = (
+            host_path / relative
+        )
+
+        if not protected_path.exists():
+            continue
+
+        mode = protected_path.stat().st_mode
+
+        if protected_path.is_dir():
+            required_mode = OWNER_ONLY_DIRECTORY_MODE
+        else:
+            required_mode = OWNER_ONLY_FILE_MODE
+
+        actual_mode = mode & 0o777
+
+        if actual_mode != required_mode:
+            raise RuntimeError(
+                "Protected workspace path has unsafe permissions: "
+                f"{protected_path} is {actual_mode:03o}; "
+                f"expected {required_mode:03o}. "
+                "Harden the protected path before authorizing "
+                "the workspace for sandbox write access."
+            )
+
+
+def _provision_sandbox_acl(
+    host_path: Path,
+) -> None:
+    setfacl = _require_setfacl()
+
+    _validate_protected_path_permissions(
+        host_path
+    )
+
+    _run_setfacl(
+        setfacl,
+        [
+            "-m",
+            f"u:{SANDBOX_UID}:rwx",
+            str(host_path),
+        ],
+    )
+
+    for current_root, dirnames, filenames in os.walk(
+        host_path,
+        topdown=True,
+        followlinks=False,
+    ):
+        current_path = Path(
+            current_root
+        )
+
+        protected_dirs: list[str] = []
+
+        for dirname in dirnames:
+            directory = (
+                current_path / dirname
+            )
+
+            if _is_protected_path(
+                directory,
+                host_path,
+            ):
+                protected_dirs.append(
+                    dirname
+                )
+
+        for dirname in protected_dirs:
+            dirnames.remove(
+                dirname
+            )
+
+        if _is_protected_path(
+            current_path,
+            host_path,
+        ):
+            continue
+
+        if current_path != host_path:
+            _run_setfacl(
+                setfacl,
+                [
+                    "-m",
+                    f"u:{SANDBOX_UID}:rwx",
+                    str(current_path),
+                ],
+            )
+
+        _run_setfacl(
+            setfacl,
+            [
+                "-m",
+                f"d:u:{SANDBOX_UID}:rwx",
+                str(current_path),
+            ],
+        )
+
+        for filename in filenames:
+            file_path = (
+                current_path / filename
+            )
+
+            if _is_protected_path(
+                file_path,
+                host_path,
+            ):
+                continue
+
+            if file_path.is_symlink():
+                continue
+
+            _run_setfacl(
+                setfacl,
+                [
+                    "-m",
+                    f"u:{SANDBOX_UID}:rwX",
+                    str(file_path),
+                ],
+            )
+
+
+def _remove_sandbox_acl(
+    host_path: Path,
+) -> None:
+    setfacl = _require_setfacl()
+
+    _run_setfacl(
+        setfacl,
+        [
+            "-x",
+            f"u:{SANDBOX_UID}",
+            str(host_path),
+        ],
+    )
+
+    for current_root, dirnames, filenames in os.walk(
+        host_path,
+        topdown=True,
+        followlinks=False,
+    ):
+        current_path = Path(
+            current_root
+        )
+
+        protected_dirs: list[str] = []
+
+        for dirname in dirnames:
+            directory = (
+                current_path / dirname
+            )
+
+            if _is_protected_path(
+                directory,
+                host_path,
+            ):
+                protected_dirs.append(
+                    dirname
+                )
+
+        for dirname in protected_dirs:
+            dirnames.remove(
+                dirname
+            )
+
+        if _is_protected_path(
+            current_path,
+            host_path,
+        ):
+            continue
+
+        if current_path != host_path:
+            _run_setfacl(
+                setfacl,
+                [
+                    "-x",
+                    f"u:{SANDBOX_UID}",
+                    str(current_path),
+                ],
+            )
+
+        _run_setfacl(
+            setfacl,
+            [
+                "-x",
+                f"d:u:{SANDBOX_UID}",
+                str(current_path),
+            ],
+        )
+
+        for filename in filenames:
+            file_path = (
+                current_path / filename
+            )
+
+            if _is_protected_path(
+                file_path,
+                host_path,
+            ):
+                continue
+
+            if file_path.is_symlink():
+                continue
+
+            _run_setfacl(
+                setfacl,
+                [
+                    "-x",
+                    f"u:{SANDBOX_UID}",
+                    str(file_path),
+                ],
+            )
+
+
+def _docker_volume_exists(
+    volume_name: str,
+) -> bool:
+    docker = shutil.which("docker")
+
+    if docker is None:
+        return False
+
+    completed = _run_command(
+        [
+            docker,
+            "volume",
+            "inspect",
+            volume_name,
+        ]
+    )
+
+    return completed.returncode == 0
+
+
+def _create_host_backed_volume(
+    volume_name: str,
+    host_path: Path,
+) -> None:
+    docker = shutil.which("docker")
+
+    if docker is None:
         raise RuntimeError(
-            f"Failed to create Docker volume '{volume_name}': "
-            f"{proc.stderr.strip()}"
+            "docker is required to create the host-backed workspace volume."
+        )
+
+    if _docker_volume_exists(
+        volume_name
+    ):
+        return
+
+    completed = _run_command(
+        [
+            docker,
+            "volume",
+            "create",
+            "--driver",
+            "local",
+            "--opt",
+            "type=none",
+            "--opt",
+            "o=bind",
+            "--opt",
+            f"device={host_path}",
+            volume_name,
+        ]
+    )
+
+    if completed.returncode != 0:
+        message = completed.stderr.strip()
+
+        if not message:
+            message = (
+                "docker volume create failed "
+                f"with exit code {completed.returncode}."
+            )
+
+        raise RuntimeError(
+            message
         )
 
 
-def _verify_docker_volume(
+def _remove_volume(
     volume_name: str,
 ) -> None:
-    cmd = [
-        "docker",
-        "volume",
-        "inspect",
-        volume_name,
-    ]
+    docker = shutil.which("docker")
 
-    try:
-        proc = subprocess.run(
-            cmd,
-            stdout=subprocess.PIPE,
-            stderr=subprocess.PIPE,
-            text=True,
-            check=False,
-        )
-    except OSError as exc:
+    if docker is None:
         raise RuntimeError(
-            f"Failed to execute docker command: {exc}"
-        ) from exc
+            "docker is required to remove the workspace volume."
+        )
 
-    if proc.returncode != 0:
+    if not _docker_volume_exists(
+        volume_name
+    ):
+        return
+
+    completed = _run_command(
+        [
+            docker,
+            "volume",
+            "rm",
+            volume_name,
+        ]
+    )
+
+    if completed.returncode != 0:
+        message = completed.stderr.strip()
+
+        if not message:
+            message = (
+                "docker volume rm failed "
+                f"with exit code {completed.returncode}."
+            )
+
         raise RuntimeError(
-            f"Docker volume '{volume_name}' could not be verified: "
-            f"{proc.stderr.strip()}"
+            message
         )
-
-
-def _remove_docker_volume(
-    volume_name: str,
-) -> None:
-    cmd = [
-        "docker",
-        "volume",
-        "rm",
-        volume_name,
-    ]
-
-    try:
-        subprocess.run(
-            cmd,
-            stdout=subprocess.PIPE,
-            stderr=subprocess.PIPE,
-            text=True,
-            check=False,
-        )
-    except OSError:
-        pass
 
 
 def create_workspace_grant(
     host_path: str,
+    *,
     create_volume: bool = True,
 ) -> dict[str, object]:
-    """
-    Create a capability representing one human-authorized host workspace.
-
-    This function is intended for the host-only workspace broker.
-    The MCP server process must run with
-    WORKSPACE_GRANTS_READ_ONLY=true.
-    """
-    if _grants_read_only():
+    if GRANTS_READ_ONLY:
         raise RuntimeError(
-            "Workspace grants are read-only in this process. "
-            "Run the host workspace broker to authorize a workspace."
+            "Workspace grants are configured read-only; "
+            "refusing to create a writable grant."
         )
 
-    resolved = canonicalize_host_workspace(
+    resolved_host_path = canonicalize_host_workspace(
         host_path
     )
 
-    _prepare_workspace_permissions(
-        str(resolved)
+    workspace_id = _workspace_id()
+    volume_name = _volume_name(
+        workspace_id
     )
 
-    token = secrets.token_hex(
-        12
+    _provision_sandbox_acl(
+        resolved_host_path
     )
 
-    workspace_id = f"ws_{token}"
-    volume_name = f"mcp-ws-{token}"
-
-    with _GRANTS_LOCK:
-        grants = _load_workspace_grants()
-
-        while workspace_id in grants:
-            token = secrets.token_hex(
-                12
-            )
-            workspace_id = f"ws_{token}"
-            volume_name = f"mcp-ws-{token}"
-
+    try:
         if create_volume:
-            _create_docker_volume(
+            _create_host_backed_volume(
                 volume_name,
-                str(resolved),
+                resolved_host_path,
             )
-            _verify_docker_volume(
+    except Exception:
+        _remove_sandbox_acl(
+            resolved_host_path
+        )
+        raise
+
+    grants = _load_grants()
+
+    grant = {
+        "host_path": str(
+            resolved_host_path
+        ),
+        "read_only": False,
+        "target": SANDBOX_TARGET,
+        "volume_name": volume_name,
+    }
+
+    grants[workspace_id] = grant
+
+    try:
+        _save_grants(
+            grants
+        )
+    except Exception:
+        if create_volume:
+            _remove_volume(
                 volume_name
             )
 
-        grants[workspace_id] = {
-            "host_path": str(resolved),
-            "volume_name": volume_name,
-            "target": "/workspace/project",
-            "read_only": False,
-        }
-
-        _save_workspace_grants(
-            grants
+        _remove_sandbox_acl(
+            resolved_host_path
         )
+
+        raise
 
     return {
         "workspace_id": workspace_id,
-        "host_path": str(resolved),
-        "volume_name": volume_name,
-        "target": "/workspace/project",
-        "read_only": False,
+        **grant,
     }
 
 
 def revoke_workspace_grant(
     workspace_id: str,
+    *,
     remove_volume: bool = True,
 ) -> dict[str, object]:
-    """
-    Revoke an authorized workspace capability and its associated Docker volume.
-    """
-    if _grants_read_only():
+    if GRANTS_READ_ONLY:
         raise RuntimeError(
-            "Workspace grants are read-only in this process. "
-            "Run the host workspace broker to revoke a workspace."
+            "Workspace grants are configured read-only; "
+            "refusing to revoke writable grants."
         )
 
-    if not isinstance(
-        workspace_id,
-        str,
-    ) or not workspace_id.strip():
+    if not workspace_id:
         raise ValueError(
             "workspace_id must not be empty."
         )
 
-    if not workspace_id.startswith("ws_"):
+    if not workspace_id.startswith(
+        "ws_"
+    ):
         raise ValueError(
             "workspace_id has an invalid format."
         )
 
-    with _GRANTS_LOCK:
-        grants = _load_workspace_grants()
+    grants = _load_grants()
 
-        if workspace_id not in grants:
-            raise ValueError(
-                f"Workspace grant '{workspace_id}' was not found."
-            )
+    grant = grants.get(
+        workspace_id
+    )
 
-        entry = grants.pop(
-            workspace_id
+    if grant is None:
+        raise ValueError(
+            f"Workspace grant '{workspace_id}' was not found."
         )
 
-        _save_workspace_grants(
-            grants
+    host_path_value = grant.get(
+        "host_path"
+    )
+
+    if not isinstance(
+        host_path_value,
+        str,
+    ):
+        raise RuntimeError(
+            "Workspace grant has no valid host path."
         )
 
-    volume_name = entry.get(
+    host_path = Path(
+        host_path_value
+    ).resolve()
+
+    volume_name_value = grant.get(
         "volume_name"
     )
 
-    if (
-        remove_volume
-        and isinstance(volume_name, str)
-        and volume_name
+    if not isinstance(
+        volume_name_value,
+        str,
     ):
-        _remove_docker_volume(
-            volume_name
+        raise RuntimeError(
+            "Workspace grant has no valid volume name."
         )
+
+    _remove_sandbox_acl(
+        host_path
+    )
+
+    if remove_volume:
+        _remove_volume(
+            volume_name_value
+        )
+
+    del grants[
+        workspace_id
+    ]
+
+    _save_grants(
+        grants
+    )
 
     return {
         "workspace_id": workspace_id,
+        "host_path": str(
+            host_path
+        ),
+        "volume_name": volume_name_value,
         "revoked": True,
-        "volume_name": volume_name,
     }
+
+
+def _authorize(
+    host_path: str,
+) -> dict[str, object]:
+    return create_workspace_grant(
+        host_path
+    )
+
+
+def _revoke(
+    workspace_id: str,
+) -> dict[str, object]:
+    return revoke_workspace_grant(
+        workspace_id
+    )
+
+
+def _list_grants() -> list[dict[str, object]]:
+    grants = _load_grants()
+
+    return [
+        {
+            "workspace_id": workspace_id,
+            **grant,
+        }
+        for workspace_id, grant in sorted(
+            grants.items()
+        )
+    ]
 
 
 def main(
     argv: list[str] | None = None,
 ) -> int:
-    import argparse
-    import json
-    import sys
-
     parser = argparse.ArgumentParser(
-        prog="workspace-broker",
         description=(
-            "Host-only workspace authorization broker. "
-            "Run this command on the host, never as an MCP tool."
-        ),
+            "Trusted host-side workspace ACL and Docker-volume broker."
+        )
     )
 
     subparsers = parser.add_subparsers(
@@ -315,75 +711,64 @@ def main(
         required=True,
     )
 
-    authorize = subparsers.add_parser(
-        "authorize",
-        help="Authorize one host directory for sandbox use.",
+    authorize_parser = subparsers.add_parser(
+        "authorize"
+    )
+    authorize_parser.add_argument(
+        "host_path"
     )
 
-    authorize.add_argument(
-        "host_path",
-        help="Absolute host directory selected by the human operator.",
+    revoke_parser = subparsers.add_parser(
+        "revoke"
     )
-
-    revoke = subparsers.add_parser(
-        "revoke",
-        help="Revoke an authorized workspace capability.",
-    )
-
-    revoke.add_argument(
-        "workspace_id",
-        help="Opaque capability ID (e.g. ws_...) to revoke.",
+    revoke_parser.add_argument(
+        "workspace_id"
     )
 
     subparsers.add_parser(
-        "list",
-        help="List currently authorized workspace capabilities.",
+        "list"
     )
 
-    try:
-        args = parser.parse_args(
-            argv
+    args = parser.parse_args(
+        argv
+    )
+
+    if args.command == "authorize":
+        result = _authorize(
+            args.host_path
         )
-
-        if args.command == "authorize":
-            result = create_workspace_grant(
-                args.host_path
-            )
-
-        elif args.command == "revoke":
-            result = revoke_workspace_grant(
-                args.workspace_id
-            )
-
-        elif args.command == "list":
-            from .service import list_workspace_grants
-
-            result = list_workspace_grants()
-
-        else:
-            parser.error(
-                f"unsupported command: {args.command}"
-            )
-
         print(
             json.dumps(
                 result,
                 ensure_ascii=False,
-                indent=2,
             )
         )
-
         return 0
 
-    except (
-        ValueError,
-        RuntimeError,
-    ) as exc:
-        print(
-            f"ERROR: {exc}",
-            file=sys.stderr,
+    if args.command == "revoke":
+        result = _revoke(
+            args.workspace_id
         )
-        return 2
+        print(
+            json.dumps(
+                result,
+                ensure_ascii=False,
+            )
+        )
+        return 0
+
+    if args.command == "list":
+        print(
+            json.dumps(
+                _list_grants(),
+                ensure_ascii=False,
+            )
+        )
+        return 0
+
+    raise RuntimeError(
+        f"Unsupported command: {args.command}"
+    )
 
 
 if __name__ == "__main__":
