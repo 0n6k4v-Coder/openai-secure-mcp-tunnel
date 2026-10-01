@@ -23,9 +23,7 @@ OPEN_SHELL_WORKSPACE = os.environ.get(
     "default",
 )
 
-HOST_WORKSPACE_LABEL = (
-    "mcp_host_workspace_id"
-)
+HOST_WORKSPACE_LABEL = "mcp_host_workspace_id"
 
 
 class SandboxError(RuntimeError):
@@ -35,16 +33,13 @@ class SandboxError(RuntimeError):
 def _client() -> SandboxClient:
     try:
         if OPEN_SHELL_GATEWAY:
-            return SandboxClient(
-                OPEN_SHELL_GATEWAY
-            )
+            return SandboxClient(OPEN_SHELL_GATEWAY)
 
         return SandboxClient.from_active_cluster()
 
     except Exception as exc:
         raise SandboxError(
-            "Could not connect to the configured "
-            "OpenShell gateway."
+            "Could not connect to the configured OpenShell gateway."
         ) from exc
 
 
@@ -57,14 +52,15 @@ def _host_workspace_id_from_labels(
     ):
         return None
 
-    value = labels.get(
-        HOST_WORKSPACE_LABEL
-    )
+    value = labels.get(HOST_WORKSPACE_LABEL)
 
-    if isinstance(
-        value,
-        str,
-    ) and value:
+    if (
+        isinstance(
+            value,
+            str,
+        )
+        and value
+    ):
         return value
 
     return None
@@ -77,9 +73,7 @@ def _host_workspace_metadata(
         return None
 
     try:
-        grant = get_workspace_grant(
-            host_workspace_id
-        )
+        grant = get_workspace_grant(host_workspace_id)
     except ValueError:
         return {
             "workspace_id": host_workspace_id,
@@ -111,11 +105,7 @@ def _sandbox_to_dict(
         None,
     )
 
-    host_workspace_id = (
-        _host_workspace_id_from_labels(
-            labels
-        )
-    )
+    host_workspace_id = _host_workspace_id_from_labels(labels)
 
     result: dict[str, object] = {
         "id": getattr(
@@ -143,18 +133,12 @@ def _sandbox_to_dict(
     }
 
     if host_workspace_id:
-        result[
-            "host_workspace_id"
-        ] = host_workspace_id
+        result["host_workspace_id"] = host_workspace_id
 
-        metadata = _host_workspace_metadata(
-            host_workspace_id
-        )
+        metadata = _host_workspace_metadata(host_workspace_id)
 
         if metadata is not None:
-            result[
-                "host_workspace"
-            ] = metadata
+            result["host_workspace"] = metadata
 
     return result
 
@@ -173,13 +157,14 @@ def create_sandbox(
     """
     name = validate_name(name)
 
-    if not isinstance(
-        workspace_id,
-        str,
-    ) or not workspace_id.strip():
-        raise ValueError(
-            "host_workspace_id must not be empty."
+    if (
+        not isinstance(
+            workspace_id,
+            str,
         )
+        or not workspace_id.strip()
+    ):
+        raise ValueError("host_workspace_id must not be empty.")
 
     try:
         with _client() as client:
@@ -189,9 +174,7 @@ def create_sandbox(
                 labels={
                     HOST_WORKSPACE_LABEL: workspace_id,
                 },
-                spec=build_sandbox_spec(
-                    workspace_id
-                ),
+                spec=build_sandbox_spec(workspace_id),
             )
 
             ready = client.wait_ready(
@@ -200,22 +183,14 @@ def create_sandbox(
                 timeout_seconds=120,
             )
 
-            result = _sandbox_to_dict(
-                ready
-            )
+            result = _sandbox_to_dict(ready)
 
-            result[
-                "host_workspace_id"
-            ] = workspace_id
+            result["host_workspace_id"] = workspace_id
 
-            metadata = _host_workspace_metadata(
-                workspace_id
-            )
+            metadata = _host_workspace_metadata(workspace_id)
 
             if metadata is not None:
-                result[
-                    "host_workspace"
-                ] = metadata
+                result["host_workspace"] = metadata
 
             result["project_mount"] = {
                 "target": "/workspace/project",
@@ -232,9 +207,7 @@ def create_sandbox(
         raise
 
     except Exception as exc:
-        raise SandboxError(
-            f"Failed to create sandbox '{name}'."
-        ) from exc
+        raise SandboxError(f"Failed to create sandbox '{name}'.") from exc
 
 
 def list_sandboxes() -> str:
@@ -246,20 +219,13 @@ def list_sandboxes() -> str:
             )
 
             return json.dumps(
-                [
-                    _sandbox_to_dict(
-                        sandbox
-                    )
-                    for sandbox in sandboxes
-                ],
+                [_sandbox_to_dict(sandbox) for sandbox in sandboxes],
                 ensure_ascii=False,
                 indent=2,
             )
 
     except Exception as exc:
-        raise SandboxError(
-            "Failed to list OpenShell sandboxes."
-        ) from exc
+        raise SandboxError("Failed to list OpenShell sandboxes.") from exc
 
 
 def sandbox_status(
@@ -277,9 +243,7 @@ def sandbox_status(
             for sandbox in sandboxes:
                 if sandbox.name == name:
                     return json.dumps(
-                        _sandbox_to_dict(
-                            sandbox
-                        ),
+                        _sandbox_to_dict(sandbox),
                         ensure_ascii=False,
                         indent=2,
                     )
@@ -288,13 +252,9 @@ def sandbox_status(
         raise
 
     except Exception as exc:
-        raise SandboxError(
-            f"Failed to inspect sandbox '{name}'."
-        ) from exc
+        raise SandboxError(f"Failed to inspect sandbox '{name}'.") from exc
 
-    raise SandboxError(
-        f"Sandbox '{name}' was not found."
-    )
+    raise SandboxError(f"Sandbox '{name}' was not found.")
 
 
 def execute_sandbox(
@@ -337,9 +297,7 @@ def execute_sandbox(
         raise
 
     except Exception as exc:
-        raise SandboxError(
-            f"Failed to execute command in sandbox '{name}'."
-        ) from exc
+        raise SandboxError(f"Failed to execute command in sandbox '{name}'.") from exc
 
 
 def delete_sandbox(
@@ -375,6 +333,4 @@ def delete_sandbox(
         raise
 
     except Exception as exc:
-        raise SandboxError(
-            f"Failed to delete sandbox '{name}'."
-        ) from exc
+        raise SandboxError(f"Failed to delete sandbox '{name}'.") from exc
