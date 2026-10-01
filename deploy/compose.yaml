@@ -15,8 +15,8 @@ services:
         target: /var/run/docker.sock
 
       - type: bind
-        source: /var/lib/openshell
-        target: /var/lib/openshell
+        source: ${MCP_CONFIG_DIR:-/var/lib/local-mcp-server/config}
+        target: /var/lib/local-mcp-server/config
         bind:
           create_host_path: true
 
@@ -32,9 +32,10 @@ services:
 
     environment:
       OPENSHELL_GATEWAY_CONFIG: /etc/openshell/gateway.toml
-      OPENSHELL_DB_URL: sqlite:/var/lib/openshell/gateway.db?mode=rwc
-      XDG_DATA_HOME: /var/lib/openshell
-      HOME: /var/lib/openshell
+      OPENSHELL_DB_URL: sqlite:/var/lib/local-mcp-server/config/openshell.db
+      XDG_DATA_HOME: /var/lib/local-mcp-server/config
+      XDG_STATE_HOME: /var/lib/local-mcp-server/config
+      HOME: /var/lib/local-mcp-server/config
 
     extra_hosts:
       - "host.docker.internal:host-gateway"
@@ -67,7 +68,6 @@ services:
 
     volumes:
       - ${MCP_INSTALLATION_STATE_FILE:-../.state/installations.json}:/var/lib/local-mcp-server/installations.json:rw
-
       - ${WORKSPACE_GRANTS_DIR:-../.state/workspace-grants}:/var/lib/local-mcp-server/workspace-grants:ro
 
     networks:
@@ -82,16 +82,12 @@ services:
     environment:
       OPENSHELL_GATEWAY: ${OPENSHELL_GATEWAY:-openshell-gateway:8080}
       OPENSHELL_WORKSPACE: ${OPENSHELL_WORKSPACE:-default}
-
       SANDBOX_IMAGE: ${SANDBOX_IMAGE:-local-mcp-openshell-sandbox:1.0.0}
       SANDBOX_DEFAULT_CPU: ${SANDBOX_DEFAULT_CPU:-1}
       SANDBOX_DEFAULT_MEMORY: ${SANDBOX_DEFAULT_MEMORY:-1Gi}
-
       WORKSPACE_GRANTS_FILE: /var/lib/local-mcp-server/workspace-grants/workspace-grants.json
       WORKSPACE_GRANTS_READ_ONLY: "true"
-
       INSTALLATION_STATE_FILE: /var/lib/local-mcp-server/installations.json
-
       LOG_LEVEL: INFO
 
     healthcheck:

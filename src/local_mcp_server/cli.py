@@ -29,15 +29,24 @@ def _find_project_root() -> Path:
             if compose_file.is_file():
                 return root
 
-    raise RuntimeError(
-        "Could not locate project root containing deploy/compose.yaml."
-    )
+    raise RuntimeError("Could not locate project root containing deploy/compose.yaml.")
 
 
 PROJECT_ROOT = _find_project_root()
 COMPOSE_FILE = PROJECT_ROOT / "deploy" / "compose.yaml"
 ENV_FILE = PROJECT_ROOT / ".env"
 
+
+from .credentials import (  # noqa: E402
+    CredentialError,
+    create_credential,
+    delete_credential,
+    grant_credential,
+    list_credentials,
+    revoke_credential,
+    show_credential,
+    update_credential,
+)
 
 from .sandbox import (  # noqa: E402
     SandboxError,
@@ -153,26 +162,13 @@ def _print_table(headers: list[str], rows: list[list[str]]) -> None:
             widths[index] = max(widths[index], len(value))
 
     print(
-        "  ".join(
-            header.ljust(widths[index])
-            for index, header in enumerate(headers)
-        )
+        "  ".join(header.ljust(widths[index]) for index, header in enumerate(headers))
     )
 
-    print(
-        "  ".join(
-            "-" * width
-            for width in widths
-        )
-    )
+    print("  ".join("-" * width for width in widths))
 
     for row in rows:
-        print(
-            "  ".join(
-                value.ljust(widths[index])
-                for index, value in enumerate(row)
-            )
-        )
+        print("  ".join(value.ljust(widths[index]) for index, value in enumerate(row)))
 
 
 def _status_value(record: dict[str, object]) -> str:
@@ -204,10 +200,7 @@ def _start() -> int:
 
 def _stop() -> int:
     _command_exists("docker")
-
-    return _run_passthrough(
-        _compose_command("down")
-    )
+    return _run_passthrough(_compose_command("down"))
 
 
 def _restart() -> int:
@@ -298,9 +291,7 @@ def _sandbox_list(json_output: bool) -> int:
         return EXIT_OK
 
     if not isinstance(data, list):
-        raise RuntimeError(
-            "OpenShell returned an invalid sandbox list."
-        )
+        raise RuntimeError("OpenShell returned an invalid sandbox list.")
 
     rows: list[list[str]] = []
 
@@ -318,30 +309,18 @@ def _sandbox_list(json_output: bool) -> int:
         )
 
     _print_table(
-        [
-            "NAME",
-            "STATUS",
-            "HOST WORKSPACE ID",
-            "ID",
-        ],
+        ["NAME", "STATUS", "HOST WORKSPACE ID", "ID"],
         rows,
     )
 
     return EXIT_OK
 
 
-def _sandbox_status(
-    name: str,
-    json_output: bool,
-) -> int:
-    data = _parse_json(
-        sandbox_status(name)
-    )
+def _sandbox_status(name: str, json_output: bool) -> int:
+    data = _parse_json(sandbox_status(name))
 
     if not isinstance(data, dict):
-        raise RuntimeError(
-            "OpenShell returned invalid sandbox metadata."
-        )
+        raise RuntimeError("OpenShell returned invalid sandbox metadata.")
 
     if json_output:
         _print_json(data)
@@ -349,19 +328,12 @@ def _sandbox_status(
 
     print(f"Name:                {data.get('name', name)}")
     print(f"Status:              {_status_value(data)}")
-    print(
-        f"OpenShell workspace: "
-        f"{data.get('workspace', '')}"
-    )
+    print(f"OpenShell workspace: {data.get('workspace', '')}")
     print(f"ID:                  {data.get('id', '')}")
 
     host_workspace_id = data.get("host_workspace_id")
-
     if host_workspace_id:
-        print(
-            f"Host workspace ID:   "
-            f"{host_workspace_id}"
-        )
+        print(f"Host workspace ID:   {host_workspace_id}")
 
     return EXIT_OK
 
@@ -379,9 +351,7 @@ def _sandbox_create(
     )
 
     if not isinstance(data, dict):
-        raise RuntimeError(
-            "OpenShell returned invalid sandbox metadata."
-        )
+        raise RuntimeError("OpenShell returned invalid sandbox metadata.")
 
     if json_output:
         _print_json(data)
@@ -396,38 +366,23 @@ def _sandbox_create(
     return EXIT_OK
 
 
-def _sandbox_delete(
-    name: str,
-    json_output: bool,
-) -> int:
-    data = _parse_json(
-        delete_sandbox(name)
-    )
+def _sandbox_delete(name: str, json_output: bool) -> int:
+    data = _parse_json(delete_sandbox(name))
 
     if not isinstance(data, dict):
-        raise RuntimeError(
-            "OpenShell returned invalid deletion metadata."
-        )
+        raise RuntimeError("OpenShell returned invalid deletion metadata.")
 
     if json_output:
         _print_json(data)
         return EXIT_OK
 
-    print(
-        f"Sandbox deleted: "
-        f"{data.get('name', name)}"
-    )
-
+    print(f"Sandbox deleted: {data.get('name', name)}")
     return EXIT_OK
 
 
 def _openshell_command(*args: str) -> list[str]:
     _command_exists("openshell")
-
-    return [
-        "openshell",
-        *args,
-    ]
+    return ["openshell", *args]
 
 
 def _sandbox_shell(name: str) -> int:
@@ -447,23 +402,16 @@ def _sandbox_shell(name: str) -> int:
     )
 
 
-def _sandbox_exec(
-    name: str,
-    command: list[str],
-) -> int:
+def _sandbox_exec(name: str, command: list[str]) -> int:
     validate_name(name)
 
     if command and command[0] == "--":
         command = command[1:]
 
     if not command:
-        raise ValueError(
-            "sandbox exec requires a command after '--'."
-        )
+        raise ValueError("sandbox exec requires a command after '--'.")
 
-    validate_command(
-        " ".join(command)
-    )
+    validate_command(" ".join(command))
 
     return _run_passthrough(
         _openshell_command(
@@ -479,63 +427,83 @@ def _sandbox_exec(
 
 def _sandbox_logs(name: str) -> int:
     validate_name(name)
-
-    return _run_passthrough(
-        _openshell_command(
-            "logs",
-            name,
-        )
-    )
+    return _run_passthrough(_openshell_command("logs", name))
 
 
 def _sandbox_start(name: str) -> int:
     validate_name(name)
-
-    return _run_passthrough(
-        _openshell_command(
-            "sandbox",
-            "start",
-            name,
-        )
-    )
+    return _run_passthrough(_openshell_command("sandbox", "start", name))
 
 
 def _sandbox_stop(name: str) -> int:
     validate_name(name)
+    return _run_passthrough(_openshell_command("sandbox", "stop", name))
 
-    return _run_passthrough(
-        _openshell_command(
-            "sandbox",
-            "stop",
-            name,
-        )
-    )
+
+def _credential_create(
+    name: str,
+    provider_type: str,
+    credential_key: str,
+    confirmed: bool,
+) -> int:
+    if not confirmed:
+        raise ValueError("credential create requires --yes.")
+
+    return create_credential(name, provider_type, credential_key)
+
+
+def _credential_update(
+    name: str,
+    credential_key: str,
+    confirmed: bool,
+) -> int:
+    if not confirmed:
+        raise ValueError("credential update requires --yes.")
+
+    return update_credential(name, credential_key)
+
+
+def _credential_delete(name: str, confirmed: bool) -> int:
+    if not confirmed:
+        raise ValueError("credential delete requires --yes.")
+
+    return delete_credential(name)
+
+
+def _credential_grant(
+    sandbox_name: str,
+    credential_name: str,
+    confirmed: bool,
+) -> int:
+    if not confirmed:
+        raise ValueError("credential grant requires --yes.")
+
+    return grant_credential(sandbox_name, credential_name)
+
+
+def _credential_revoke(
+    sandbox_name: str,
+    credential_name: str,
+    confirmed: bool,
+) -> int:
+    if not confirmed:
+        raise ValueError("credential revoke requires --yes.")
+
+    return revoke_credential(sandbox_name, credential_name)
 
 
 def _build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         prog="mcp",
-        description=(
-            "Local control CLI for the "
-            "OpenAI Secure MCP Tunnel."
-        ),
+        description="Local control CLI for the OpenAI Secure MCP Tunnel.",
     )
 
-    commands = parser.add_subparsers(
-        dest="command",
-        required=True,
-    )
+    commands = parser.add_subparsers(dest="command", required=True)
 
-    start = commands.add_parser(
-        "start",
-        help="Build and start the Compose stack.",
-    )
+    start = commands.add_parser("start", help="Build and start the Compose stack.")
     start.set_defaults(handler=_start)
 
-    stop = commands.add_parser(
-        "stop",
-        help="Stop and remove the Compose stack.",
-    )
+    stop = commands.add_parser("stop", help="Stop and remove the Compose stack.")
     stop.set_defaults(handler=_stop)
 
     restart = commands.add_parser(
@@ -544,47 +512,21 @@ def _build_parser() -> argparse.ArgumentParser:
     )
     restart.set_defaults(handler=_restart)
 
-    status = commands.add_parser(
-        "status",
-        help="Show Compose service status.",
-    )
-    status.add_argument(
-        "--json",
-        dest="json_output",
-        action="store_true",
-    )
+    status = commands.add_parser("status", help="Show Compose service status.")
+    status.add_argument("--json", dest="json_output", action="store_true")
     status.set_defaults(handler=_status)
 
-    logs = commands.add_parser(
-        "logs",
-        help="Show Compose service logs.",
-    )
+    logs = commands.add_parser("logs", help="Show Compose service logs.")
     logs.add_argument(
         "service",
         nargs="?",
-        choices=[
-            "openshell-gateway",
-            "mcp-server",
-            "tunnel-client",
-        ],
+        choices=["openshell-gateway", "mcp-server", "tunnel-client"],
     )
-    logs.add_argument(
-        "--follow",
-        "-f",
-        action="store_true",
-    )
-    logs.add_argument(
-        "--tail",
-        "-n",
-        default="100",
-    )
+    logs.add_argument("--follow", "-f", action="store_true")
+    logs.add_argument("--tail", "-n", default="100")
     logs.set_defaults(handler=_logs)
 
-    sandbox = commands.add_parser(
-        "sandbox",
-        help="Manage OpenShell sandboxes.",
-    )
-
+    sandbox = commands.add_parser("sandbox", help="Manage OpenShell sandboxes.")
     sandbox_commands = sandbox.add_subparsers(
         dest="sandbox_command",
         required=True,
@@ -592,45 +534,20 @@ def _build_parser() -> argparse.ArgumentParser:
 
     create = sandbox_commands.add_parser(
         "create",
-        help=(
-            "Create a sandbox using an "
-            "authorized host workspace."
-        ),
+        help="Create a sandbox using an authorized host workspace.",
     )
     create.add_argument("name")
-    create.add_argument(
-        "--workspace",
-        required=True,
-        dest="workspace_id",
-    )
-    create.add_argument(
-        "--json",
-        dest="json_output",
-        action="store_true",
-    )
+    create.add_argument("--workspace", required=True, dest="workspace_id")
+    create.add_argument("--json", dest="json_output", action="store_true")
     create.set_defaults(handler=_sandbox_create)
 
-    list_parser = sandbox_commands.add_parser(
-        "list",
-        help="List sandboxes.",
-    )
-    list_parser.add_argument(
-        "--json",
-        dest="json_output",
-        action="store_true",
-    )
+    list_parser = sandbox_commands.add_parser("list", help="List sandboxes.")
+    list_parser.add_argument("--json", dest="json_output", action="store_true")
     list_parser.set_defaults(handler=_sandbox_list)
 
-    status_parser = sandbox_commands.add_parser(
-        "status",
-        help="Show one sandbox.",
-    )
+    status_parser = sandbox_commands.add_parser("status", help="Show one sandbox.")
     status_parser.add_argument("name")
-    status_parser.add_argument(
-        "--json",
-        dest="json_output",
-        action="store_true",
-    )
+    status_parser.add_argument("--json", dest="json_output", action="store_true")
     status_parser.set_defaults(handler=_sandbox_status)
 
     shell = sandbox_commands.add_parser(
@@ -645,10 +562,7 @@ def _build_parser() -> argparse.ArgumentParser:
         help="Execute a command in a sandbox.",
     )
     exec_parser.add_argument("name")
-    exec_parser.add_argument(
-        "exec_command",
-        nargs=argparse.REMAINDER,
-    )
+    exec_parser.add_argument("exec_command", nargs=argparse.REMAINDER)
     exec_parser.set_defaults(handler=_sandbox_exec)
 
     logs_parser = sandbox_commands.add_parser(
@@ -665,90 +579,140 @@ def _build_parser() -> argparse.ArgumentParser:
     start_parser.add_argument("name")
     start_parser.set_defaults(handler=_sandbox_start)
 
-    stop_parser = sandbox_commands.add_parser(
-        "stop",
-        help="Stop a sandbox.",
-    )
+    stop_parser = sandbox_commands.add_parser("stop", help="Stop a sandbox.")
     stop_parser.add_argument("name")
     stop_parser.set_defaults(handler=_sandbox_stop)
 
-    delete = sandbox_commands.add_parser(
-        "delete",
-        help="Delete a sandbox.",
-    )
+    delete = sandbox_commands.add_parser("delete", help="Delete a sandbox.")
     delete.add_argument("name")
-    delete.add_argument(
-        "--json",
-        dest="json_output",
-        action="store_true",
-    )
+    delete.add_argument("--json", dest="json_output", action="store_true")
     delete.set_defaults(handler=_sandbox_delete)
+
+    credential = commands.add_parser(
+        "credential",
+        help="Manage OpenShell credential providers.",
+    )
+    credential_commands = credential.add_subparsers(
+        dest="credential_command",
+        required=True,
+    )
+
+    credential_create = credential_commands.add_parser(
+        "create",
+        help="Create a persistent credential provider.",
+    )
+    credential_create.add_argument("name")
+    credential_create.add_argument("--type", required=True, dest="provider_type")
+    credential_create.add_argument("--key", required=True, dest="credential_key")
+    credential_create.add_argument("--yes", action="store_true", dest="confirmed")
+    credential_create.set_defaults(handler=_credential_create)
+
+    credential_list = credential_commands.add_parser(
+        "list",
+        help="List credential providers without credential values.",
+    )
+    credential_list.set_defaults(handler=lambda: list_credentials())
+
+    credential_get = credential_commands.add_parser(
+        "get",
+        help="Inspect one credential provider without secret values.",
+    )
+    credential_get.add_argument("name")
+    credential_get.set_defaults(handler=lambda name: show_credential(name))
+
+    credential_update = credential_commands.add_parser(
+        "update",
+        help="Replace the stored credential value.",
+    )
+    credential_update.add_argument("name")
+    credential_update.add_argument("--key", required=True, dest="credential_key")
+    credential_update.add_argument("--yes", action="store_true", dest="confirmed")
+    credential_update.set_defaults(handler=_credential_update)
+
+    credential_delete = credential_commands.add_parser(
+        "delete",
+        help="Delete a credential provider.",
+    )
+    credential_delete.add_argument("name")
+    credential_delete.add_argument("--yes", action="store_true", dest="confirmed")
+    credential_delete.set_defaults(handler=_credential_delete)
+
+    credential_grant = credential_commands.add_parser(
+        "grant",
+        help="Grant a credential to one sandbox.",
+    )
+    credential_grant.add_argument("sandbox_name")
+    credential_grant.add_argument("credential_name")
+    credential_grant.add_argument("--yes", action="store_true", dest="confirmed")
+    credential_grant.set_defaults(handler=_credential_grant)
+
+    credential_revoke = credential_commands.add_parser(
+        "revoke",
+        help="Revoke a credential from one sandbox.",
+    )
+    credential_revoke.add_argument("sandbox_name")
+    credential_revoke.add_argument("credential_name")
+    credential_revoke.add_argument("--yes", action="store_true", dest="confirmed")
+    credential_revoke.set_defaults(handler=_credential_revoke)
 
     return parser
 
 
-def main(
-    argv: Sequence[str] | None = None,
-) -> int:
+def main(argv: Sequence[str] | None = None) -> int:
     parser = _build_parser()
     args = parser.parse_args(argv)
 
     try:
-        if (
-            args.command == "sandbox"
-            and args.sandbox_command == "exec"
-        ):
-            return args.handler(
-                args.name,
-                list(args.exec_command),
-            )
+        if args.command == "sandbox" and args.sandbox_command == "exec":
+            return args.handler(args.name, list(args.exec_command))
 
         if args.command == "logs":
-            return args.handler(
-                args.service,
-                args.follow,
-                args.tail,
-            )
+            return args.handler(args.service, args.follow, args.tail)
 
         if args.command == "status":
-            return args.handler(
-                args.json_output,
-            )
+            return args.handler(args.json_output)
 
-        if (
-            args.command == "sandbox"
-            and args.sandbox_command == "create"
-        ):
-            return args.handler(
-                args.name,
-                args.workspace_id,
-                args.json_output,
-            )
+        if args.command == "sandbox" and args.sandbox_command == "create":
+            return args.handler(args.name, args.workspace_id, args.json_output)
 
-        if (
-            args.command == "sandbox"
-            and args.sandbox_command == "list"
-        ):
-            return args.handler(
-                args.json_output,
-            )
+        if args.command == "sandbox" and args.sandbox_command == "list":
+            return args.handler(args.json_output)
 
-        if (
-            args.command == "sandbox"
-            and args.sandbox_command in {
-                "status",
-                "delete",
-            }
-        ):
-            return args.handler(
-                args.name,
-                args.json_output,
-            )
+        if args.command == "sandbox" and args.sandbox_command in {"status", "delete"}:
+            return args.handler(args.name, args.json_output)
 
         if args.command == "sandbox":
+            return args.handler(args.name)
+
+        if args.command == "credential" and args.credential_command == "create":
             return args.handler(
                 args.name,
+                args.provider_type,
+                args.credential_key,
+                args.confirmed,
             )
+
+        if args.command == "credential" and args.credential_command == "update":
+            return args.handler(args.name, args.credential_key, args.confirmed)
+
+        if args.command == "credential" and args.credential_command == "delete":
+            return args.handler(args.name, args.confirmed)
+
+        if args.command == "credential" and args.credential_command in {
+            "grant",
+            "revoke",
+        }:
+            return args.handler(
+                args.sandbox_name,
+                args.credential_name,
+                args.confirmed,
+            )
+
+        if args.command == "credential" and args.credential_command == "get":
+            return args.handler(args.name)
+
+        if args.command == "credential" and args.credential_command == "list":
+            return args.handler()
 
         return args.handler()
 
@@ -757,11 +721,9 @@ def main(
         RuntimeError,
         ValueError,
         SandboxError,
+        CredentialError,
     ) as exc:
-        print(
-            f"ERROR: {exc}",
-            file=sys.stderr,
-        )
+        print(f"ERROR: {exc}", file=sys.stderr)
         return EXIT_ERROR
 
 
