@@ -10,6 +10,7 @@ from .policy import (
     validate_command,
     validate_name,
 )
+from ..workspace import get_workspace_grant
 
 
 OPEN_SHELL_GATEWAY = os.environ.get(
@@ -20,6 +21,10 @@ OPEN_SHELL_GATEWAY = os.environ.get(
 OPEN_SHELL_WORKSPACE = os.environ.get(
     "OPEN_SHELL_WORKSPACE",
     "default",
+)
+
+HOST_WORKSPACE_LABEL = (
+    "mcp_host_workspace_id"
 )
 
 
@@ -43,6 +48,54 @@ def _client() -> SandboxClient:
         ) from exc
 
 
+def _host_workspace_id_from_labels(
+    labels,
+) -> str | None:
+    if not isinstance(
+        labels,
+        dict,
+    ):
+        return None
+
+    value = labels.get(
+        HOST_WORKSPACE_LABEL
+    )
+
+    if isinstance(
+        value,
+        str,
+    ) and value:
+        return value
+
+    return None
+
+
+def _host_workspace_metadata(
+    host_workspace_id: str | None,
+) -> dict[str, object] | None:
+    if not host_workspace_id:
+        return None
+
+    try:
+        grant = get_workspace_grant(
+            host_workspace_id
+        )
+    except ValueError:
+        return {
+            "workspace_id": host_workspace_id,
+            "authorized": False,
+        }
+
+    return {
+        "workspace_id": host_workspace_id,
+        "authorized": True,
+        "host_path": grant["host_path"],
+        "volume_name": grant["volume_name"],
+        "target": grant["target"],
+        "read_only": grant["read_only"],
+    }
+
+
 def _sandbox_to_dict(
     sandbox,
 ) -> dict[str, object]:
@@ -52,7 +105,19 @@ def _sandbox_to_dict(
         None,
     )
 
-    return {
+    labels = getattr(
+        sandbox,
+        "labels",
+        None,
+    )
+
+    host_workspace_id = (
+        _host_workspace_id_from_labels(
+            labels
+        )
+    )
+
+    result: dict[str, object] = {
         "id": getattr(
             sandbox,
             "id",
@@ -74,19 +139,38 @@ def _sandbox_to_dict(
             "phase",
             None,
         ),
-        "labels": getattr(
-            sandbox,
-            "labels",
-            None,
-        ),
+        "labels": labels,
     }
+
+    if host_workspace_id:
+        result[
+            "host_workspace_id"
+        ] = host_workspace_id
+
+        metadata = _host_workspace_metadata(
+            host_workspace_id
+        )
+
+        if metadata is not None:
+            result[
+                "host_workspace"
+            ] = metadata
+
+    return result
 
 
 def create_sandbox(
     name: str,
     workspace_id: str,
 ) -> str:
-    """Create and wait for an OpenShell sandbox."""
+    """
+    Create and wait for an OpenShell sandbox.
+
+    workspace_id is the internal name retained by the existing workspace
+    grant service. At the MCP boundary it is exposed as
+    host_workspace_id because it represents a human-authorized host
+    directory capability, not an OpenShell workspace.
+    """
     name = validate_name(name)
 
     if not isinstance(
@@ -94,7 +178,7 @@ def create_sandbox(
         str,
     ) or not workspace_id.strip():
         raise ValueError(
-            "workspace_id must not be empty."
+            "host_workspace_id must not be empty."
         )
 
     try:
@@ -102,6 +186,9 @@ def create_sandbox(
             sandbox = client.create(
                 workspace=OPEN_SHELL_WORKSPACE,
                 name=name,
+                labels={
+                    HOST_WORKSPACE_LABEL: workspace_id,
+                },
                 spec=build_sandbox_spec(
                     workspace_id
                 ),
@@ -117,7 +204,18 @@ def create_sandbox(
                 ready
             )
 
-            result["workspace_id"] = workspace_id
+            result[
+                "host_workspace_id"
+            ] = workspace_id
+
+            metadata = _host_workspace_metadata(
+                workspace_id
+            )
+
+            if metadata is not None:
+                result[
+                    "host_workspace"
+                ] = metadata
 
             result["project_mount"] = {
                 "target": "/workspace/project",
@@ -140,7 +238,7 @@ def create_sandbox(
 
 
 def list_sandboxes() -> str:
-    """List OpenShell sandboxes in the configured workspace."""
+    """List OpenShell sandboxes in the configured OpenShell workspace."""
     try:
         with _client() as client:
             sandboxes = client.list_all(

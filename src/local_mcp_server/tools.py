@@ -2,9 +2,11 @@ from __future__ import annotations
 
 import platform
 import sys
+from typing import Annotated
 
 from mcp.server import MCPServer
-from mcp.server.mcpserver import Context
+from mcp.server.mcpserver import Elicit, Resolve
+from mcp.server.elicitation import ElicitationResult
 from mcp.types import ToolAnnotations
 from pydantic import BaseModel
 
@@ -12,7 +14,6 @@ from .installation import (
     approve_installation,
     consume_installation_approval,
     create_installation_request,
-    deny_installation,
     mark_installation_finished,
 )
 from .sandbox import (
@@ -39,53 +40,76 @@ class InstallationApproval(BaseModel):
     approved: bool
 
 
-async def _installation_approval(
+class SandboxDeletionApproval(BaseModel):
+    approved: bool
+
+
+def _installation_approval_message(
     *,
-    ctx: Context,
-    request_id: str,
     tool_name: str,
     version: str,
     source: str,
     install_command: str,
     reason: str,
-) -> InstallationApproval:
-    message = (
+) -> str:
+    return (
         "SOFTWARE INSTALLATION APPROVAL REQUIRED\n\n"
-        f"Request ID: {request_id}\n"
         f"Tool: {tool_name}\n"
         f"Version: {version}\n"
         f"Source: {source}\n"
         f"Command: {install_command}\n"
         f"Reason: {reason}\n\n"
-        "This approval is valid only for this exact installation request "
-        "and is consumed after execution.\n\n"
+        "This approval applies only to this exact installation request.\n\n"
         "Approve this installation?"
     )
 
-    result = await ctx.elicit(
-        message,
+
+async def _installation_approval(
+    *,
+    tool_name: str,
+    version: str,
+    source: str,
+    install_command: str,
+    reason: str,
+) -> Elicit[InstallationApproval]:
+    return Elicit(
+        _installation_approval_message(
+            tool_name=tool_name,
+            version=version,
+            source=source,
+            install_command=install_command,
+            reason=reason,
+        ),
         InstallationApproval,
     )
 
-    if result.action != "accept":
-        deny_installation(
-            request_id
-        )
 
-        return InstallationApproval(
-            approved=False
-        )
+def _sandbox_deletion_approval_message(
+    *,
+    sandbox_name: str,
+) -> str:
+    return (
+        "SANDBOX DELETION APPROVAL REQUIRED\n\n"
+        f"Sandbox: {sandbox_name}\n\n"
+        "Deleting this sandbox permanently removes the OpenShell "
+        "sandbox and its managed resources.\n\n"
+        "This does not revoke the associated host workspace grant. "
+        "Host workspace grants are separate authorization resources "
+        "managed by the host-side workspace broker.\n\n"
+        "Approve this sandbox deletion?"
+    )
 
-    if result.data is None:
-        deny_installation(
-            request_id
-        )
 
-        return InstallationApproval(
-            approved=False
-        )
-
-    return result.data
+async def _sandbox_deletion_approval(
+    *,
+    name: str,
+) -> Elicit[SandboxDeletionApproval]:
+    return Elicit(
+        _sandbox_deletion_approval_message(
+            sandbox_name=name,
+        ),
+        SandboxDeletionApproval,
+    )
 
 
 def register_tools(
@@ -178,7 +202,7 @@ def register_tools(
         annotations=ToolAnnotations(
             readOnlyHint=False,
             destructiveHint=False,
-            idempotentHint=True,
+            idempotentHint=False,
             openWorldHint=False,
         )
     )
@@ -212,7 +236,7 @@ def register_tools(
         annotations=ToolAnnotations(
             readOnlyHint=False,
             destructiveHint=True,
-            idempotentHint=True,
+            idempotentHint=False,
             openWorldHint=False,
         )
     )
@@ -228,7 +252,7 @@ def register_tools(
         annotations=ToolAnnotations(
             readOnlyHint=False,
             destructiveHint=True,
-            idempotentHint=True,
+            idempotentHint=False,
             openWorldHint=False,
         )
     )
@@ -248,26 +272,36 @@ def register_tools(
             openWorldHint=False,
         )
     )
-    def list_authorized_workspaces() -> list[dict[str, object]]:
-        """List currently authorized host workspace capabilities."""
+    def list_authorized_host_workspaces() -> list[dict[str, object]]:
+        """
+        List human-authorized host workspace grants.
+
+        These are host-directory capabilities and are distinct from
+        OpenShell logical workspaces.
+        """
         return list_workspace_grants()
 
     @mcp.tool(
         annotations=ToolAnnotations(
             readOnlyHint=False,
-            destructiveHint=True,
+            destructiveHint=False,
             idempotentHint=False,
             openWorldHint=False,
         )
     )
     def create_sandbox(
         name: str,
-        workspace_id: str,
+        host_workspace_id: str,
     ) -> str:
-        """Create a sandbox using a previously authorized workspace."""
+        """
+        Create an OpenShell sandbox using an authorized host workspace grant.
+
+        host_workspace_id is an opaque host-directory authorization
+        capability. It is not an OpenShell workspace name.
+        """
         return create_sandbox_impl(
             name=name,
-            workspace_id=workspace_id,
+            workspace_id=host_workspace_id,
         )
 
     @mcp.tool(
@@ -279,7 +313,7 @@ def register_tools(
         )
     )
     def list_sandboxes() -> str:
-        """List OpenShell sandboxes."""
+        """List OpenShell sandboxes in the configured OpenShell workspace."""
         return list_sandboxes_impl()
 
     @mcp.tool(
@@ -325,20 +359,36 @@ def register_tools(
         )
     )
     async def request_tool_installation(
-        ctx: Context,
         sandbox_name: str,
         tool_name: str,
         version: str,
         source: str,
         install_command: str,
         reason: str,
+        approval: Annotated[
+            ElicitationResult[InstallationApproval],
+            Resolve(_installation_approval),
+        ],
     ) -> dict[str, object]:
         """
         Request a one-time, human-approved software installation.
 
-        The current implementation stops after approval and does not execute
-        an installation command.
+        The approval question is transport-compatible across MCP protocol
+        eras. No installation request is created until the user accepts,
+        which prevents resolver retries from creating duplicate records.
+        The current implementation still stops after approval and does not
+        execute an installation command.
         """
+        if approval.action != "accept" or approval.data is None:
+            return {
+                "request_id": None,
+                "approved": False,
+                "executed": False,
+                "message": (
+                    "Installation denied or cancelled by the user."
+                ),
+            }
+
         request = create_installation_request(
             sandbox_name=sandbox_name,
             tool_name=tool_name,
@@ -347,26 +397,6 @@ def register_tools(
             install_command=install_command,
             reason=reason,
         )
-
-        approval = await _installation_approval(
-            ctx=ctx,
-            request_id=request.request_id,
-            tool_name=request.tool_name,
-            version=request.version,
-            source=request.source,
-            install_command=request.install_command,
-            reason=request.reason,
-        )
-
-        if not approval.approved:
-            return {
-                "request_id": request.request_id,
-                "approved": False,
-                "executed": False,
-                "message": (
-                    "Installation denied or cancelled by the user."
-                ),
-            }
 
         approved = approve_installation(
             request.request_id
@@ -396,14 +426,37 @@ def register_tools(
         annotations=ToolAnnotations(
             readOnlyHint=False,
             destructiveHint=True,
-            idempotentHint=True,
+            idempotentHint=False,
             openWorldHint=False,
         )
     )
-    def delete_sandbox(
+    async def delete_sandbox(
         name: str,
+        approval: Annotated[
+            ElicitationResult[SandboxDeletionApproval],
+            Resolve(_sandbox_deletion_approval),
+        ],
     ) -> str:
-        """Delete an OpenShell sandbox and its managed resources."""
+        """
+        Delete an OpenShell sandbox after explicit user approval.
+
+        The approval is implemented through MCP resolver-based elicitation,
+        so it works with both legacy elicitation and modern MCP
+        multi-round-trip clients.
+
+        Deleting a sandbox does not revoke its associated host workspace
+        grant. Host workspace grants are separate authorization resources.
+        """
+        if approval.action != "accept" or approval.data is None:
+            return (
+                "Sandbox deletion was denied or cancelled by the user."
+            )
+
+        if not approval.data.approved:
+            return (
+                "Sandbox deletion was denied or cancelled by the user."
+            )
+
         return delete_sandbox_impl(
             name
         )

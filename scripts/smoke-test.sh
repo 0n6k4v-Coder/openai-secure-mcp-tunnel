@@ -19,6 +19,7 @@ echo "==> Checking MCP endpoint"
 
 curl --fail --silent --show-error \
     --request POST \
+    --header 'Host: mcp-server:8000' \
     --header 'Content-Type: application/json' \
     --data '{
       "jsonrpc": "2.0",
@@ -39,7 +40,15 @@ test -s /tmp/openai-secure-mcp-tunnel-mcp-response.json
 
 echo "==> Checking Compose service state"
 
+ENV_FLAG=()
+if [[ -f .env ]]; then
+    ENV_FLAG=(--env-file .env)
+elif [[ -z "${CONTROL_PLANE_TUNNEL_ID:-}" ]]; then
+    export CONTROL_PLANE_TUNNEL_ID="ci-placeholder"
+fi
+
 docker compose \
+    "${ENV_FLAG[@]}" \
     -f "${COMPOSE_FILE}" \
     ps
 

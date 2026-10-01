@@ -21,12 +21,12 @@ services:
           create_host_path: true
 
       - type: bind
-        source: ../openshell/gateway.toml
+        source: ./openshell/gateway.toml
         target: /etc/openshell/gateway.toml
         read_only: true
 
       - type: bind
-        source: ../openshell/jwt
+        source: ./openshell/jwt
         target: /etc/openshell/jwt
         read_only: true
 
