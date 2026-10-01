@@ -13,13 +13,13 @@ from .policy import (
 from ..workspace.service import get_workspace_grant
 
 
-OPEN_SHELL_GATEWAY = os.environ.get(
-    "OPEN_SHELL_GATEWAY",
+OPENSHELL_GATEWAY = os.environ.get(
+    "OPENSHELL_GATEWAY",
     "",
 )
 
-OPEN_SHELL_WORKSPACE = os.environ.get(
-    "OPEN_SHELL_WORKSPACE",
+OPENSHELL_WORKSPACE = os.environ.get(
+    "OPENSHELL_WORKSPACE",
     "default",
 )
 
@@ -32,8 +32,8 @@ class SandboxError(RuntimeError):
 
 def _client() -> SandboxClient:
     try:
-        if OPEN_SHELL_GATEWAY:
-            return SandboxClient(OPEN_SHELL_GATEWAY)
+        if OPENSHELL_GATEWAY:
+            return SandboxClient(OPENSHELL_GATEWAY)
 
         return SandboxClient.from_active_cluster()
 
@@ -130,7 +130,7 @@ def _sandbox_to_dict(
             "name",
             None,
         ),
-        "workspace": OPEN_SHELL_WORKSPACE,
+        "workspace": OPENSHELL_WORKSPACE,
         "phase": getattr(
             sandbox,
             "phase",
@@ -191,7 +191,7 @@ def create_sandbox(
 
         with _client() as client:
             sandbox = client.create(
-                workspace=OPEN_SHELL_WORKSPACE,
+                workspace=OPENSHELL_WORKSPACE,
                 name=name,
                 labels={
                     HOST_WORKSPACE_LABEL: workspace_id,
@@ -203,7 +203,7 @@ def create_sandbox(
 
             ready = client.wait_ready(
                 sandbox.name,
-                workspace=OPEN_SHELL_WORKSPACE,
+                workspace=OPENSHELL_WORKSPACE,
                 timeout_seconds=120,
             )
 
@@ -246,7 +246,7 @@ def list_sandboxes() -> str:
     try:
         with _client() as client:
             sandboxes = client.list_all(
-                workspace=OPEN_SHELL_WORKSPACE,
+                workspace=OPENSHELL_WORKSPACE,
             )
 
             return json.dumps(
@@ -278,7 +278,7 @@ def sandbox_status(
     try:
         with _client() as client:
             sandboxes = client.list_all(
-                workspace=OPEN_SHELL_WORKSPACE,
+                workspace=OPENSHELL_WORKSPACE,
             )
 
             for sandbox in sandboxes:
@@ -341,7 +341,7 @@ def execute_sandbox(
                     "-lc",
                     command,
                 ],
-                workspace=OPEN_SHELL_WORKSPACE,
+                workspace=OPENSHELL_WORKSPACE,
                 stdin=stdin_bytes,
             )
 
@@ -377,12 +377,12 @@ def delete_sandbox(
         with _client() as client:
             deletion = client.delete(
                 name,
-                workspace=OPEN_SHELL_WORKSPACE,
+                workspace=OPENSHELL_WORKSPACE,
             )
 
             client.wait_deleted(
                 name,
-                workspace=OPEN_SHELL_WORKSPACE,
+                workspace=OPENSHELL_WORKSPACE,
                 expected_sandbox_id=deletion.sandbox_id,
             )
 

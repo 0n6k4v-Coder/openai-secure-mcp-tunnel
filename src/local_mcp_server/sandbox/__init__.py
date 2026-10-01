@@ -10,8 +10,8 @@ from .policy import (
     validate_name,
 )
 from .service import (
-    OPEN_SHELL_GATEWAY,
-    OPEN_SHELL_WORKSPACE,
+    OPENSHELL_GATEWAY,
+    OPENSHELL_WORKSPACE,
     SandboxError,
     create_sandbox,
     delete_sandbox,
@@ -24,8 +24,8 @@ __all__ = [
     "DEFAULT_CPU",
     "DEFAULT_MEMORY",
     "MAX_COMMAND_BYTES",
-    "OPEN_SHELL_GATEWAY",
-    "OPEN_SHELL_WORKSPACE",
+    "OPENSHELL_GATEWAY",
+    "OPENSHELL_WORKSPACE",
     "SANDBOX_IMAGE",
     "SandboxError",
     "build_sandbox_spec",

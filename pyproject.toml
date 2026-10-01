@@ -11,7 +11,7 @@ dependencies = [
 ]
 
 [project.scripts]
-mcp-sandbox = "local_mcp_server.cli:main"
+mcp = "local_mcp_server.cli:main"
 workspace-broker = "local_mcp_server.workspace.broker:main"
 
 [dependency-groups]

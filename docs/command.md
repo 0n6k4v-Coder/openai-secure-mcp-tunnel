@@ -555,7 +555,7 @@ Relevant settings include:
 ```dotenv
 CONTROL_PLANE_TUNNEL_ID=<existing-tunnel-id>
 
-OPEN_SHELL_WORKSPACE=default
+OPENSHELL_WORKSPACE=default
 
 SANDBOX_IMAGE=local-mcp-openshell-sandbox:1.0.0
 SANDBOX_DEFAULT_CPU=1

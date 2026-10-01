@@ -314,7 +314,7 @@ def test_sandbox_connect_uses_default_gateway(
 ) -> None:
     monkeypatch.setattr(
         cli,
-        "OPEN_SHELL_GATEWAY",
+        "OPENSHELL_GATEWAY",
         "",
     )
 
@@ -359,7 +359,7 @@ def test_sandbox_connect_uses_configured_gateway(
 ) -> None:
     monkeypatch.setattr(
         cli,
-        "OPEN_SHELL_GATEWAY",
+        "OPENSHELL_GATEWAY",
         "http://127.0.0.1:8080",
     )
 
@@ -406,7 +406,7 @@ def test_sandbox_connect_reports_missing_cli(
 ) -> None:
     monkeypatch.setattr(
         cli,
-        "OPEN_SHELL_GATEWAY",
+        "OPENSHELL_GATEWAY",
         "",
     )
 
