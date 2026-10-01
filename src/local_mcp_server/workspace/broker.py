@@ -8,12 +8,11 @@ import subprocess
 import uuid
 from pathlib import Path
 
-from .service import (
-    GRANTS_READ_ONLY,
-    WORKSPACE_GRANTS_FILE,
-)
+from . import service as workspace_service
 from .validation import canonicalize_host_workspace
 
+
+GRANTS_READ_ONLY = workspace_service.GRANTS_READ_ONLY
 
 SANDBOX_UID = 10001
 SANDBOX_GID = 10001
@@ -31,12 +30,14 @@ OWNER_ONLY_FILE_MODE = 0o600
 
 
 def _load_grants() -> dict[str, dict[str, object]]:
-    if not WORKSPACE_GRANTS_FILE.exists():
+    grants_file = workspace_service.WORKSPACE_GRANTS_FILE
+
+    if not grants_file.exists():
         return {}
 
     try:
         data = json.loads(
-            WORKSPACE_GRANTS_FILE.read_text(
+            grants_file.read_text(
                 encoding="utf-8",
             )
         )
@@ -73,12 +74,14 @@ def _load_grants() -> dict[str, dict[str, object]]:
 def _save_grants(
     grants: dict[str, dict[str, object]],
 ) -> None:
-    WORKSPACE_GRANTS_FILE.parent.mkdir(
+    grants_file = workspace_service.WORKSPACE_GRANTS_FILE
+
+    grants_file.parent.mkdir(
         parents=True,
         exist_ok=True,
     )
 
-    temporary_path = WORKSPACE_GRANTS_FILE.with_suffix(
+    temporary_path = grants_file.with_suffix(
         ".tmp"
     )
 
@@ -95,7 +98,7 @@ def _save_grants(
 
     os.replace(
         temporary_path,
-        WORKSPACE_GRANTS_FILE,
+        grants_file,
     )
 
 
@@ -106,7 +109,7 @@ def _workspace_id() -> str:
 def _volume_name(
     workspace_id: str,
 ) -> str:
-    return f"mcp-{workspace_id}"
+    return f"mcp-ws-{workspace_id.removeprefix('ws_')}"
 
 
 def _run_command(
