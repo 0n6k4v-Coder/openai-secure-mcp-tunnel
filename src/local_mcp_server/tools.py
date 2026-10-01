@@ -158,9 +158,7 @@ def register_tools(
         relative_path: str,
     ) -> str:
         """Read a UTF-8 text file from the MCP workspace."""
-        return read_workspace_text_file_impl(
-            relative_path
-        )
+        return read_workspace_text_file_impl(relative_path)
 
     @mcp.tool(
         annotations=ToolAnnotations(
@@ -210,9 +208,7 @@ def register_tools(
         relative_path: str,
     ) -> str:
         """Create a directory inside the workspace."""
-        return create_workspace_directory_impl(
-            relative_path
-        )
+        return create_workspace_directory_impl(relative_path)
 
     @mcp.tool(
         annotations=ToolAnnotations(
@@ -244,9 +240,7 @@ def register_tools(
         relative_path: str,
     ) -> str:
         """Delete a regular file inside the workspace."""
-        return delete_workspace_file_impl(
-            relative_path
-        )
+        return delete_workspace_file_impl(relative_path)
 
     @mcp.tool(
         annotations=ToolAnnotations(
@@ -260,9 +254,7 @@ def register_tools(
         relative_path: str,
     ) -> str:
         """Delete a directory tree inside the workspace."""
-        return delete_workspace_directory_impl(
-            relative_path
-        )
+        return delete_workspace_directory_impl(relative_path)
 
     @mcp.tool(
         annotations=ToolAnnotations(
@@ -328,9 +320,7 @@ def register_tools(
         name: str,
     ) -> str:
         """Return the status of an OpenShell sandbox."""
-        return sandbox_status_impl(
-            name
-        )
+        return sandbox_status_impl(name)
 
     @mcp.tool(
         annotations=ToolAnnotations(
@@ -384,9 +374,7 @@ def register_tools(
                 "request_id": None,
                 "approved": False,
                 "executed": False,
-                "message": (
-                    "Installation denied or cancelled by the user."
-                ),
+                "message": ("Installation denied or cancelled by the user."),
             }
 
         request = create_installation_request(
@@ -398,13 +386,9 @@ def register_tools(
             reason=reason,
         )
 
-        approved = approve_installation(
-            request.request_id
-        )
+        approved = approve_installation(request.request_id)
 
-        consumed = consume_installation_approval(
-            approved.request_id
-        )
+        consumed = consume_installation_approval(approved.request_id)
 
         mark_installation_finished(
             consumed.request_id,
@@ -448,15 +432,9 @@ def register_tools(
         grant. Host workspace grants are separate authorization resources.
         """
         if approval.action != "accept" or approval.data is None:
-            return (
-                "Sandbox deletion was denied or cancelled by the user."
-            )
+            return "Sandbox deletion was denied or cancelled by the user."
 
         if not approval.data.approved:
-            return (
-                "Sandbox deletion was denied or cancelled by the user."
-            )
+            return "Sandbox deletion was denied or cancelled by the user."
 
-        return delete_sandbox_impl(
-            name
-        )
+        return delete_sandbox_impl(name)
