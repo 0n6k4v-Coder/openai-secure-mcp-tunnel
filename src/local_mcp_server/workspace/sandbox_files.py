@@ -340,14 +340,18 @@ def list_sandbox_workspace_files(sandbox_name: str) -> list[str]:
         result = json.loads(output)
     except json.JSONDecodeError as exc:
         raise RuntimeError("Sandbox workspace listing returned invalid JSON.") from exc
-    if not isinstance(result, list) or not all(isinstance(value, str) for value in result):
+    if not isinstance(result, list) or not all(
+        isinstance(value, str) for value in result
+    ):
         raise RuntimeError("Sandbox workspace listing returned an invalid result.")
     return list(result)
 
 
 def read_sandbox_workspace_text_file(sandbox_name: str, relative_path: str) -> str:
     _validate_relative_path(relative_path)
-    command = "python -c " + shlex.quote(_READ_FILE_SCRIPT) + " " + shlex.quote(relative_path)
+    command = (
+        "python -c " + shlex.quote(_READ_FILE_SCRIPT) + " " + shlex.quote(relative_path)
+    )
     return _execute_workspace_command(sandbox_name, command)
 
 
@@ -358,7 +362,12 @@ def create_sandbox_workspace_file(
 ) -> str:
     _validate_relative_path(relative_path)
     encoded = _validate_content(content)
-    command = "python -c " + shlex.quote(_CREATE_FILE_SCRIPT) + " " + shlex.quote(relative_path)
+    command = (
+        "python -c "
+        + shlex.quote(_CREATE_FILE_SCRIPT)
+        + " "
+        + shlex.quote(relative_path)
+    )
     return _execute_workspace_command(sandbox_name, command, stdin=encoded)
 
 
@@ -369,7 +378,12 @@ def write_sandbox_workspace_file(
 ) -> str:
     _validate_relative_path(relative_path)
     encoded = _validate_content(content)
-    command = "python -c " + shlex.quote(_WRITE_FILE_SCRIPT) + " " + shlex.quote(relative_path)
+    command = (
+        "python -c "
+        + shlex.quote(_WRITE_FILE_SCRIPT)
+        + " "
+        + shlex.quote(relative_path)
+    )
     return _execute_workspace_command(sandbox_name, command, stdin=encoded)
 
 
@@ -378,7 +392,12 @@ def create_sandbox_workspace_directory(
     relative_path: str,
 ) -> str:
     _validate_relative_path(relative_path)
-    command = "python -c " + shlex.quote(_CREATE_DIRECTORY_SCRIPT) + " " + shlex.quote(relative_path)
+    command = (
+        "python -c "
+        + shlex.quote(_CREATE_DIRECTORY_SCRIPT)
+        + " "
+        + shlex.quote(relative_path)
+    )
     return _execute_workspace_command(sandbox_name, command)
 
 
@@ -405,7 +424,12 @@ def delete_sandbox_workspace_file(
     relative_path: str,
 ) -> str:
     _validate_relative_path(relative_path)
-    command = "python -c " + shlex.quote(_DELETE_FILE_SCRIPT) + " " + shlex.quote(relative_path)
+    command = (
+        "python -c "
+        + shlex.quote(_DELETE_FILE_SCRIPT)
+        + " "
+        + shlex.quote(relative_path)
+    )
     return _execute_workspace_command(sandbox_name, command)
 
 
@@ -414,5 +438,10 @@ def delete_sandbox_workspace_directory(
     relative_path: str,
 ) -> str:
     _validate_relative_path(relative_path)
-    command = "python -c " + shlex.quote(_DELETE_DIRECTORY_SCRIPT) + " " + shlex.quote(relative_path)
+    command = (
+        "python -c "
+        + shlex.quote(_DELETE_DIRECTORY_SCRIPT)
+        + " "
+        + shlex.quote(relative_path)
+    )
     return _execute_workspace_command(sandbox_name, command)

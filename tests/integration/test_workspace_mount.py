@@ -9,22 +9,16 @@ import pytest
 
 @pytest.mark.integration
 def test_workspace_mount_end_to_end() -> None:
-    if os.environ.get(
-        "RUN_WORKSPACE_INTEGRATION"
-    ) != "1":
+    if os.environ.get("RUN_WORKSPACE_INTEGRATION") != "1":
         pytest.skip(
             "Set RUN_WORKSPACE_INTEGRATION=1 to run workspace integration tests."
         )
 
     if shutil.which("docker") is None:
-        pytest.fail(
-            "Docker CLI is required for this integration test."
-        )
+        pytest.fail("Docker CLI is required for this integration test.")
 
     if shutil.which("mcp-sandbox") is None:
-        pytest.fail(
-            "mcp-sandbox CLI is required for this integration test."
-        )
+        pytest.fail("mcp-sandbox CLI is required for this integration test.")
 
     result = subprocess.run(
         [
@@ -39,6 +33,5 @@ def test_workspace_mount_end_to_end() -> None:
     )
 
     assert result.returncode == 0, (
-        "Workspace broker integration check failed: "
-        f"{result.stderr.strip()}"
+        f"Workspace broker integration check failed: {result.stderr.strip()}"
     )

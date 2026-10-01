@@ -149,9 +149,7 @@ def test_create_workspace_grant_round_trip(
         ),
     )
 
-    assert resolved_vol == grant[
-        "volume_name"
-    ]
+    assert resolved_vol == grant["volume_name"]
 
 
 def test_list_workspace_grants_does_not_require_host_path_visibility(
@@ -162,14 +160,14 @@ def test_list_workspace_grants_does_not_require_host_path_visibility(
 
     grants_file.write_text(
         (
-            '{\n'
+            "{\n"
             '  "ws_test123": {\n'
             '    "host_path": "/host/path/not-visible-in-container",\n'
             '    "volume_name": "mcp-ws-test123",\n'
             '    "target": "/workspace/project",\n'
             '    "read_only": false\n'
-            '  }\n'
-            '}\n'
+            "  }\n"
+            "}\n"
         ),
         encoding="utf-8",
     )
@@ -201,14 +199,14 @@ def test_resolve_workspace_grant_does_not_require_host_path_visibility(
 
     grants_file.write_text(
         (
-            '{\n'
+            "{\n"
             '  "ws_test123": {\n'
             '    "host_path": "/host/path/not-visible-in-container",\n'
             '    "volume_name": "mcp-ws-test123",\n'
             '    "target": "/workspace/project",\n'
             '    "read_only": false\n'
-            '  }\n'
-            '}\n'
+            "  }\n"
+            "}\n"
         ),
         encoding="utf-8",
     )

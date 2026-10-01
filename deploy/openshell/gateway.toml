@@ -11,16 +11,23 @@ disable_tls = true
 [openshell.gateway.auth]
 allow_unauthenticated_users = true
 
+[openshell.gateway.gateway_jwt]
+signing_key_path = "/etc/openshell/jwt/signing.pem"
+public_key_path = "/etc/openshell/jwt/public.pem"
+kid_path = "/etc/openshell/jwt/kid"
+gateway_id = "openai-secure-mcp-tunnel"
+ttl_secs = 3600
+
 [openshell.gateway.credential_storage]
 key_encryption_key_path = "/var/lib/local-mcp-server/config/credentials/key-encryption-key.bin"
 
 [openshell.drivers.docker]
 socket_path = "/var/run/docker.sock"
 default_image = "local-mcp-openshell-sandbox:1.0.0"
-image_pull_policy = "IfNotPresent"
+image_pull_policy = "if_not_present"
 sandbox_label = "openshell"
 sandbox_pids_limit = 2048
-grpc_endpoint = "http://host.openshell.internal:8080"
+grpc_endpoint = "http://127.0.0.1:8080"
 allow_driver_config = true
 enable_bind_mounts = true
 

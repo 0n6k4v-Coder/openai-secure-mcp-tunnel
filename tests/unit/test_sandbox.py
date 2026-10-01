@@ -19,10 +19,7 @@ def test_memory_quantity_accepts_open_shell_binary_units() -> None:
         "2.5Gi",
         "8G",
     ):
-        assert (
-            policy.validate_memory(value)
-            == value
-        )
+        assert policy.validate_memory(value) == value
 
 
 def test_memory_quantity_rejects_gib_suffix() -> None:
@@ -30,9 +27,7 @@ def test_memory_quantity_rejects_gib_suffix() -> None:
         ValueError,
         match="memory must be a quantity",
     ):
-        policy.validate_memory(
-            "1GiB"
-        )
+        policy.validate_memory("1GiB")
 
 
 def test_build_sandbox_spec_emits_volume_mount_and_policy(
@@ -50,32 +45,17 @@ def test_build_sandbox_spec_emits_volume_mount_and_policy(
         },
     )
 
-    spec = policy.build_sandbox_spec(
-        "ws_test"
-    )
+    spec = policy.build_sandbox_spec("ws_test")
 
-    assert (
-        spec.template.image
-        == policy.SANDBOX_IMAGE
-    )
+    assert spec.template.image == policy.SANDBOX_IMAGE
 
-    assert (
-        spec.template.resources["limits"]["memory"]
-        == "1Gi"
-    )
+    assert spec.template.resources["limits"]["memory"] == "1Gi"
 
-    assert (
-        spec.template.resources["limits"]["cpu"]
-        == policy.DEFAULT_CPU
-    )
+    assert spec.template.resources["limits"]["cpu"] == policy.DEFAULT_CPU
 
-    docker_config = (
-        spec.template.driver_config["docker"]
-    )
+    docker_config = spec.template.driver_config["docker"]
 
-    assert len(
-        docker_config["mounts"]
-    ) == 1
+    assert len(docker_config["mounts"]) == 1
 
     mount = docker_config["mounts"][0]
 
@@ -85,14 +65,9 @@ def test_build_sandbox_spec_emits_volume_mount_and_policy(
     assert mount["read_only"] is False
 
     assert spec.policy.version == 1
-    assert (
-        spec.policy.filesystem.include_workdir
-        is True
-    )
+    assert spec.policy.filesystem.include_workdir is True
 
-    assert list(
-        spec.policy.filesystem.read_only
-    ) == [
+    assert list(spec.policy.filesystem.read_only) == [
         "/bin",
         "/usr",
         "/lib",
@@ -102,18 +77,13 @@ def test_build_sandbox_spec_emits_volume_mount_and_policy(
         "/var/log",
     ]
 
-    assert list(
-        spec.policy.filesystem.read_write
-    ) == [
+    assert list(spec.policy.filesystem.read_write) == [
         "/tmp",
         "/dev/null",
         "/workspace/project",
     ]
 
-    assert (
-        spec.policy.landlock.compatibility
-        == "hard_requirement"
-    )
+    assert spec.policy.landlock.compatibility == "hard_requirement"
 
 
 def test_host_workspace_metadata_does_not_expose_host_path_or_volume(
@@ -131,9 +101,7 @@ def test_host_workspace_metadata_does_not_expose_host_path_or_volume(
         },
     )
 
-    metadata = service._host_workspace_metadata(
-        "ws_test"
-    )
+    metadata = service._host_workspace_metadata("ws_test")
 
     assert metadata == {
         "workspace_id": "ws_test",
@@ -174,9 +142,7 @@ def test_sandbox_to_dict_does_not_expose_host_path_or_volume(
             service.HOST_WORKSPACE_LABEL: "ws_test",
         }
 
-    result = service._sandbox_to_dict(
-        Sandbox()
-    )
+    result = service._sandbox_to_dict(Sandbox())
 
     metadata = result["host_workspace"]
 
@@ -187,9 +153,7 @@ def test_sandbox_to_dict_does_not_expose_host_path_or_volume(
         "read_only": False,
     }
 
-    serialized = json.dumps(
-        result
-    )
+    serialized = json.dumps(result)
 
     assert "/home/user/private-repository" not in serialized
     assert "mcp-ws-secret-volume" not in serialized

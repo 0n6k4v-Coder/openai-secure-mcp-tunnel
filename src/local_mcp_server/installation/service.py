@@ -20,17 +20,11 @@ INSTALLATION_STATE_FILE = Path(
 
 _INSTALLATION_LOCK = Lock()
 
-_SANDBOX_NAME = re.compile(
-    r"^[a-z0-9][a-z0-9-]{0,62}$"
-)
+_SANDBOX_NAME = re.compile(r"^[a-z0-9][a-z0-9-]{0,62}$")
 
-_TOOL_NAME = re.compile(
-    r"^[A-Za-z0-9][A-Za-z0-9_.+@:/-]{0,127}$"
-)
+_TOOL_NAME = re.compile(r"^[A-Za-z0-9][A-Za-z0-9_.+@:/-]{0,127}$")
 
-_VERSION = re.compile(
-    r"^[A-Za-z0-9][A-Za-z0-9_.+~:@/-]{0,127}$"
-)
+_VERSION = re.compile(r"^[A-Za-z0-9][A-Za-z0-9_.+~:@/-]{0,127}$")
 
 
 class InstallationError(RuntimeError):
@@ -77,9 +71,7 @@ def _load_state() -> dict[str, dict[str, object]]:
         ) from exc
 
     if not isinstance(value, dict):
-        raise InstallationError(
-            "Installation approval state is invalid."
-        )
+        raise InstallationError("Installation approval state is invalid.")
 
     return value
 
@@ -112,13 +104,8 @@ def _save_state(
 def _validate_sandbox_name(
     name: str,
 ) -> str:
-    if (
-        not isinstance(name, str)
-        or not _SANDBOX_NAME.fullmatch(name)
-    ):
-        raise InstallationError(
-            "Invalid sandbox name."
-        )
+    if not isinstance(name, str) or not _SANDBOX_NAME.fullmatch(name):
+        raise InstallationError("Invalid sandbox name.")
 
     return name
 
@@ -126,13 +113,8 @@ def _validate_sandbox_name(
 def _validate_tool_name(
     value: str,
 ) -> str:
-    if (
-        not isinstance(value, str)
-        or not _TOOL_NAME.fullmatch(value)
-    ):
-        raise InstallationError(
-            "Invalid tool name."
-        )
+    if not isinstance(value, str) or not _TOOL_NAME.fullmatch(value):
+        raise InstallationError("Invalid tool name.")
 
     return value
 
@@ -140,13 +122,8 @@ def _validate_tool_name(
 def _validate_version(
     value: str,
 ) -> str:
-    if (
-        not isinstance(value, str)
-        or not _VERSION.fullmatch(value)
-    ):
-        raise InstallationError(
-            "Invalid tool version."
-        )
+    if not isinstance(value, str) or not _VERSION.fullmatch(value):
+        raise InstallationError("Invalid tool version.")
 
     return value
 
@@ -155,21 +132,15 @@ def _validate_source(
     value: str,
 ) -> str:
     if not isinstance(value, str):
-        raise InstallationError(
-            "Installation source must be a string."
-        )
+        raise InstallationError("Installation source must be a string.")
 
     source = value.strip()
 
     if not source:
-        raise InstallationError(
-            "Installation source must not be empty."
-        )
+        raise InstallationError("Installation source must not be empty.")
 
     if len(source) > 2048:
-        raise InstallationError(
-            "Installation source is too long."
-        )
+        raise InstallationError("Installation source is too long.")
 
     return source
 
@@ -178,21 +149,15 @@ def _validate_reason(
     value: str,
 ) -> str:
     if not isinstance(value, str):
-        raise InstallationError(
-            "Installation reason must be a string."
-        )
+        raise InstallationError("Installation reason must be a string.")
 
     reason = value.strip()
 
     if not reason:
-        raise InstallationError(
-            "Installation reason must not be empty."
-        )
+        raise InstallationError("Installation reason must not be empty.")
 
     if len(reason) > 4096:
-        raise InstallationError(
-            "Installation reason is too long."
-        )
+        raise InstallationError("Installation reason is too long.")
 
     return reason
 
@@ -201,21 +166,15 @@ def _validate_install_command(
     value: str,
 ) -> str:
     if not isinstance(value, str):
-        raise InstallationError(
-            "install_command must be a string."
-        )
+        raise InstallationError("install_command must be a string.")
 
     command = value.strip()
 
     if not command:
-        raise InstallationError(
-            "install_command must not be empty."
-        )
+        raise InstallationError("install_command must not be empty.")
 
     if len(command) > 8192:
-        raise InstallationError(
-            "install_command is too long."
-        )
+        raise InstallationError("install_command is too long.")
 
     try:
         tokens = shlex.split(
@@ -223,18 +182,12 @@ def _validate_install_command(
             posix=True,
         )
     except ValueError as exc:
-        raise InstallationError(
-            "install_command has invalid shell quoting."
-        ) from exc
+        raise InstallationError("install_command has invalid shell quoting.") from exc
 
     if not tokens:
-        raise InstallationError(
-            "install_command is empty."
-        )
+        raise InstallationError("install_command is empty.")
 
-    first = Path(
-        tokens[0]
-    ).name
+    first = Path(tokens[0]).name
 
     allowed_entrypoints = {
         "apt-get",
@@ -277,10 +230,7 @@ def _validate_install_command(
         "<<",
     }
 
-    if any(
-        token in shell_metacharacters
-        for token in tokens
-    ):
+    if any(token in shell_metacharacters for token in tokens):
         raise InstallationError(
             "Shell chaining, redirection, and command substitution "
             "are not permitted in installation commands."
@@ -299,31 +249,14 @@ def create_installation_request(
     reason: str,
 ) -> InstallationRequest:
     request = InstallationRequest(
-        request_id=(
-            "ins_"
-            + secrets.token_urlsafe(18)
-        ),
-        sandbox_name=_validate_sandbox_name(
-            sandbox_name
-        ),
-        tool_name=_validate_tool_name(
-            tool_name
-        ),
-        version=_validate_version(
-            version
-        ),
-        source=_validate_source(
-            source
-        ),
-        install_command=_validate_install_command(
-            install_command
-        ),
-        reason=_validate_reason(
-            reason
-        ),
-        created_at=datetime.now(
-            timezone.utc
-        ).isoformat(),
+        request_id=("ins_" + secrets.token_urlsafe(18)),
+        sandbox_name=_validate_sandbox_name(sandbox_name),
+        tool_name=_validate_tool_name(tool_name),
+        version=_validate_version(version),
+        source=_validate_source(source),
+        install_command=_validate_install_command(install_command),
+        reason=_validate_reason(reason),
+        created_at=datetime.now(timezone.utc).isoformat(),
     )
 
     with _INSTALLATION_LOCK:
@@ -340,9 +273,7 @@ def create_installation_request(
             "state": "pending",
         }
 
-        _save_state(
-            state
-        )
+        _save_state(state)
 
     return request
 
@@ -353,25 +284,17 @@ def approve_installation(
     with _INSTALLATION_LOCK:
         state = _load_state()
 
-        entry = state.get(
-            request_id
-        )
+        entry = state.get(request_id)
 
         if entry is None:
-            raise InstallationError(
-                "Installation request was not found."
-            )
+            raise InstallationError("Installation request was not found.")
 
         if entry.get("state") != "pending":
-            raise InstallationError(
-                "Installation request is no longer pending."
-            )
+            raise InstallationError("Installation request is no longer pending.")
 
         entry["state"] = "approved"
 
-        _save_state(
-            state
-        )
+        _save_state(state)
 
     return _request_from_state(
         request_id,
@@ -385,25 +308,17 @@ def deny_installation(
     with _INSTALLATION_LOCK:
         state = _load_state()
 
-        entry = state.get(
-            request_id
-        )
+        entry = state.get(request_id)
 
         if entry is None:
-            raise InstallationError(
-                "Installation request was not found."
-            )
+            raise InstallationError("Installation request was not found.")
 
         if entry.get("state") != "pending":
-            raise InstallationError(
-                "Installation request is no longer pending."
-            )
+            raise InstallationError("Installation request is no longer pending.")
 
         entry["state"] = "denied"
 
-        _save_state(
-            state
-        )
+        _save_state(state)
 
 
 def consume_installation_approval(
@@ -417,25 +332,17 @@ def consume_installation_approval(
     with _INSTALLATION_LOCK:
         state = _load_state()
 
-        entry = state.get(
-            request_id
-        )
+        entry = state.get(request_id)
 
         if entry is None:
-            raise InstallationError(
-                "Installation request was not found."
-            )
+            raise InstallationError("Installation request was not found.")
 
         if entry.get("state") != "approved":
-            raise InstallationError(
-                "Installation request has not been approved."
-            )
+            raise InstallationError("Installation request has not been approved.")
 
         entry["state"] = "consumed"
 
-        _save_state(
-            state
-        )
+        _save_state(state)
 
     return _request_from_state(
         request_id,
@@ -451,29 +358,19 @@ def mark_installation_finished(
     with _INSTALLATION_LOCK:
         state = _load_state()
 
-        entry = state.get(
-            request_id
-        )
+        entry = state.get(request_id)
 
         if entry is None:
-            raise InstallationError(
-                "Installation request was not found."
-            )
+            raise InstallationError("Installation request was not found.")
 
         if entry.get("state") != "consumed":
             raise InstallationError(
                 "Installation request is not in the consumed state."
             )
 
-        entry["state"] = (
-            "completed"
-            if success
-            else "failed"
-        )
+        entry["state"] = "completed" if success else "failed"
 
-        _save_state(
-            state
-        )
+        _save_state(state)
 
 
 def _request_from_state(
@@ -482,25 +379,11 @@ def _request_from_state(
 ) -> InstallationRequest:
     return InstallationRequest(
         request_id=request_id,
-        sandbox_name=str(
-            entry["sandbox_name"]
-        ),
-        tool_name=str(
-            entry["tool_name"]
-        ),
-        version=str(
-            entry["version"]
-        ),
-        source=str(
-            entry["source"]
-        ),
-        install_command=str(
-            entry["install_command"]
-        ),
-        reason=str(
-            entry["reason"]
-        ),
-        created_at=str(
-            entry["created_at"]
-        ),
+        sandbox_name=str(entry["sandbox_name"]),
+        tool_name=str(entry["tool_name"]),
+        version=str(entry["version"]),
+        source=str(entry["source"]),
+        install_command=str(entry["install_command"]),
+        reason=str(entry["reason"]),
+        created_at=str(entry["created_at"]),
     )

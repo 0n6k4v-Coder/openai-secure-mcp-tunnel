@@ -53,9 +53,7 @@ def _host_workspace_id_from_labels(
     ):
         return None
 
-    value = labels.get(
-        HOST_WORKSPACE_LABEL
-    )
+    value = labels.get(HOST_WORKSPACE_LABEL)
 
     if (
         isinstance(
@@ -83,9 +81,7 @@ def _host_workspace_metadata(
         return None
 
     try:
-        grant = get_workspace_grant(
-            host_workspace_id
-        )
+        grant = get_workspace_grant(host_workspace_id)
     except ValueError:
         return {
             "workspace_id": host_workspace_id,
@@ -115,9 +111,7 @@ def _sandbox_to_dict(
         None,
     )
 
-    host_workspace_id = _host_workspace_id_from_labels(
-        labels
-    )
+    host_workspace_id = _host_workspace_id_from_labels(labels)
 
     result: dict[str, object] = {
         "id": getattr(
@@ -147,9 +141,7 @@ def _sandbox_to_dict(
     if host_workspace_id:
         result["host_workspace_id"] = host_workspace_id
 
-        metadata = _host_workspace_metadata(
-            host_workspace_id
-        )
+        metadata = _host_workspace_metadata(host_workspace_id)
 
         if metadata is not None:
             result["host_workspace"] = metadata
@@ -169,9 +161,7 @@ def create_sandbox(
     The exact host filesystem path and Docker volume name are resolved by
     the trusted application layer and are never returned to the MCP client.
     """
-    name = validate_name(
-        name
-    )
+    name = validate_name(name)
 
     if (
         not isinstance(
@@ -180,14 +170,10 @@ def create_sandbox(
         )
         or not workspace_id.strip()
     ):
-        raise ValueError(
-            "host_workspace_id must not be empty."
-        )
+        raise ValueError("host_workspace_id must not be empty.")
 
     try:
-        grant = get_workspace_grant(
-            workspace_id
-        )
+        grant = get_workspace_grant(workspace_id)
 
         with _client() as client:
             sandbox = client.create(
@@ -196,9 +182,7 @@ def create_sandbox(
                 labels={
                     HOST_WORKSPACE_LABEL: workspace_id,
                 },
-                spec=build_sandbox_spec(
-                    workspace_id
-                ),
+                spec=build_sandbox_spec(workspace_id),
             )
 
             ready = client.wait_ready(
@@ -207,9 +191,7 @@ def create_sandbox(
                 timeout_seconds=120,
             )
 
-            result = _sandbox_to_dict(
-                ready
-            )
+            result = _sandbox_to_dict(ready)
 
             result["host_workspace_id"] = workspace_id
 
@@ -236,8 +218,7 @@ def create_sandbox(
 
     except Exception as exc:
         raise SandboxError(
-            f"Failed to create sandbox '{name}': "
-            f"{type(exc).__name__}: {exc}"
+            f"Failed to create sandbox '{name}': {type(exc).__name__}: {exc}"
         ) from exc
 
 
@@ -250,20 +231,14 @@ def list_sandboxes() -> str:
             )
 
             return json.dumps(
-                [
-                    _sandbox_to_dict(
-                        sandbox
-                    )
-                    for sandbox in sandboxes
-                ],
+                [_sandbox_to_dict(sandbox) for sandbox in sandboxes],
                 ensure_ascii=False,
                 indent=2,
             )
 
     except Exception as exc:
         raise SandboxError(
-            "Failed to list OpenShell sandboxes: "
-            f"{type(exc).__name__}: {exc}"
+            f"Failed to list OpenShell sandboxes: {type(exc).__name__}: {exc}"
         ) from exc
 
 
@@ -271,9 +246,7 @@ def sandbox_status(
     name: str,
 ) -> str:
     """Return OpenShell sandbox metadata."""
-    name = validate_name(
-        name
-    )
+    name = validate_name(name)
 
     try:
         with _client() as client:
@@ -284,9 +257,7 @@ def sandbox_status(
             for sandbox in sandboxes:
                 if sandbox.name == name:
                     return json.dumps(
-                        _sandbox_to_dict(
-                            sandbox
-                        ),
+                        _sandbox_to_dict(sandbox),
                         ensure_ascii=False,
                         indent=2,
                     )
@@ -296,13 +267,10 @@ def sandbox_status(
 
     except Exception as exc:
         raise SandboxError(
-            f"Failed to inspect sandbox '{name}': "
-            f"{type(exc).__name__}: {exc}"
+            f"Failed to inspect sandbox '{name}': {type(exc).__name__}: {exc}"
         ) from exc
 
-    raise SandboxError(
-        f"Sandbox '{name}' was not found."
-    )
+    raise SandboxError(f"Sandbox '{name}' was not found.")
 
 
 def execute_sandbox(
@@ -318,13 +286,9 @@ def execute_sandbox(
     function. Installation must go through the approval-gated installation
     broker.
     """
-    name = validate_name(
-        name
-    )
+    name = validate_name(name)
 
-    command = validate_command(
-        command
-    )
+    command = validate_command(command)
 
     stdin_bytes: bytes | None = None
     if isinstance(stdin, str):
@@ -369,9 +333,7 @@ def delete_sandbox(
     name: str,
 ) -> str:
     """Delete an OpenShell sandbox and wait for deletion to complete."""
-    name = validate_name(
-        name
-    )
+    name = validate_name(name)
 
     try:
         with _client() as client:
@@ -401,6 +363,5 @@ def delete_sandbox(
 
     except Exception as exc:
         raise SandboxError(
-            f"Failed to delete sandbox '{name}': "
-            f"{type(exc).__name__}: {exc}"
+            f"Failed to delete sandbox '{name}': {type(exc).__name__}: {exc}"
         ) from exc

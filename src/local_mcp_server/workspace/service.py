@@ -7,9 +7,7 @@ from threading import Lock
 
 
 def _default_grants_file() -> Path:
-    env_path = os.environ.get(
-        "WORKSPACE_GRANTS_FILE"
-    )
+    env_path = os.environ.get("WORKSPACE_GRANTS_FILE")
 
     if env_path:
         return Path(env_path).resolve()
@@ -24,10 +22,7 @@ def _default_grants_file() -> Path:
     project_root = Path(__file__).resolve().parents[3]
 
     return (
-        project_root
-        / ".state"
-        / "workspace-grants"
-        / "workspace-grants.json"
+        project_root / ".state" / "workspace-grants" / "workspace-grants.json"
     ).resolve()
 
 
@@ -53,9 +48,7 @@ def _grants_file() -> Path:
     The service module's value is authoritative so tests and runtime
     configuration can replace WORKSPACE_GRANTS_FILE directly.
     """
-    return Path(
-        WORKSPACE_GRANTS_FILE
-    )
+    return Path(WORKSPACE_GRANTS_FILE)
 
 
 def _ensure_grants_directory() -> None:
@@ -83,14 +76,10 @@ def _load_workspace_grants() -> dict[str, dict[str, object]]:
         OSError,
         json.JSONDecodeError,
     ) as exc:
-        raise RuntimeError(
-            "Workspace grant database could not be read."
-        ) from exc
+        raise RuntimeError("Workspace grant database could not be read.") from exc
 
     if not isinstance(data, dict):
-        raise RuntimeError(
-            "Workspace grant database has an invalid format."
-        )
+        raise RuntimeError("Workspace grant database has an invalid format.")
 
     result: dict[str, dict[str, object]] = {}
 
@@ -112,17 +101,12 @@ def _load_workspace_grants() -> dict[str, dict[str, object]]:
                 )
             )
 
-            if (
-                isinstance(host_path, str)
-                and isinstance(volume_name, str)
-            ):
+            if isinstance(host_path, str) and isinstance(volume_name, str):
                 result[workspace_id] = {
                     "host_path": host_path,
                     "volume_name": volume_name,
                     "target": (
-                        target
-                        if isinstance(target, str)
-                        else "/workspace/project"
+                        target if isinstance(target, str) else "/workspace/project"
                     ),
                     "read_only": read_only,
                 }
@@ -150,9 +134,7 @@ def _save_workspace_grants(
     _ensure_grants_directory()
 
     grants_file = _grants_file()
-    temporary = grants_file.with_suffix(
-        grants_file.suffix + ".tmp"
-    )
+    temporary = grants_file.with_suffix(grants_file.suffix + ".tmp")
 
     temporary.write_text(
         json.dumps(
@@ -178,39 +160,29 @@ def resolve_workspace_grant(
 
     No host filesystem access is attempted from the MCP container.
     """
-    if not isinstance(
-        workspace_id,
-        str,
-    ) or not workspace_id.strip():
-        raise ValueError(
-            "workspace_id must not be empty."
+    if (
+        not isinstance(
+            workspace_id,
+            str,
         )
+        or not workspace_id.strip()
+    ):
+        raise ValueError("workspace_id must not be empty.")
 
     if not workspace_id.startswith("ws_"):
-        raise ValueError(
-            "workspace_id has an invalid format."
-        )
+        raise ValueError("workspace_id has an invalid format.")
 
     with _GRANTS_LOCK:
         grants = _load_workspace_grants()
 
-    entry = grants.get(
-        workspace_id
-    )
+    entry = grants.get(workspace_id)
 
     if entry is None:
-        raise ValueError(
-            f"Workspace grant '{workspace_id}' was not found."
-        )
+        raise ValueError(f"Workspace grant '{workspace_id}' was not found.")
 
-    volume_name = entry.get(
-        "volume_name"
-    )
+    volume_name = entry.get("volume_name")
 
-    if (
-        not isinstance(volume_name, str)
-        or not volume_name.strip()
-    ):
+    if not isinstance(volume_name, str) or not volume_name.strip():
         raise ValueError(
             f"Workspace grant '{workspace_id}' has no associated volume name."
         )
@@ -222,30 +194,25 @@ def get_workspace_grant(
     workspace_id: str,
 ) -> dict[str, object]:
     """Get the full grant record for an authorized workspace capability."""
-    if not isinstance(
-        workspace_id,
-        str,
-    ) or not workspace_id.strip():
-        raise ValueError(
-            "workspace_id must not be empty."
+    if (
+        not isinstance(
+            workspace_id,
+            str,
         )
+        or not workspace_id.strip()
+    ):
+        raise ValueError("workspace_id must not be empty.")
 
     if not workspace_id.startswith("ws_"):
-        raise ValueError(
-            "workspace_id has an invalid format."
-        )
+        raise ValueError("workspace_id has an invalid format.")
 
     with _GRANTS_LOCK:
         grants = _load_workspace_grants()
 
-    entry = grants.get(
-        workspace_id
-    )
+    entry = grants.get(workspace_id)
 
     if entry is None:
-        raise ValueError(
-            f"Workspace grant '{workspace_id}' was not found."
-        )
+        raise ValueError(f"Workspace grant '{workspace_id}' was not found.")
 
     return {
         "workspace_id": workspace_id,
@@ -275,29 +242,17 @@ def list_workspace_grants() -> list[dict[str, object]]:
 
     result: list[dict[str, object]] = []
 
-    for workspace_id, entry in sorted(
-        grants.items()
-    ):
+    for workspace_id, entry in sorted(grants.items()):
         if not workspace_id.startswith("ws_"):
             continue
 
-        host_path = entry.get(
-            "host_path"
-        )
-        volume_name = entry.get(
-            "volume_name"
-        )
+        host_path = entry.get("host_path")
+        volume_name = entry.get("volume_name")
 
-        if (
-            not isinstance(host_path, str)
-            or not host_path.startswith("/")
-        ):
+        if not isinstance(host_path, str) or not host_path.startswith("/"):
             continue
 
-        if (
-            not isinstance(volume_name, str)
-            or not volume_name
-        ):
+        if not isinstance(volume_name, str) or not volume_name:
             continue
 
         result.append(

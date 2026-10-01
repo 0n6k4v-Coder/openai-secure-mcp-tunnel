@@ -25,17 +25,11 @@ DEFAULT_MEMORY = os.environ.get(
 
 MAX_COMMAND_BYTES = 32 * 1024
 
-_SANDBOX_NAME = re.compile(
-    r"^[a-z0-9][a-z0-9-]{0,62}$"
-)
+_SANDBOX_NAME = re.compile(r"^[a-z0-9][a-z0-9-]{0,62}$")
 
-_CPU_QUANTITY = re.compile(
-    r"^(?:\d+(?:\.\d+)?|\d+m)$"
-)
+_CPU_QUANTITY = re.compile(r"^(?:\d+(?:\.\d+)?|\d+m)$")
 
-_MEMORY_QUANTITY = re.compile(
-    r"^\d+(?:\.\d+)?(?:Ki|Mi|Gi|Ti|Pi|Ei|K|M|G|T|P|E)$"
-)
+_MEMORY_QUANTITY = re.compile(r"^\d+(?:\.\d+)?(?:Ki|Mi|Gi|Ti|Pi|Ei|K|M|G|T|P|E)$")
 
 
 def validate_name(name: str) -> str:
@@ -52,36 +46,25 @@ def validate_name(name: str) -> str:
 def validate_cpu(value: str) -> str:
     if not isinstance(value, str) or not _CPU_QUANTITY.fullmatch(value):
         raise ValueError(
-            "CPU must be a Kubernetes-style quantity such as "
-            "500m, 1, or 2.5"
+            "CPU must be a Kubernetes-style quantity such as 500m, 1, or 2.5"
         )
 
     return value
 
 
 def validate_memory(value: str) -> str:
-    if (
-        not isinstance(value, str)
-        or not _MEMORY_QUANTITY.fullmatch(value)
-    ):
-        raise ValueError(
-            "memory must be a quantity such as "
-            "512Mi, 4Gi, or 8G"
-        )
+    if not isinstance(value, str) or not _MEMORY_QUANTITY.fullmatch(value):
+        raise ValueError("memory must be a quantity such as 512Mi, 4Gi, or 8G")
 
     return value
 
 
 def validate_command(command: str) -> str:
     if not isinstance(command, str) or not command.strip():
-        raise ValueError(
-            "command must not be empty"
-        )
+        raise ValueError("command must not be empty")
 
     if len(command.encode("utf-8")) > MAX_COMMAND_BYTES:
-        raise ValueError(
-            f"command exceeds {MAX_COMMAND_BYTES} bytes"
-        )
+        raise ValueError(f"command exceeds {MAX_COMMAND_BYTES} bytes")
 
     return command
 
@@ -100,29 +83,17 @@ def build_sandbox_spec(
     cpu = validate_cpu(DEFAULT_CPU)
     memory = validate_memory(DEFAULT_MEMORY)
 
-    grant = get_workspace_grant(
-        workspace_id
-    )
+    grant = get_workspace_grant(workspace_id)
 
     volume_name = grant["volume_name"]
     target = grant["target"]
     read_only = grant["read_only"]
 
-    if (
-        not isinstance(volume_name, str)
-        or not volume_name.strip()
-    ):
-        raise ValueError(
-            f"Workspace grant '{workspace_id}' has no valid volume name."
-        )
+    if not isinstance(volume_name, str) or not volume_name.strip():
+        raise ValueError(f"Workspace grant '{workspace_id}' has no valid volume name.")
 
-    if (
-        not isinstance(target, str)
-        or not target.strip()
-    ):
-        raise ValueError(
-            f"Workspace grant '{workspace_id}' has no valid mount target."
-        )
+    if not isinstance(target, str) or not target.strip():
+        raise ValueError(f"Workspace grant '{workspace_id}' has no valid mount target.")
 
     if not isinstance(
         read_only,
@@ -136,10 +107,12 @@ def build_sandbox_spec(
 
     spec.template.image = SANDBOX_IMAGE
 
-    spec.command.extend([
-        "sleep",
-        "infinity",
-    ])
+    spec.command.extend(
+        [
+            "sleep",
+            "infinity",
+        ]
+    )
 
     spec.template.resources.update(
         {

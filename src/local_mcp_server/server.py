@@ -35,10 +35,7 @@ async def _tool_registry_snapshot() -> tuple[list[str], str]:
     """
     tools = await mcp.list_tools()
 
-    names = sorted(
-        tool.name
-        for tool in tools
-    )
+    names = sorted(tool.name for tool in tools)
 
     fingerprint = hashlib.sha256(
         json.dumps(
@@ -113,9 +110,7 @@ async def request_logging_middleware(
         "session_id",
     )
 
-    tool_name = _extract_tool_name(
-        ctx
-    )
+    tool_name = _extract_tool_name(ctx)
 
     try:
         (
@@ -125,9 +120,7 @@ async def request_logging_middleware(
 
     except Exception:
         tool_names = []
-        registry_fingerprint = (
-            "registry-read-error"
-        )
+        registry_fingerprint = "registry-read-error"
 
         logger.exception(
             "MCP registry inspection failed "
@@ -138,11 +131,7 @@ async def request_logging_middleware(
             request_id,
         )
 
-    tool_registered = (
-        tool_name in tool_names
-        if tool_name is not None
-        else None
-    )
+    tool_registered = tool_name in tool_names if tool_name is not None else None
 
     logger.info(
         "MCP REQUEST "
@@ -174,9 +163,7 @@ async def request_logging_middleware(
     )
 
     try:
-        result = await call_next(
-            ctx
-        )
+        result = await call_next(ctx)
 
         logger.info(
             "MCP RESPONSE "
@@ -218,9 +205,7 @@ async def request_logging_middleware(
         raise
 
 
-mcp.middleware.append(
-    request_logging_middleware
-)
+mcp.middleware.append(request_logging_middleware)
 
 
 @mcp.custom_route(
@@ -241,9 +226,7 @@ async def healthz(_request):
     )
 
 
-register_tools(
-    mcp
-)
+register_tools(mcp)
 
 
 def main() -> None:
@@ -252,12 +235,7 @@ def main() -> None:
             "LOG_LEVEL",
             "INFO",
         ).upper(),
-        format=(
-            "%(asctime)s "
-            "%(levelname)s "
-            "%(name)s "
-            "%(message)s"
-        ),
+        format=("%(asctime)s %(levelname)s %(name)s %(message)s"),
     )
 
     logger.info(
@@ -276,13 +254,11 @@ def main() -> None:
         platform.python_version(),
     )
 
-    transport_security = (
-        TransportSecuritySettings(
-            enable_dns_rebinding_protection=True,
-            allowed_hosts=[
-                "mcp-server:8000",
-            ],
-        )
+    transport_security = TransportSecuritySettings(
+        enable_dns_rebinding_protection=True,
+        allowed_hosts=[
+            "mcp-server:8000",
+        ],
     )
 
     mcp.run(

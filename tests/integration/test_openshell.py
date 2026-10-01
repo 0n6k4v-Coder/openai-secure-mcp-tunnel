@@ -9,17 +9,13 @@ import pytest
 
 @pytest.mark.integration
 def test_openshell_gateway_is_reachable() -> None:
-    if os.environ.get(
-        "RUN_OPENSHELL_INTEGRATION"
-    ) != "1":
+    if os.environ.get("RUN_OPENSHELL_INTEGRATION") != "1":
         pytest.skip(
             "Set RUN_OPENSHELL_INTEGRATION=1 to run OpenShell integration tests."
         )
 
     if shutil.which("openshell") is None:
-        pytest.fail(
-            "OpenShell CLI is required for this integration test."
-        )
+        pytest.fail("OpenShell CLI is required for this integration test.")
 
     result = subprocess.run(
         [
@@ -33,6 +29,5 @@ def test_openshell_gateway_is_reachable() -> None:
     )
 
     assert result.returncode == 0, (
-        "OpenShell sandbox list failed: "
-        f"{result.stderr.strip()}"
+        f"OpenShell sandbox list failed: {result.stderr.strip()}"
     )

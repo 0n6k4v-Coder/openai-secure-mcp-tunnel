@@ -15,14 +15,19 @@ def test_list_uses_selected_sandbox(monkeypatch: pytest.MonkeyPatch) -> None:
 
     def fake_execute_sandbox(*, name: str, command: str, **kwargs) -> str:
         calls.append((name, command))
-        return json.dumps({
-            "stdout": json.dumps(["README.md", "src/main.py"]),
-            "stderr": "",
-            "return_code": 0,
-        })
+        return json.dumps(
+            {
+                "stdout": json.dumps(["README.md", "src/main.py"]),
+                "stderr": "",
+                "return_code": 0,
+            }
+        )
 
     monkeypatch.setattr(sandbox_files, "execute_sandbox", fake_execute_sandbox)
-    assert sandbox_files.list_sandbox_workspace_files("focused") == ["README.md", "src/main.py"]
+    assert sandbox_files.list_sandbox_workspace_files("focused") == [
+        "README.md",
+        "src/main.py",
+    ]
     assert calls[0][0] == "focused"
     assert "/workspace/project" in calls[0][1]
 
@@ -35,7 +40,10 @@ def test_read_uses_selected_sandbox(monkeypatch: pytest.MonkeyPatch) -> None:
         return json.dumps({"stdout": "hello\n", "stderr": "", "return_code": 0})
 
     monkeypatch.setattr(sandbox_files, "execute_sandbox", fake_execute_sandbox)
-    assert sandbox_files.read_sandbox_workspace_text_file("focused", "README.md") == "hello\n"
+    assert (
+        sandbox_files.read_sandbox_workspace_text_file("focused", "README.md")
+        == "hello\n"
+    )
     assert calls[0][0] == "focused"
     assert "/workspace/project" in calls[0][1]
     assert "README.md" in calls[0][1]
@@ -64,7 +72,9 @@ def test_create_file_uses_selected_sandbox(monkeypatch: pytest.MonkeyPatch) -> N
         return json.dumps({"stdout": "src/app.py", "stderr": "", "return_code": 0})
 
     monkeypatch.setattr(sandbox_files, "execute_sandbox", fake_execute_sandbox)
-    result = sandbox_files.create_sandbox_workspace_file("focused", "src/app.py", "print(1)")
+    result = sandbox_files.create_sandbox_workspace_file(
+        "focused", "src/app.py", "print(1)"
+    )
     assert result == "src/app.py"
     assert calls[0][0] == "focused"
     assert "src/app.py" in calls[0][1]
@@ -90,13 +100,17 @@ def test_write_file_uses_selected_sandbox(monkeypatch: pytest.MonkeyPatch) -> No
         return json.dumps({"stdout": "README.md", "stderr": "", "return_code": 0})
 
     monkeypatch.setattr(sandbox_files, "execute_sandbox", fake_execute_sandbox)
-    result = sandbox_files.write_sandbox_workspace_file("focused", "README.md", "# New Content")
+    result = sandbox_files.write_sandbox_workspace_file(
+        "focused", "README.md", "# New Content"
+    )
     assert result == "README.md"
     assert calls[0][0] == "focused"
     assert calls[0][2] == b"# New Content"
 
 
-def test_create_directory_uses_selected_sandbox(monkeypatch: pytest.MonkeyPatch) -> None:
+def test_create_directory_uses_selected_sandbox(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
     calls = []
 
     def fake_execute_sandbox(*, name: str, command: str, **kwargs) -> str:
@@ -118,7 +132,9 @@ def test_rename_path_uses_selected_sandbox(monkeypatch: pytest.MonkeyPatch) -> N
         return json.dumps({"stdout": "dest.txt", "stderr": "", "return_code": 0})
 
     monkeypatch.setattr(sandbox_files, "execute_sandbox", fake_execute_sandbox)
-    result = sandbox_files.rename_sandbox_workspace_path("focused", "src.txt", "dest.txt")
+    result = sandbox_files.rename_sandbox_workspace_path(
+        "focused", "src.txt", "dest.txt"
+    )
     assert result == "dest.txt"
     assert calls[0][0] == "focused"
     assert "src.txt" in calls[0][1]
@@ -139,7 +155,9 @@ def test_delete_file_uses_selected_sandbox(monkeypatch: pytest.MonkeyPatch) -> N
     assert "old.txt" in calls[0][1]
 
 
-def test_delete_directory_uses_selected_sandbox(monkeypatch: pytest.MonkeyPatch) -> None:
+def test_delete_directory_uses_selected_sandbox(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
     calls = []
 
     def fake_execute_sandbox(*, name: str, command: str, **kwargs) -> str:
@@ -155,11 +173,13 @@ def test_delete_directory_uses_selected_sandbox(monkeypatch: pytest.MonkeyPatch)
 
 def test_sandbox_failure_is_reported(monkeypatch: pytest.MonkeyPatch) -> None:
     def fake_execute_sandbox(*, name: str, command: str, **kwargs) -> str:
-        return json.dumps({
-            "stdout": "",
-            "stderr": "Requested path is outside the workspace.",
-            "return_code": 1,
-        })
+        return json.dumps(
+            {
+                "stdout": "",
+                "stderr": "Requested path is outside the workspace.",
+                "return_code": 1,
+            }
+        )
 
     monkeypatch.setattr(sandbox_files, "execute_sandbox", fake_execute_sandbox)
     with pytest.raises(ValueError, match="outside the workspace"):

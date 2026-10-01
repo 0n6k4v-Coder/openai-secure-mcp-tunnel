@@ -42,14 +42,10 @@ def _load_grants() -> dict[str, dict[str, object]]:
             )
         )
     except json.JSONDecodeError as exc:
-        raise RuntimeError(
-            "Workspace grants file contains invalid JSON."
-        ) from exc
+        raise RuntimeError("Workspace grants file contains invalid JSON.") from exc
 
     if not isinstance(data, dict):
-        raise RuntimeError(
-            "Workspace grants file must contain a JSON object."
-        )
+        raise RuntimeError("Workspace grants file must contain a JSON object.")
 
     grants: dict[str, dict[str, object]] = {}
 
@@ -81,9 +77,7 @@ def _save_grants(
         exist_ok=True,
     )
 
-    temporary_path = grants_file.with_suffix(
-        ".tmp"
-    )
+    temporary_path = grants_file.with_suffix(".tmp")
 
     temporary_path.write_text(
         json.dumps(
@@ -156,14 +150,9 @@ def _run_setfacl(
         message = completed.stderr.strip()
 
         if not message:
-            message = (
-                "setfacl failed "
-                f"with exit code {completed.returncode}."
-            )
+            message = f"setfacl failed with exit code {completed.returncode}."
 
-        raise RuntimeError(
-            message
-        )
+        raise RuntimeError(message)
 
 
 def _is_protected_path(
@@ -171,17 +160,12 @@ def _is_protected_path(
     root: Path,
 ) -> bool:
     try:
-        relative = path.relative_to(
-            root
-        )
+        relative = path.relative_to(root)
     except ValueError:
         return True
 
     for protected in PROTECTED_WORKSPACE_PATHS:
-        if (
-            relative == protected
-            or protected in relative.parents
-        ):
+        if relative == protected or protected in relative.parents:
             return True
 
     return False
@@ -191,9 +175,7 @@ def _validate_protected_path_permissions(
     host_path: Path,
 ) -> None:
     for relative in PROTECTED_WORKSPACE_PATHS:
-        protected_path = (
-            host_path / relative
-        )
+        protected_path = host_path / relative
 
         if not protected_path.exists():
             continue
@@ -222,9 +204,7 @@ def _provision_sandbox_acl(
 ) -> None:
     setfacl = _require_setfacl()
 
-    _validate_protected_path_permissions(
-        host_path
-    )
+    _validate_protected_path_permissions(host_path)
 
     _run_setfacl(
         setfacl,
@@ -240,29 +220,21 @@ def _provision_sandbox_acl(
         topdown=True,
         followlinks=False,
     ):
-        current_path = Path(
-            current_root
-        )
+        current_path = Path(current_root)
 
         protected_dirs: list[str] = []
 
         for dirname in dirnames:
-            directory = (
-                current_path / dirname
-            )
+            directory = current_path / dirname
 
             if _is_protected_path(
                 directory,
                 host_path,
             ):
-                protected_dirs.append(
-                    dirname
-                )
+                protected_dirs.append(dirname)
 
         for dirname in protected_dirs:
-            dirnames.remove(
-                dirname
-            )
+            dirnames.remove(dirname)
 
         if _is_protected_path(
             current_path,
@@ -290,9 +262,7 @@ def _provision_sandbox_acl(
         )
 
         for filename in filenames:
-            file_path = (
-                current_path / filename
-            )
+            file_path = current_path / filename
 
             if _is_protected_path(
                 file_path,
@@ -332,29 +302,21 @@ def _remove_sandbox_acl(
         topdown=True,
         followlinks=False,
     ):
-        current_path = Path(
-            current_root
-        )
+        current_path = Path(current_root)
 
         protected_dirs: list[str] = []
 
         for dirname in dirnames:
-            directory = (
-                current_path / dirname
-            )
+            directory = current_path / dirname
 
             if _is_protected_path(
                 directory,
                 host_path,
             ):
-                protected_dirs.append(
-                    dirname
-                )
+                protected_dirs.append(dirname)
 
         for dirname in protected_dirs:
-            dirnames.remove(
-                dirname
-            )
+            dirnames.remove(dirname)
 
         if _is_protected_path(
             current_path,
@@ -382,9 +344,7 @@ def _remove_sandbox_acl(
         )
 
         for filename in filenames:
-            file_path = (
-                current_path / filename
-            )
+            file_path = current_path / filename
 
             if _is_protected_path(
                 file_path,
@@ -436,9 +396,7 @@ def _create_host_backed_volume(
             "docker is required to create the host-backed workspace volume."
         )
 
-    if _docker_volume_exists(
-        volume_name
-    ):
+    if _docker_volume_exists(volume_name):
         return
 
     completed = _run_command(
@@ -463,13 +421,10 @@ def _create_host_backed_volume(
 
         if not message:
             message = (
-                "docker volume create failed "
-                f"with exit code {completed.returncode}."
+                f"docker volume create failed with exit code {completed.returncode}."
             )
 
-        raise RuntimeError(
-            message
-        )
+        raise RuntimeError(message)
 
 
 def _remove_volume(
@@ -478,13 +433,9 @@ def _remove_volume(
     docker = shutil.which("docker")
 
     if docker is None:
-        raise RuntimeError(
-            "docker is required to remove the workspace volume."
-        )
+        raise RuntimeError("docker is required to remove the workspace volume.")
 
-    if not _docker_volume_exists(
-        volume_name
-    ):
+    if not _docker_volume_exists(volume_name):
         return
 
     completed = _run_command(
@@ -500,14 +451,9 @@ def _remove_volume(
         message = completed.stderr.strip()
 
         if not message:
-            message = (
-                "docker volume rm failed "
-                f"with exit code {completed.returncode}."
-            )
+            message = f"docker volume rm failed with exit code {completed.returncode}."
 
-        raise RuntimeError(
-            message
-        )
+        raise RuntimeError(message)
 
 
 def create_workspace_grant(
@@ -521,18 +467,12 @@ def create_workspace_grant(
             "refusing to create a writable grant."
         )
 
-    resolved_host_path = canonicalize_host_workspace(
-        host_path
-    )
+    resolved_host_path = canonicalize_host_workspace(host_path)
 
     workspace_id = _workspace_id()
-    volume_name = _volume_name(
-        workspace_id
-    )
+    volume_name = _volume_name(workspace_id)
 
-    _provision_sandbox_acl(
-        resolved_host_path
-    )
+    _provision_sandbox_acl(resolved_host_path)
 
     try:
         if create_volume:
@@ -541,17 +481,13 @@ def create_workspace_grant(
                 resolved_host_path,
             )
     except Exception:
-        _remove_sandbox_acl(
-            resolved_host_path
-        )
+        _remove_sandbox_acl(resolved_host_path)
         raise
 
     grants = _load_grants()
 
     grant = {
-        "host_path": str(
-            resolved_host_path
-        ),
+        "host_path": str(resolved_host_path),
         "read_only": False,
         "target": SANDBOX_TARGET,
         "volume_name": volume_name,
@@ -560,18 +496,12 @@ def create_workspace_grant(
     grants[workspace_id] = grant
 
     try:
-        _save_grants(
-            grants
-        )
+        _save_grants(grants)
     except Exception:
         if create_volume:
-            _remove_volume(
-                volume_name
-            )
+            _remove_volume(volume_name)
 
-        _remove_sandbox_acl(
-            resolved_host_path
-        )
+        _remove_sandbox_acl(resolved_host_path)
 
         raise
 
@@ -593,78 +523,48 @@ def revoke_workspace_grant(
         )
 
     if not workspace_id:
-        raise ValueError(
-            "workspace_id must not be empty."
-        )
+        raise ValueError("workspace_id must not be empty.")
 
-    if not workspace_id.startswith(
-        "ws_"
-    ):
-        raise ValueError(
-            "workspace_id has an invalid format."
-        )
+    if not workspace_id.startswith("ws_"):
+        raise ValueError("workspace_id has an invalid format.")
 
     grants = _load_grants()
 
-    grant = grants.get(
-        workspace_id
-    )
+    grant = grants.get(workspace_id)
 
     if grant is None:
-        raise ValueError(
-            f"Workspace grant '{workspace_id}' was not found."
-        )
+        raise ValueError(f"Workspace grant '{workspace_id}' was not found.")
 
-    host_path_value = grant.get(
-        "host_path"
-    )
+    host_path_value = grant.get("host_path")
 
     if not isinstance(
         host_path_value,
         str,
     ):
-        raise RuntimeError(
-            "Workspace grant has no valid host path."
-        )
+        raise RuntimeError("Workspace grant has no valid host path.")
 
-    host_path = Path(
-        host_path_value
-    ).resolve()
+    host_path = Path(host_path_value).resolve()
 
-    volume_name_value = grant.get(
-        "volume_name"
-    )
+    volume_name_value = grant.get("volume_name")
 
     if not isinstance(
         volume_name_value,
         str,
     ):
-        raise RuntimeError(
-            "Workspace grant has no valid volume name."
-        )
+        raise RuntimeError("Workspace grant has no valid volume name.")
 
-    _remove_sandbox_acl(
-        host_path
-    )
+    _remove_sandbox_acl(host_path)
 
     if remove_volume:
-        _remove_volume(
-            volume_name_value
-        )
+        _remove_volume(volume_name_value)
 
-    del grants[
-        workspace_id
-    ]
+    del grants[workspace_id]
 
-    _save_grants(
-        grants
-    )
+    _save_grants(grants)
 
     return {
         "workspace_id": workspace_id,
-        "host_path": str(
-            host_path
-        ),
+        "host_path": str(host_path),
         "volume_name": volume_name_value,
         "revoked": True,
     }
@@ -673,17 +573,13 @@ def revoke_workspace_grant(
 def _authorize(
     host_path: str,
 ) -> dict[str, object]:
-    return create_workspace_grant(
-        host_path
-    )
+    return create_workspace_grant(host_path)
 
 
 def _revoke(
     workspace_id: str,
 ) -> dict[str, object]:
-    return revoke_workspace_grant(
-        workspace_id
-    )
+    return revoke_workspace_grant(workspace_id)
 
 
 def _list_grants() -> list[dict[str, object]]:
@@ -694,9 +590,7 @@ def _list_grants() -> list[dict[str, object]]:
             "workspace_id": workspace_id,
             **grant,
         }
-        for workspace_id, grant in sorted(
-            grants.items()
-        )
+        for workspace_id, grant in sorted(grants.items())
     ]
 
 
@@ -704,9 +598,7 @@ def main(
     argv: list[str] | None = None,
 ) -> int:
     parser = argparse.ArgumentParser(
-        description=(
-            "Trusted host-side workspace ACL and Docker-volume broker."
-        )
+        description=("Trusted host-side workspace ACL and Docker-volume broker.")
     )
 
     subparsers = parser.add_subparsers(
@@ -714,32 +606,18 @@ def main(
         required=True,
     )
 
-    authorize_parser = subparsers.add_parser(
-        "authorize"
-    )
-    authorize_parser.add_argument(
-        "host_path"
-    )
+    authorize_parser = subparsers.add_parser("authorize")
+    authorize_parser.add_argument("host_path")
 
-    revoke_parser = subparsers.add_parser(
-        "revoke"
-    )
-    revoke_parser.add_argument(
-        "workspace_id"
-    )
+    revoke_parser = subparsers.add_parser("revoke")
+    revoke_parser.add_argument("workspace_id")
 
-    subparsers.add_parser(
-        "list"
-    )
+    subparsers.add_parser("list")
 
-    args = parser.parse_args(
-        argv
-    )
+    args = parser.parse_args(argv)
 
     if args.command == "authorize":
-        result = _authorize(
-            args.host_path
-        )
+        result = _authorize(args.host_path)
         print(
             json.dumps(
                 result,
@@ -749,9 +627,7 @@ def main(
         return 0
 
     if args.command == "revoke":
-        result = _revoke(
-            args.workspace_id
-        )
+        result = _revoke(args.workspace_id)
         print(
             json.dumps(
                 result,
@@ -769,12 +645,8 @@ def main(
         )
         return 0
 
-    raise RuntimeError(
-        f"Unsupported command: {args.command}"
-    )
+    raise RuntimeError(f"Unsupported command: {args.command}")
 
 
 if __name__ == "__main__":
-    raise SystemExit(
-        main()
-    )
+    raise SystemExit(main())

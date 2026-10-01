@@ -1,125 +1,22 @@
 from __future__ import annotations
 
 import json
-import subprocess
 
 import pytest
 
 from local_mcp_server import cli
 
 
-def test_workspace_name_uses_host_directory_name() -> None:
-    assert (
-        cli._workspace_name(
-            {
-                "workspace_id": "ws_test",
-                "host_path": "/home/user/project",
-            }
-        )
-        == "project"
-    )
+def test_status_value_prefers_status() -> None:
+    assert cli._status_value({"status": "Ready", "phase": "Running"}) == "Ready"
 
 
-def test_workspace_name_falls_back_to_workspace_id() -> None:
-    assert (
-        cli._workspace_name(
-            {
-                "workspace_id": "ws_test",
-            }
-        )
-        == "ws_test"
-    )
+def test_status_value_falls_back_to_phase() -> None:
+    assert cli._status_value({"phase": "Running"}) == "Running"
 
 
-def test_find_workspace_by_id(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    monkeypatch.setattr(
-        cli,
-        "_workspace_records",
-        lambda: [
-            {
-                "workspace_id": "ws_one",
-                "host_path": "/tmp/project-one",
-            },
-            {
-                "workspace_id": "ws_two",
-                "host_path": "/tmp/project-two",
-            },
-        ],
-    )
-
-    result = cli._find_workspace(
-        "ws_two"
-    )
-
-    assert result["workspace_id"] == "ws_two"
-
-
-def test_find_workspace_by_directory_name(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    monkeypatch.setattr(
-        cli,
-        "_workspace_records",
-        lambda: [
-            {
-                "workspace_id": "ws_one",
-                "host_path": "/tmp/project-one",
-            }
-        ],
-    )
-
-    result = cli._find_workspace(
-        "project-one"
-    )
-
-    assert result["workspace_id"] == "ws_one"
-
-
-def test_find_workspace_rejects_ambiguous_name(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    monkeypatch.setattr(
-        cli,
-        "_workspace_records",
-        lambda: [
-            {
-                "workspace_id": "ws_one",
-                "host_path": "/a/project",
-            },
-            {
-                "workspace_id": "ws_two",
-                "host_path": "/b/project",
-            },
-        ],
-    )
-
-    with pytest.raises(
-        ValueError,
-        match="ambiguous",
-    ):
-        cli._find_workspace(
-            "project"
-        )
-
-
-def test_find_workspace_rejects_unknown_name(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    monkeypatch.setattr(
-        cli,
-        "_workspace_records",
-        lambda: [],
-    )
-
-    with pytest.raises(
-        ValueError,
-        match="was not found",
-    ):
-        cli._find_workspace(
-            "missing"
-        )
+def test_status_value_returns_unknown_when_missing() -> None:
+    assert cli._status_value({}) == "UNKNOWN"
 
 
 def test_sandbox_list_json(
@@ -128,46 +25,69 @@ def test_sandbox_list_json(
 ) -> None:
     monkeypatch.setattr(
         cli,
-        "_sandbox_records",
-        lambda: [
-            {
-                "id": "sandbox-id",
-                "name": "project-api",
-                "status": "Ready",
-            }
-        ],
+        "list_sandboxes",
+        lambda: json.dumps(
+            [
+                {
+                    "id": "sandbox-id",
+                    "name": "project-api",
+                    "status": "Ready",
+                    "host_workspace_id": "ws_project",
+                }
+            ]
+        ),
     )
 
-    assert cli._sandbox_list(
-        True
-    ) == 0
+    assert cli._sandbox_list(True) == cli.EXIT_OK
 
-    output = json.loads(
-        capsys.readouterr().out
+    output = json.loads(capsys.readouterr().out)
+
+    assert output == [
+        {
+            "id": "sandbox-id",
+            "name": "project-api",
+            "status": "Ready",
+            "host_workspace_id": "ws_project",
+        }
+    ]
+
+
+def test_sandbox_list_table(
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    monkeypatch.setattr(
+        cli,
+        "list_sandboxes",
+        lambda: json.dumps(
+            [
+                {
+                    "id": "sandbox-id",
+                    "name": "project-api",
+                    "status": "Ready",
+                    "host_workspace_id": "ws_project",
+                }
+            ]
+        ),
     )
 
-    assert output[0]["name"] == "project-api"
-    assert output[0]["status"] == "Ready"
+    assert cli._sandbox_list(False) == cli.EXIT_OK
+
+    output = capsys.readouterr().out
+
+    assert "NAME" in output
+    assert "STATUS" in output
+    assert "HOST WORKSPACE ID" in output
+    assert "ID" in output
+    assert "project-api" in output
+    assert "Ready" in output
+    assert "ws_project" in output
 
 
 def test_sandbox_create_uses_workspace(
     monkeypatch: pytest.MonkeyPatch,
     capsys: pytest.CaptureFixture[str],
 ) -> None:
-    monkeypatch.setattr(
-        cli,
-        "_workspace_records",
-        lambda: [
-            {
-                "workspace_id": "ws_project",
-                "host_path": "/tmp/project",
-                "volume_name": "mcp-ws-project",
-                "target": "/workspace/project",
-                "read_only": False,
-            }
-        ],
-    )
-
     captured: dict[str, object] = {}
 
     def fake_create_sandbox(
@@ -186,19 +106,15 @@ def test_sandbox_create_uses_workspace(
             }
         )
 
-    monkeypatch.setattr(
-        cli,
-        "create_sandbox",
-        fake_create_sandbox,
-    )
+    monkeypatch.setattr(cli, "create_sandbox", fake_create_sandbox)
 
     assert (
         cli._sandbox_create(
             "project-api",
-            "project",
+            "ws_project",
             False,
         )
-        == 0
+        == cli.EXIT_OK
     )
 
     assert captured == {
@@ -211,296 +127,694 @@ def test_sandbox_create_uses_workspace(
     assert "Sandbox created." in output
     assert "project-api" in output
     assert "ws_project" in output
+    assert "/workspace/project" in output
 
 
-def test_sandbox_create_requires_workspace_noninteractive(
+def test_sandbox_create_json(
     monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
 ) -> None:
     monkeypatch.setattr(
         cli,
-        "_workspace_records",
-        lambda: [
+        "create_sandbox",
+        lambda *, name, workspace_id: json.dumps(
             {
-                "workspace_id": "ws_project",
-                "host_path": "/tmp/project",
+                "name": name,
+                "workspace": workspace_id,
+                "status": "Ready",
             }
-        ],
+        ),
     )
 
-    monkeypatch.setattr(
-        cli.sys.stdin,
-        "isatty",
-        lambda: False,
-    )
-
-    with pytest.raises(
-        ValueError,
-        match="--workspace is required",
-    ):
+    assert (
         cli._sandbox_create(
-            "test-sandbox",
-            None,
-            False,
+            "project-api",
+            "ws_project",
+            True,
         )
+        == cli.EXIT_OK
+    )
+
+    output = json.loads(capsys.readouterr().out)
+
+    assert output["name"] == "project-api"
+    assert output["workspace"] == "ws_project"
+    assert output["status"] == "Ready"
 
 
-def test_interactive_workspace_selection(
+def test_sandbox_status_json(
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    monkeypatch.setattr(
+        cli,
+        "sandbox_status",
+        lambda name: json.dumps(
+            {
+                "name": name,
+                "status": "Ready",
+                "workspace": "default",
+                "id": "sandbox-id",
+                "host_workspace_id": "ws_project",
+            }
+        ),
+    )
+
+    assert cli._sandbox_status("project-api", True) == cli.EXIT_OK
+
+    output = json.loads(capsys.readouterr().out)
+
+    assert output["name"] == "project-api"
+    assert output["status"] == "Ready"
+    assert output["host_workspace_id"] == "ws_project"
+
+
+def test_sandbox_status_table(
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    monkeypatch.setattr(
+        cli,
+        "sandbox_status",
+        lambda name: json.dumps(
+            {
+                "name": name,
+                "status": "Ready",
+                "workspace": "default",
+                "id": "sandbox-id",
+                "host_workspace_id": "ws_project",
+            }
+        ),
+    )
+
+    assert cli._sandbox_status("project-api", False) == cli.EXIT_OK
+
+    output = capsys.readouterr().out
+
+    assert "Name:                project-api" in output
+    assert "Status:              Ready" in output
+    assert "OpenShell workspace: default" in output
+    assert "ID:                  sandbox-id" in output
+    assert "Host workspace ID:   ws_project" in output
+
+
+def test_sandbox_delete_json(
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    monkeypatch.setattr(
+        cli,
+        "delete_sandbox",
+        lambda name: json.dumps(
+            {
+                "name": name,
+                "status": "Deleted",
+            }
+        ),
+    )
+
+    assert cli._sandbox_delete("project-api", True) == cli.EXIT_OK
+
+    output = json.loads(capsys.readouterr().out)
+
+    assert output["name"] == "project-api"
+    assert output["status"] == "Deleted"
+
+
+def test_sandbox_delete_table(
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    monkeypatch.setattr(
+        cli,
+        "delete_sandbox",
+        lambda name: json.dumps({"name": name}),
+    )
+
+    assert cli._sandbox_delete("project-api", False) == cli.EXIT_OK
+
+    assert "Sandbox deleted: project-api" in capsys.readouterr().out
+
+
+def test_sandbox_shell_builds_expected_command(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    grants = [
-        {
-            "workspace_id": "ws_one",
-            "host_path": "/tmp/project-one",
-        },
-        {
-            "workspace_id": "ws_two",
-            "host_path": "/tmp/project-two",
-        },
+    captured: dict[str, object] = {}
+
+    monkeypatch.setattr(
+        cli,
+        "_openshell_command",
+        lambda *args: ["openshell", *args],
+    )
+
+    def fake_run(command, *, cwd=cli.PROJECT_ROOT, env=None):
+        captured["command"] = command
+        return 0
+
+    monkeypatch.setattr(cli, "_run_passthrough", fake_run)
+
+    assert cli._sandbox_shell("project-api") == cli.EXIT_OK
+
+    assert captured["command"] == [
+        "openshell",
+        "sandbox",
+        "exec",
+        "--name",
+        "project-api",
+        "--tty",
+        "--",
+        "/bin/bash",
+        "-l",
     ]
 
-    monkeypatch.setattr(
-        cli.sys.stdin,
-        "isatty",
-        lambda: True,
-    )
 
-    monkeypatch.setattr(
-        "builtins.input",
-        lambda prompt: "2",
-    )
-
-    result = cli._select_workspace_interactively(
-        grants
-    )
-
-    assert result["workspace_id"] == "ws_two"
-
-
-def test_interactive_workspace_selection_handles_eof(
+def test_sandbox_exec_builds_expected_command(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    grants = [
-        {
-            "workspace_id": "ws_one",
-            "host_path": "/tmp/project-one",
-        }
-    ]
+    captured: dict[str, object] = {}
 
     monkeypatch.setattr(
-        cli.sys.stdin,
-        "isatty",
-        lambda: True,
+        cli,
+        "_openshell_command",
+        lambda *args: ["openshell", *args],
     )
 
-    def raise_eof(prompt: str) -> str:
-        raise EOFError
-
     monkeypatch.setattr(
-        "builtins.input",
-        raise_eof,
+        cli,
+        "validate_command",
+        lambda command: None,
+    )
+
+    def fake_run(command, *, cwd=cli.PROJECT_ROOT, env=None):
+        captured["command"] = command
+        return 0
+
+    monkeypatch.setattr(cli, "_run_passthrough", fake_run)
+
+    assert (
+        cli._sandbox_exec(
+            "project-api",
+            ["--", "echo", "hello"],
+        )
+        == cli.EXIT_OK
+    )
+
+    assert captured["command"] == [
+        "openshell",
+        "sandbox",
+        "exec",
+        "--name",
+        "project-api",
+        "--",
+        "echo",
+        "hello",
+    ]
+
+
+def test_sandbox_exec_requires_command(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(
+        cli,
+        "validate_command",
+        lambda command: None,
     )
 
     with pytest.raises(
         ValueError,
-        match="cancelled",
+        match="requires a command",
     ):
-        cli._select_workspace_interactively(
-            grants
-        )
+        cli._sandbox_exec("project-api", [])
 
 
-def test_sandbox_connect_uses_default_gateway(
+def test_sandbox_logs_builds_expected_command(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    monkeypatch.setattr(
-        cli,
-        "OPENSHELL_GATEWAY",
-        "",
-    )
-
     captured: dict[str, object] = {}
 
-    def fake_run(
-        command: list[str],
-        *,
-        check: bool,
-    ) -> subprocess.CompletedProcess[str]:
-        captured["command"] = command
-        captured["check"] = check
-
-        return subprocess.CompletedProcess(
-            command,
-            0,
-        )
-
-    monkeypatch.setattr(
-        cli.subprocess,
-        "run",
-        fake_run,
-    )
-
-    assert cli._sandbox_connect(
-        "project-api"
-    ) == 0
-
-    assert captured == {
-        "command": [
-            "openshell",
-            "sandbox",
-            "connect",
-            "project-api",
-        ],
-        "check": False,
-    }
-
-
-def test_sandbox_connect_uses_configured_gateway(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
     monkeypatch.setattr(
         cli,
-        "OPENSHELL_GATEWAY",
-        "http://127.0.0.1:8080",
+        "_openshell_command",
+        lambda *args: ["openshell", *args],
     )
 
-    captured: dict[str, object] = {}
-
-    def fake_run(
-        command: list[str],
-        *,
-        check: bool,
-    ) -> subprocess.CompletedProcess[str]:
+    def fake_run(command, *, cwd=cli.PROJECT_ROOT, env=None):
         captured["command"] = command
-        captured["check"] = check
+        return 0
 
-        return subprocess.CompletedProcess(
-            command,
-            0,
-        )
+    monkeypatch.setattr(cli, "_run_passthrough", fake_run)
 
-    monkeypatch.setattr(
-        cli.subprocess,
-        "run",
-        fake_run,
-    )
+    assert cli._sandbox_logs("project-api") == cli.EXIT_OK
 
-    assert cli._sandbox_connect(
-        "project-api"
-    ) == 0
-
-    assert captured == {
-        "command": [
-            "openshell",
-            "--gateway-endpoint",
-            "http://127.0.0.1:8080",
-            "sandbox",
-            "connect",
-            "project-api",
-        ],
-        "check": False,
-    }
-
-
-def test_sandbox_connect_reports_missing_cli(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    monkeypatch.setattr(
-        cli,
-        "OPENSHELL_GATEWAY",
-        "",
-    )
-
-    def raise_missing_cli(
-        command: list[str],
-        *,
-        check: bool,
-    ) -> subprocess.CompletedProcess[str]:
-        raise FileNotFoundError(
-            "openshell"
-        )
-
-    monkeypatch.setattr(
-        cli.subprocess,
-        "run",
-        raise_missing_cli,
-    )
-
-    with pytest.raises(
-        cli.SandboxError,
-        match="OpenShell CLI is not installed",
-    ):
-        cli._sandbox_connect(
-            "project-api"
-        )
+    assert captured["command"] == [
+        "openshell",
+        "logs",
+        "project-api",
+    ]
 
 
 @pytest.mark.parametrize(
-    "argv",
+    ("helper", "expected"),
     [
-        ["--json", "list"],
-        ["list", "--json"],
+        (
+            "_sandbox_start",
+            ["openshell", "sandbox", "start", "project-api"],
+        ),
+        (
+            "_sandbox_stop",
+            ["openshell", "sandbox", "stop", "project-api"],
+        ),
     ],
 )
-def test_json_flag_is_accepted_before_or_after_command(
+def test_sandbox_lifecycle_commands(
+    monkeypatch: pytest.MonkeyPatch,
+    helper: str,
+    expected: list[str],
+) -> None:
+    captured: dict[str, object] = {}
+
+    monkeypatch.setattr(
+        cli,
+        "_openshell_command",
+        lambda *args: ["openshell", *args],
+    )
+
+    def fake_run(command, *, cwd=cli.PROJECT_ROOT, env=None):
+        captured["command"] = command
+        return 0
+
+    monkeypatch.setattr(cli, "_run_passthrough", fake_run)
+
+    assert getattr(cli, helper)("project-api") == cli.EXIT_OK
+
+    assert captured["command"] == expected
+
+
+@pytest.mark.parametrize(
+    ("argv", "command", "sandbox_command"),
+    [
+        (["sandbox", "list"], "sandbox", "list"),
+        (["sandbox", "status", "project-api"], "sandbox", "status"),
+        (
+            ["sandbox", "create", "project-api", "--workspace", "ws_project"],
+            "sandbox",
+            "create",
+        ),
+        (["sandbox", "shell", "project-api"], "sandbox", "shell"),
+        (["sandbox", "exec", "project-api", "--", "echo", "hello"], "sandbox", "exec"),
+        (["sandbox", "logs", "project-api"], "sandbox", "logs"),
+        (["sandbox", "start", "project-api"], "sandbox", "start"),
+        (["sandbox", "stop", "project-api"], "sandbox", "stop"),
+        (["sandbox", "delete", "project-api"], "sandbox", "delete"),
+    ],
+)
+def test_sandbox_parser_commands(
     argv: list[str],
+    command: str,
+    sandbox_command: str,
 ) -> None:
     parser = cli._build_parser()
-    args = parser.parse_args(
-        argv
-    )
+    args = parser.parse_args(argv)
 
-    assert args.json is True
-    assert args.handler == "sandbox_list"
+    assert args.command == command
+    assert args.sandbox_command == sandbox_command
+    assert callable(args.handler)
 
 
-def test_workspace_json_flag_is_accepted_after_subcommand() -> None:
-    parser = cli._build_parser()
-
-    args = parser.parse_args(
-        [
-            "workspace",
+@pytest.mark.parametrize(
+    ("argv", "credential_command"),
+    [
+        (
+            [
+                "credential",
+                "create",
+                "github",
+                "--type",
+                "generic",
+                "--key",
+                "GITHUB_TOKEN",
+                "--yes",
+            ],
+            "create",
+        ),
+        (
+            ["credential", "list"],
             "list",
-            "--json",
-        ]
+        ),
+        (
+            ["credential", "get", "github"],
+            "get",
+        ),
+        (
+            [
+                "credential",
+                "update",
+                "github",
+                "--key",
+                "GITHUB_TOKEN",
+                "--yes",
+            ],
+            "update",
+        ),
+        (
+            ["credential", "delete", "github", "--yes"],
+            "delete",
+        ),
+        (
+            [
+                "credential",
+                "grant",
+                "project-api",
+                "github",
+                "--yes",
+            ],
+            "grant",
+        ),
+        (
+            [
+                "credential",
+                "revoke",
+                "project-api",
+                "github",
+                "--yes",
+            ],
+            "revoke",
+        ),
+    ],
+)
+def test_credential_parser_commands(
+    argv: list[str],
+    credential_command: str,
+) -> None:
+    parser = cli._build_parser()
+    args = parser.parse_args(argv)
+
+    assert args.command == "credential"
+    assert args.credential_command == credential_command
+    assert callable(args.handler)
+
+
+@pytest.mark.parametrize(
+    ("helper", "args"),
+    [
+        ("_credential_create", ("github", "generic", "GITHUB_TOKEN", False)),
+        ("_credential_update", ("github", "GITHUB_TOKEN", False)),
+        ("_credential_delete", ("github", False)),
+        ("_credential_grant", ("project-api", "github", False)),
+        ("_credential_revoke", ("project-api", "github", False)),
+    ],
+)
+def test_credential_mutations_require_confirmation(
+    helper: str,
+    args: tuple[object, ...],
+) -> None:
+    with pytest.raises(
+        ValueError,
+        match=r"requires --yes",
+    ):
+        getattr(cli, helper)(*args)
+
+
+def test_credential_create_delegates(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    captured: dict[str, object] = {}
+
+    def fake_create(name: str, provider_type: str, credential_key: str) -> int:
+        captured.update(
+            {
+                "name": name,
+                "provider_type": provider_type,
+                "credential_key": credential_key,
+            }
+        )
+        return 0
+
+    monkeypatch.setattr(cli, "create_credential", fake_create)
+
+    assert (
+        cli._credential_create(
+            "github",
+            "generic",
+            "GITHUB_TOKEN",
+            True,
+        )
+        == cli.EXIT_OK
     )
 
-    assert args.json is True
-    assert args.handler == "workspace_list"
+    assert captured == {
+        "name": "github",
+        "provider_type": "generic",
+        "credential_key": "GITHUB_TOKEN",
+    }
 
 
-def test_connect_rejects_json_output(
-    capsys: pytest.CaptureFixture[str],
+def test_credential_update_delegates(
+    monkeypatch: pytest.MonkeyPatch,
 ) -> None:
+    captured: dict[str, object] = {}
+
+    def fake_update(name: str, credential_key: str) -> int:
+        captured.update(
+            {
+                "name": name,
+                "credential_key": credential_key,
+            }
+        )
+        return 0
+
+    monkeypatch.setattr(cli, "update_credential", fake_update)
+
+    assert (
+        cli._credential_update(
+            "github",
+            "GITHUB_TOKEN",
+            True,
+        )
+        == cli.EXIT_OK
+    )
+
+    assert captured == {
+        "name": "github",
+        "credential_key": "GITHUB_TOKEN",
+    }
+
+
+def test_credential_delete_delegates(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    captured: dict[str, object] = {}
+
+    def fake_delete(name: str) -> int:
+        captured["name"] = name
+        return 0
+
+    monkeypatch.setattr(cli, "delete_credential", fake_delete)
+
+    assert cli._credential_delete("github", True) == cli.EXIT_OK
+
+    assert captured["name"] == "github"
+
+
+def test_credential_grant_delegates(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    captured: dict[str, object] = {}
+
+    def fake_grant(sandbox_name: str, credential_name: str) -> int:
+        captured.update(
+            {
+                "sandbox_name": sandbox_name,
+                "credential_name": credential_name,
+            }
+        )
+        return 0
+
+    monkeypatch.setattr(cli, "grant_credential", fake_grant)
+
+    assert (
+        cli._credential_grant(
+            "project-api",
+            "github",
+            True,
+        )
+        == cli.EXIT_OK
+    )
+
+    assert captured == {
+        "sandbox_name": "project-api",
+        "credential_name": "github",
+    }
+
+
+def test_credential_revoke_delegates(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    captured: dict[str, object] = {}
+
+    def fake_revoke(sandbox_name: str, credential_name: str) -> int:
+        captured.update(
+            {
+                "sandbox_name": sandbox_name,
+                "credential_name": credential_name,
+            }
+        )
+        return 0
+
+    monkeypatch.setattr(cli, "revoke_credential", fake_revoke)
+
+    assert (
+        cli._credential_revoke(
+            "project-api",
+            "github",
+            True,
+        )
+        == cli.EXIT_OK
+    )
+
+    assert captured == {
+        "sandbox_name": "project-api",
+        "credential_name": "github",
+    }
+
+
+def test_main_dispatches_sandbox_list(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    captured: dict[str, object] = {}
+
+    def fake_list(json_output: bool) -> int:
+        captured["json_output"] = json_output
+        return 17
+
+    monkeypatch.setattr(cli, "_sandbox_list", fake_list)
+
     assert (
         cli.main(
             [
+                "sandbox",
+                "list",
                 "--json",
-                "connect",
-                "project-api",
             ]
         )
-        == cli.EXIT_ERROR
+        == 17
     )
 
+    assert captured == {"json_output": True}
+
+
+def test_main_dispatches_sandbox_create(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    captured: dict[str, object] = {}
+
+    def fake_create(
+        name: str,
+        workspace_id: str,
+        json_output: bool,
+    ) -> int:
+        captured.update(
+            {
+                "name": name,
+                "workspace_id": workspace_id,
+                "json_output": json_output,
+            }
+        )
+        return 17
+
+    monkeypatch.setattr(cli, "_sandbox_create", fake_create)
+
     assert (
-        "--json is not supported"
-        in capsys.readouterr().err
+        cli.main(
+            [
+                "sandbox",
+                "create",
+                "project-api",
+                "--workspace",
+                "ws_project",
+                "--json",
+            ]
+        )
+        == 17
     )
+
+    assert captured == {
+        "name": "project-api",
+        "workspace_id": "ws_project",
+        "json_output": True,
+    }
+
+
+def test_main_dispatches_credential_grant(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    captured: dict[str, object] = {}
+
+    def fake_grant(
+        sandbox_name: str,
+        credential_name: str,
+        confirmed: bool,
+    ) -> int:
+        captured.update(
+            {
+                "sandbox_name": sandbox_name,
+                "credential_name": credential_name,
+                "confirmed": confirmed,
+            }
+        )
+        return 17
+
+    monkeypatch.setattr(cli, "_credential_grant", fake_grant)
+
+    assert (
+        cli.main(
+            [
+                "credential",
+                "grant",
+                "project-api",
+                "github",
+                "--yes",
+            ]
+        )
+        == 17
+    )
+
+    assert captured == {
+        "sandbox_name": "project-api",
+        "credential_name": "github",
+        "confirmed": True,
+    }
+
+
+def test_main_returns_error_for_runtime_failure(
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    def raise_error() -> int:
+        raise RuntimeError("docker is unavailable")
+
+    monkeypatch.setattr(cli, "_start", raise_error)
+
+    assert cli.main(["start"]) == cli.EXIT_ERROR
+
+    assert "ERROR: docker is unavailable" in capsys.readouterr().err
 
 
 def test_main_help(
     capsys: pytest.CaptureFixture[str],
 ) -> None:
     with pytest.raises(SystemExit) as exc_info:
-        cli.main(
-            ["--help"]
-        )
+        cli.main(["--help"])
 
     assert exc_info.value.code == 0
 
     output = capsys.readouterr().out
 
-    assert "mcp-sandbox" in output
-    assert "workspace" in output
-    assert "create" in output
-    assert "list" in output
+    assert "Local control CLI" in output
+    assert "sandbox" in output
+    assert "credential" in output
+    assert "start" in output
+    assert "stop" in output
+    assert "restart" in output
+    assert "status" in output
+    assert "logs" in output

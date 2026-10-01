@@ -75,7 +75,9 @@ def _validate_provider_name(name: str) -> str:
 
 
 def _validate_provider_type(provider_type: str) -> str:
-    if not isinstance(provider_type, str) or not _PROVIDER_TYPE.fullmatch(provider_type):
+    if not isinstance(provider_type, str) or not _PROVIDER_TYPE.fullmatch(
+        provider_type
+    ):
         raise ValueError(
             "credential type must contain only lowercase letters, digits, "
             "and hyphens, start with a letter or digit, and be at most "
@@ -139,10 +141,21 @@ def _run_passthrough(command: Sequence[str]) -> int:
     return completed.returncode
 
 
-def _raise_credential_operation_failure(operation: str, return_code: int) -> None:
-    raise CredentialError(
+def _raise_credential_operation_failure(
+    operation: str,
+    return_code: int,
+    stderr: str = "",
+) -> None:
+    detail = stderr.strip()
+
+    message = (
         f"OpenShell credential {operation} failed with exit code {return_code}."
     )
+
+    if detail:
+        message += f" {detail}"
+
+    raise CredentialError(message)
 
 
 def _read_secret(key: str) -> str:
@@ -189,7 +202,11 @@ def create_credential(name: str, provider_type: str, credential_key: str) -> int
     )
 
     if result.returncode != 0:
-        _raise_credential_operation_failure("creation", result.returncode)
+        _raise_credential_operation_failure(
+            "creation",
+            result.returncode,
+            result.stderr,
+        )
 
     print(f"Credential created: {name}")
     print(f"Provider type:      {provider_type}")

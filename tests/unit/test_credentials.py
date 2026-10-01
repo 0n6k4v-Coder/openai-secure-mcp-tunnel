@@ -25,10 +25,7 @@ def test_validate_provider_type() -> None:
 
 
 def test_validate_credential_key() -> None:
-    assert (
-        service._validate_credential_key("OPENAI_API_KEY")
-        == "OPENAI_API_KEY"
-    )
+    assert service._validate_credential_key("OPENAI_API_KEY") == "OPENAI_API_KEY"
 
     with pytest.raises(ValueError):
         service._validate_credential_key("openai_api_key")
@@ -45,10 +42,7 @@ def test_gateway_endpoint_adds_http_scheme(
         "127.0.0.1:8080",
     )
 
-    assert (
-        service._gateway_endpoint()
-        == "http://127.0.0.1:8080"
-    )
+    assert service._gateway_endpoint() == "http://127.0.0.1:8080"
 
 
 def test_create_credential_does_not_put_secret_in_argv(
@@ -91,11 +85,7 @@ def test_create_credential_does_not_put_secret_in_argv(
     )
 
     assert (
-        service.create_credential(
-            "my-openai",
-            "openai",
-            "OPENAI_API_KEY",
-        )
+        service.create_credential("my-openai", "openai", "OPENAI_API_KEY")
         == 0
     )
 
@@ -156,13 +146,7 @@ def test_update_credential_uses_environment_not_arguments(
         fake_run,
     )
 
-    assert (
-        service.update_credential(
-            "my-openai",
-            "OPENAI_API_KEY",
-        )
-        == 0
-    )
+    assert service.update_credential("my-openai", "OPENAI_API_KEY") == 0
 
     assert captured["command"] == [
         "openshell",
@@ -203,13 +187,7 @@ def test_grant_credential_uses_provider_attach(
         fake_run,
     )
 
-    assert (
-        service.grant_credential(
-            "sandbox-one",
-            "github",
-        )
-        == 0
-    )
+    assert service.grant_credential("sandbox-one", "github") == 0
 
     assert captured["command"] == [
         "openshell",
@@ -252,13 +230,7 @@ def test_revoke_credential_uses_provider_detach(
         fake_run,
     )
 
-    assert (
-        service.revoke_credential(
-            "sandbox-one",
-            "github",
-        )
-        == 0
-    )
+    assert service.revoke_credential("sandbox-one", "github") == 0
 
     assert captured["command"] == [
         "openshell",
