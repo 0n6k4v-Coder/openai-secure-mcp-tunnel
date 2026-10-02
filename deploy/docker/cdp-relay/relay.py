@@ -18,7 +18,7 @@ LISTEN_PORT = int(
 
 UPSTREAM_HOST = os.environ.get(
     "CDP_UPSTREAM_HOST",
-    "198.18.0.2",
+    "127.0.0.1",
 )
 UPSTREAM_PORT = int(
     os.environ.get(
