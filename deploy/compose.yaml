@@ -30,12 +30,21 @@ services:
         target: /etc/openshell/jwt
         read_only: true
 
+      - type: bind
+        source: ../.secrets/openshell-tls/gateway
+        target: /etc/openshell/certs
+        read_only: true
+
     environment:
       OPENSHELL_GATEWAY_CONFIG: /etc/openshell/gateway.toml
       OPENSHELL_DB_URL: sqlite:/var/lib/local-mcp-server/config/openshell.db
       XDG_DATA_HOME: /var/lib/local-mcp-server/config
       XDG_STATE_HOME: /var/lib/local-mcp-server/config
       HOME: /var/lib/local-mcp-server/config
+      OPENSHELL_TLS_CERT: /etc/openshell/certs/gateway.crt
+      OPENSHELL_TLS_KEY: /etc/openshell/certs/gateway.key
+      OPENSHELL_TLS_CLIENT_CA: /etc/openshell/certs/ca.crt
+      OPENSHELL_ENABLE_MTLS_AUTH: "true"
 
     extra_hosts:
       - "host.docker.internal:host-gateway"
@@ -70,6 +79,11 @@ services:
       - ${MCP_INSTALLATION_STATE_FILE:-../.state/installations.json}:/var/lib/local-mcp-server/installations.json:rw
       - ${WORKSPACE_GRANTS_DIR:-../.state/workspace-grants}:/var/lib/local-mcp-server/workspace-grants:ro
 
+      - type: bind
+        source: ../.secrets/openshell-tls/client
+        target: /etc/openshell
+        read_only: true
+
     networks:
       - mcp-internal
       - openshell-internal
@@ -80,7 +94,6 @@ services:
         condition: service_started
 
     environment:
-      OPENSHELL_GATEWAY: ${OPENSHELL_GATEWAY:-openshell-gateway:8080}
       OPENSHELL_WORKSPACE: ${OPENSHELL_WORKSPACE:-default}
       SANDBOX_IMAGE: ${SANDBOX_IMAGE:-local-mcp-openshell-sandbox:1.0.0}
       SANDBOX_DEFAULT_CPU: ${SANDBOX_DEFAULT_CPU:-1}
@@ -89,6 +102,7 @@ services:
       WORKSPACE_GRANTS_READ_ONLY: "true"
       INSTALLATION_STATE_FILE: /var/lib/local-mcp-server/installations.json
       LOG_LEVEL: INFO
+      OPENSHELL_SYSTEM_GATEWAY_DIR: /etc/openshell
 
     healthcheck:
       test:

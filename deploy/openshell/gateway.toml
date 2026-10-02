@@ -6,10 +6,19 @@ bind_address = "0.0.0.0:8080"
 health_bind_address = "0.0.0.0:8081"
 log_level = "info"
 compute_driver = "docker"
-disable_tls = true
+disable_tls = false
+
+[openshell.gateway.tls]
+cert_path = "/etc/openshell/certs/gateway.crt"
+key_path = "/etc/openshell/certs/gateway.key"
+client_ca_path = "/etc/openshell/certs/ca.crt"
+require_client_auth = true
 
 [openshell.gateway.auth]
-allow_unauthenticated_users = true
+allow_unauthenticated_users = false
+
+[openshell.gateway.mtls_auth]
+enabled = true
 
 [openshell.gateway.gateway_jwt]
 signing_key_path = "/etc/openshell/jwt/signing.pem"

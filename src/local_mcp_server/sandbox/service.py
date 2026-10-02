@@ -13,11 +13,6 @@ from .policy import (
 from ..workspace.service import get_workspace_grant
 
 
-OPENSHELL_GATEWAY = os.environ.get(
-    "OPENSHELL_GATEWAY",
-    "",
-)
-
 OPENSHELL_WORKSPACE = os.environ.get(
     "OPENSHELL_WORKSPACE",
     "default",
@@ -32,9 +27,6 @@ class SandboxError(RuntimeError):
 
 def _client() -> SandboxClient:
     try:
-        if OPENSHELL_GATEWAY:
-            return SandboxClient(OPENSHELL_GATEWAY)
-
         return SandboxClient.from_active_cluster()
 
     except Exception as exc:

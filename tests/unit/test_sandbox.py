@@ -159,6 +159,22 @@ def test_sandbox_to_dict_does_not_expose_host_path_or_volume(
     assert "mcp-ws-secret-volume" not in serialized
 
 
+def test_client_uses_active_gateway_configuration(monkeypatch: pytest.MonkeyPatch) -> None:
+    calls: list[str] = []
+
+    class FakeClient:
+        @classmethod
+        def from_active_cluster(cls):
+            calls.append("active")
+            return cls()
+
+    monkeypatch.setattr(service, "SandboxClient", FakeClient)
+
+    assert isinstance(service._client(), FakeClient)
+    assert calls == ["active"]
+
+
+
 def test_create_sandbox_rejects_arbitrary_host_path() -> None:
     with pytest.raises(
         ValueError,
