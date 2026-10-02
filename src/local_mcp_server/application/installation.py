@@ -5,15 +5,14 @@ import os
 import re
 import secrets
 import shlex
-from dataclasses import dataclass
 from datetime import datetime, timezone
 from pathlib import Path
 from threading import Lock
 from typing import Final
 
-from openshell import SandboxClient
-
-from ..sandbox.service import OPENSHELL_WORKSPACE
+from ..domain.installation import InstallationRequest
+from ..infrastructure.openshell.client import active_client
+from ..infrastructure.openshell.sandbox import OPENSHELL_WORKSPACE
 
 
 INSTALLATION_STATE_FILE = Path(
@@ -48,18 +47,6 @@ _FORBIDDEN_SHELL_CHARS: Final = frozenset(
 
 class InstallationError(RuntimeError):
     """Raised when an installation request is invalid or fails."""
-
-
-@dataclass(frozen=True)
-class InstallationRequest:
-    request_id: str
-    sandbox_name: str
-    tool_name: str
-    version: str
-    source: str
-    install_command: str
-    reason: str
-    created_at: str
 
 
 def _ensure_state_directory() -> None:
@@ -345,7 +332,7 @@ def execute_installation(
     try:
         tokens = _validate_install_command(consumed.install_command)
 
-        with SandboxClient.from_active_cluster() as client:
+        with active_client() as client:
             result = client.exec(
                 consumed.sandbox_name,
                 list(tokens),

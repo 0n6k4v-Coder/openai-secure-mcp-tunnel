@@ -4,8 +4,8 @@ import json
 
 import pytest
 
-from local_mcp_server.sandbox import policy
-from local_mcp_server.sandbox import service
+from local_mcp_server.infrastructure.openshell import policy
+from local_mcp_server.infrastructure.openshell import sandbox as service
 
 
 def test_default_memory_quantity_is_open_shell_compatible() -> None:
@@ -168,7 +168,7 @@ def test_client_uses_active_gateway_configuration(monkeypatch: pytest.MonkeyPatc
             calls.append("active")
             return cls()
 
-    monkeypatch.setattr(service, "SandboxClient", FakeClient)
+    monkeypatch.setattr(service, "active_client", FakeClient.from_active_cluster)
 
     assert isinstance(service._client(), FakeClient)
     assert calls == ["active"]

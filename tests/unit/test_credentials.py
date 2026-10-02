@@ -4,7 +4,7 @@ import subprocess
 
 import pytest
 
-from local_mcp_server.credentials import service
+from local_mcp_server.infrastructure.openshell import credentials as service
 
 
 def test_validate_provider_name() -> None:

@@ -11,8 +11,8 @@ dependencies = [
 ]
 
 [project.scripts]
-secure-mcp = "local_mcp_server.cli:main"
-workspace-broker = "local_mcp_server.workspace.broker:main"
+secure-mcp = "local_mcp_server.cli.main:main"
+workspace-broker = "local_mcp_server.cli.workspace_broker:main"
 
 [dependency-groups]
 dev = [

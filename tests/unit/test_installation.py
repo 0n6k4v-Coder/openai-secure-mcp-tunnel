@@ -5,7 +5,7 @@ from pathlib import Path
 
 import pytest
 
-from local_mcp_server.installation import service
+from local_mcp_server.application import installation as service
 
 
 def _request(
@@ -162,7 +162,7 @@ def test_execute_installation_runs_only_after_approval(
         def from_active_cluster(cls):
             return FakeClient()
 
-    monkeypatch.setattr(service, "SandboxClient", FakeSandboxClient)
+    monkeypatch.setattr(service, "active_client", FakeSandboxClient.from_active_cluster)
 
     request = _request()
 
@@ -212,7 +212,7 @@ def test_failed_installation_is_recorded(
         def from_active_cluster(cls):
             return FakeClient()
 
-    monkeypatch.setattr(service, "SandboxClient", FakeSandboxClient)
+    monkeypatch.setattr(service, "active_client", FakeSandboxClient.from_active_cluster)
 
     request = _request()
     service.approve_installation(request.request_id)

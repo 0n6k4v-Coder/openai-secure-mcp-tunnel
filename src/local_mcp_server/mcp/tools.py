@@ -10,30 +10,28 @@ from mcp.server.elicitation import ElicitationResult
 from mcp.types import ToolAnnotations
 from pydantic import BaseModel
 
-from .installation import (
+from ..application.installation import (
     approve_installation,
     create_installation_request,
     execute_installation,
 )
-from .sandbox import (
+from ..application.sandbox import (
     create_sandbox as create_sandbox_impl,
     delete_sandbox as delete_sandbox_impl,
     execute_sandbox as execute_sandbox_impl,
     list_sandboxes as list_sandboxes_impl,
     sandbox_status as sandbox_status_impl,
 )
-from .workspace import (
+from ..application.workspace import (
     create_workspace_directory as create_workspace_directory_impl,
     create_workspace_file as create_workspace_file_impl,
     delete_workspace_directory as delete_workspace_directory_impl,
     delete_workspace_file as delete_workspace_file_impl,
+    list_sandbox_workspace_files,
     list_workspace_grants,
+    read_sandbox_workspace_text_file,
     rename_workspace_path as rename_workspace_path_impl,
     write_workspace_file as write_workspace_file_impl,
-)
-from .workspace.sandbox_files import (
-    list_sandbox_workspace_files,
-    read_sandbox_workspace_text_file,
 )
 
 

@@ -6,7 +6,7 @@ import subprocess
 
 import pytest
 
-from local_mcp_server.workspace import broker
+from local_mcp_server.cli import workspace_broker as broker
 
 
 def test_is_protected_path(

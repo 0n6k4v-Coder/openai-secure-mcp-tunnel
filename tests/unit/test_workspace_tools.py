@@ -7,7 +7,7 @@ from pathlib import Path
 
 import pytest
 
-from local_mcp_server.workspace import sandbox_files
+from local_mcp_server.infrastructure.openshell import sandbox_files
 
 
 def test_list_uses_selected_sandbox(monkeypatch: pytest.MonkeyPatch) -> None:

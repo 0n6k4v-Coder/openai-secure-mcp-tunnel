@@ -5,7 +5,7 @@ import re
 
 from openshell._proto import openshell_pb2
 
-from ..workspace.service import get_workspace_grant
+from ..workspace.repository import get_workspace_grant
 
 
 SANDBOX_IMAGE = os.environ.get(

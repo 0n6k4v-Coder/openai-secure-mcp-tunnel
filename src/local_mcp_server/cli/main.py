@@ -37,7 +37,7 @@ COMPOSE_FILE = PROJECT_ROOT / "deploy" / "compose.yaml"
 ENV_FILE = PROJECT_ROOT / ".env"
 
 
-from .credentials import (  # noqa: E402
+from ..application.credentials import (  # noqa: E402
     CredentialError,
     create_credential,
     delete_credential,
@@ -48,7 +48,7 @@ from .credentials import (  # noqa: E402
     update_credential,
 )
 
-from .sandbox import (  # noqa: E402
+from ..infrastructure.openshell.sandbox import (  # noqa: E402
     SandboxError,
     create_sandbox,
     delete_sandbox,

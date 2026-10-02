@@ -2,15 +2,16 @@ from __future__ import annotations
 
 import json
 import os
+from typing import Any
 
-from openshell import SandboxClient
+from .client import active_client
 
 from .policy import (
     build_sandbox_spec,
     validate_command,
     validate_name,
 )
-from ..workspace.service import get_workspace_grant
+from ..workspace.repository import get_workspace_grant
 
 
 OPENSHELL_WORKSPACE = os.environ.get(
@@ -25,9 +26,9 @@ class SandboxError(RuntimeError):
     """Raised when an OpenShell sandbox operation fails."""
 
 
-def _client() -> SandboxClient:
+def _client() -> Any:
     try:
-        return SandboxClient.from_active_cluster()
+        return active_client()
 
     except Exception as exc:
         raise SandboxError(

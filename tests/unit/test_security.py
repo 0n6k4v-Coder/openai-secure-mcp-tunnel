@@ -5,9 +5,9 @@ from pathlib import Path
 
 import pytest
 
-from local_mcp_server.workspace import broker as workspace_broker
-from local_mcp_server.workspace import service as workspace_service
-from local_mcp_server.workspace import validation as workspace_validation
+from local_mcp_server.cli import workspace_broker
+from local_mcp_server.infrastructure.workspace import repository as workspace_service
+from local_mcp_server.domain import workspace as workspace_validation
 
 
 def test_canonicalize_host_workspace_rejects_sensitive_paths() -> None:

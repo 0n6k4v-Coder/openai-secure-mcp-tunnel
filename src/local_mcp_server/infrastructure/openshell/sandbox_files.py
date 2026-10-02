@@ -296,13 +296,13 @@ def _validate_content(content: str) -> bytes:
 
 
 def execute_sandbox(*args, **kwargs):
-    from ..sandbox.service import execute_sandbox as _execute_sandbox
+    from .sandbox import execute_sandbox as _execute_sandbox
 
     return _execute_sandbox(*args, **kwargs)
 
 
 def validate_name(*args, **kwargs):
-    from ..sandbox.policy import validate_name as _validate_name
+    from .policy import validate_name as _validate_name
 
     return _validate_name(*args, **kwargs)
 
