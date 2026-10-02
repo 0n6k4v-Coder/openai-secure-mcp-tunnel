@@ -16,6 +16,7 @@ exec /opt/chrome/chrome-headless-shell \
     --remote-debugging-address="$BROWSER_BIND_IP" \
     --remote-debugging-port="$BROWSER_PORT" \
     --user-data-dir="$BROWSER_USER_DATA_DIR" \
+    --disable-setuid-sandbox \
     --no-first-run \
     --no-default-browser-check \
     --disable-background-networking \
