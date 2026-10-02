@@ -96,7 +96,7 @@ ChatGPT / OpenAI Control Plane
         │
         ├── MCP transport + tool registry
         │
-        ├── application/use-case logic
+        ├── domain services + MCP tool adapters
         │
         └── OpenShell SDK
                  │
@@ -116,7 +116,10 @@ The MCP server uses Streamable HTTP at `/mcp`, runs stateless HTTP mode, and lis
 MCP tool
   │
   ▼
-application.sandbox
+sandbox.tools
+  │
+  ▼
+sandbox.service
   │
   ▼
 infrastructure.openshell.sandbox
@@ -267,7 +270,7 @@ The MCP server receives that directory as read-only and uses opaque `ws_*` IDs t
 
 ## Sandbox security boundary
 
-The sandbox image is built from `deploy/docker/openshell-sandbox/Dockerfile` and is configured by the OpenShell policy generated in `infrastructure/openshell/policy.py`.
+The sandbox image is built from `deploy/docker/openshell-sandbox/Dockerfile` and is configured by the OpenShell policy generated in `sandbox/policy.py`.
 
 Current sandbox defaults include:
 
@@ -289,75 +292,86 @@ The current Python package is organized around runtime responsibility:
 ```text
 src/local_mcp_server/
 │
-├── server/
-│   ├── app.py              MCP server composition + process entrypoint
-│   ├── middleware.py       request/response audit logging
-│   ├── health.py           /healthz response
-│   └── __main__.py         python -m local_mcp_server.server
+├── workspace/                 # workspace domain
+│   ├── domain.py              # host workspace validation rules
+│   ├── service.py             # workspace application facade
+│   ├── tools.py               # workspace MCP tools
+│   └── repository.py          # workspace grant persistence
+│
+├── sandbox/                   # sandbox domain
+│   ├── policy.py              # sandbox specification/policy
+│   ├── service.py             # sandbox application facade
+│   └── tools.py               # sandbox MCP tools
+│
+├── installation/              # installation domain
+│   ├── domain.py              # installation request state
+│   ├── service.py             # approval + installation orchestration
+│   └── tools.py               # installation MCP tools
+│
+├── credentials/               # credential domain
+│   └── service.py             # credential application facade
+│
+├── infrastructure/            # external-system adapters
+│   └── openshell/
+│       ├── client.py          # active OpenShell SDK connection
+│       ├── sandbox.py         # OpenShell sandbox lifecycle + execution
+│       ├── sandbox_files.py   # OpenShell workspace file operations
+│       └── credentials.py     # OpenShell CLI credential-provider adapter
 │
 ├── mcp/
-│   ├── registration.py     tool registration boundary
-│   └── tools.py            MCP tool adapters
+│   ├── registration.py        # MCP tool composition root
+│   └── __init__.py
 │
-├── application/
-│   ├── credentials.py      application facade for credential operations
-│   ├── installation.py     approval + installation orchestration
-│   ├── sandbox.py          sandbox application facade
-│   └── workspace.py        workspace application facade
-│
-├── domain/
-│   ├── installation.py     installation request state
-│   └── workspace.py        host workspace validation rules
-│
-├── infrastructure/
-│   ├── openshell/
-│   │   ├── client.py       active OpenShell SDK connection
-│   │   ├── sandbox.py      sandbox lifecycle + command execution
-│   │   ├── policy.py       sandbox specification/policy
-│   │   ├── sandbox_files.py sandbox workspace file operations
-│   │   └── credentials.py  OpenShell CLI credential-provider adapter
-│   │
-│   └── workspace/
-│       └── repository.py   workspace grant persistence
+├── server/
+│   ├── app.py                 # MCP server composition + process entrypoint
+│   ├── middleware.py          # request/response audit logging
+│   ├── health.py              # /healthz response
+│   └── __main__.py            # python -m local_mcp_server.server
 │
 └── cli/
-    ├── main.py             secure-mcp operator CLI
-    └── workspace_broker.py trusted host workspace broker
+    ├── main.py                # secure-mcp operator CLI
+    └── workspace_broker.py    # trusted host workspace broker
 ```
 
-### Dependency direction
+### Domain-first dependency direction
 
 ```text
-                    ┌──────────────┐
-                    │ MCP adapters │
-                    │     CLI      │
-                    └──────┬───────┘
-                           │
-                           ▼
-                    ┌──────────────┐
-                    │ Application  │
-                    └──────┬───────┘
-                           │
-                ┌──────────┴──────────┐
-                ▼                     ▼
-          ┌──────────┐         ┌───────────────┐
-          │  Domain  │         │ Infrastructure│
-          └──────────┘         └───────┬───────┘
-                                       │
-                                       ▼
-                              OpenShell / Docker /
-                              filesystem / subprocess
+                     ┌──────────────────────┐
+                     │      MCP tools       │
+                     │ workspace / sandbox  │
+                     │ installation / ...   │
+                     └──────────┬───────────┘
+                                │
+                                ▼
+                     ┌──────────────────────┐
+                     │ Domain service layer │
+                     │  use-case / rules   │
+                     └──────────┬───────────┘
+                                │
+                    ┌───────────┴───────────┐
+                    ▼                       ▼
+             ┌──────────────┐       ┌────────────────┐
+             │ Domain model │       │ Infrastructure │
+             │ + repository │       │ OpenShell/etc. │
+             └──────────────┘       └───────┬────────┘
+                                            │
+                                            ▼
+                                  OpenShell / Docker /
+                                  filesystem / subprocess
 ```
 
-The direction is intentionally asymmetric:
+The structure is intentionally domain-first: everything a developer needs for one business capability is discoverable under that capability's directory.
 
-- `mcp/` translates protocol-level requests into application calls.
-- `application/` owns use-case orchestration.
-- `domain/` contains infrastructure-independent state/rules.
-- `infrastructure/` owns OpenShell SDK/CLI, filesystem persistence, and other external-system details.
-- `cli/` contains operator interfaces; the workspace broker is trusted host infrastructure rather than an MCP tool implementation.
+- workspace/, sandbox/, installation/, and future domains such as news/ own their domain-specific tools, services, models, and persistence interfaces.
+- tools.py in a domain is the MCP adapter for that domain; it should stay thin and delegate to service.py.
+- service.py owns application/use-case orchestration for that domain.
+- domain.py contains infrastructure-independent business state and validation where the domain needs it.
+- repository.py contains domain-specific persistence logic where the domain needs durable state.
+- infrastructure/ contains adapters for OpenShell and other external systems. It should not become a second home for domain business rules.
+- mcp/registration.py only composes the domain tool registrars into the MCP server.
+- server/ owns transport/process concerns, while cli/ owns operator-facing interfaces.
 
-The application layer should not gain direct Docker or OpenShell SDK calls merely because a use case needs them; those dependencies belong behind the infrastructure boundary.
+When a new business capability is added, it should normally start as a new top-level domain directory rather than scattering files across application/, domain/, and mcp/. For example, a future news/ domain can begin with only the files it actually needs (service.py, tools.py, and optionally domain.py or repository.py) and grow incrementally.
 
 ## Installation execution flow
 

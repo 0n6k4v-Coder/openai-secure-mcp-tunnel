@@ -4,7 +4,7 @@ import json
 
 import pytest
 
-from local_mcp_server.infrastructure.openshell import policy
+from local_mcp_server.sandbox import policy
 from local_mcp_server.infrastructure.openshell import sandbox as service
 
 

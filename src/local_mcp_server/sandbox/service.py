@@ -8,6 +8,7 @@ from ..infrastructure.openshell.sandbox import (
     list_sandboxes,
     sandbox_status,
 )
+from .policy import validate_command, validate_name
 
 __all__ = [
     "SandboxError",
@@ -16,4 +17,6 @@ __all__ = [
     "execute_sandbox",
     "list_sandboxes",
     "sandbox_status",
+    "validate_command",
+    "validate_name",
 ]

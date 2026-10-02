@@ -8,8 +8,8 @@ import subprocess
 import uuid
 from pathlib import Path
 
-from ..infrastructure.workspace import repository as workspace_service
-from ..domain.workspace import canonicalize_host_workspace
+from ..workspace import repository as workspace_service
+from ..workspace.domain import canonicalize_host_workspace
 
 
 GRANTS_READ_ONLY = workspace_service.GRANTS_READ_ONLY

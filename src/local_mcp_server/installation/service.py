@@ -10,7 +10,7 @@ from pathlib import Path
 from threading import Lock
 from typing import Final
 
-from ..domain.installation import InstallationRequest
+from .domain import InstallationRequest
 from ..infrastructure.openshell.client import active_client
 from ..infrastructure.openshell.sandbox import OPENSHELL_WORKSPACE
 

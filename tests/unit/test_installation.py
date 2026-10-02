@@ -5,7 +5,7 @@ from pathlib import Path
 
 import pytest
 
-from local_mcp_server.application import installation as service
+from local_mcp_server.installation import service
 
 
 def _request(

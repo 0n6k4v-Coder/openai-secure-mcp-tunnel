@@ -10,9 +10,7 @@ from ..infrastructure.openshell.sandbox_files import (
     rename_sandbox_workspace_path as rename_workspace_path,
     write_sandbox_workspace_file as write_workspace_file,
 )
-from ..infrastructure.workspace.repository import (
-    list_workspace_grants,
-)
+from .repository import list_workspace_grants
 
 __all__ = [
     "create_workspace_directory",

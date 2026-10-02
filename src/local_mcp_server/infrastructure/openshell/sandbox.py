@@ -6,12 +6,12 @@ from typing import Any
 
 from .client import active_client
 
-from .policy import (
+from ...sandbox.policy import (
     build_sandbox_spec,
     validate_command,
     validate_name,
 )
-from ..workspace.repository import get_workspace_grant
+from ...workspace.repository import get_workspace_grant
 
 
 OPENSHELL_WORKSPACE = os.environ.get(
