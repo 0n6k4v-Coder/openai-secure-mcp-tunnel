@@ -28,6 +28,10 @@ services:
         source: ../.secrets/openshell-tls/gateway
         target: /etc/openshell/certs
         read_only: true
+      - type: bind
+        source: ../.secrets/openshell-tls/client
+        target: /etc/openshell/client-tls
+        read_only: true
     environment:
       OPENSHELL_GATEWAY_CONFIG: /etc/openshell/gateway.toml
       OPENSHELL_DB_URL: sqlite:/var/lib/local-mcp-server/config/openshell.db
