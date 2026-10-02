@@ -34,9 +34,23 @@ _VERSION = re.compile(r"^[A-Za-z0-9][A-Za-z0-9_.+~:@/=<>,!* -]{0,127}$")
 
 _ALLOWED_ENTRYPOINTS: Final = frozenset(
     {
-        "apt", "apt-get", "apk", "cargo", "conda", "composer", "dnf",
-        "gem", "go", "npm", "pip", "pip3", "pipx", "pnpm", "uv",
-        "yarn", "yum",
+        "apt",
+        "apt-get",
+        "apk",
+        "cargo",
+        "conda",
+        "composer",
+        "dnf",
+        "gem",
+        "go",
+        "npm",
+        "pip",
+        "pip3",
+        "pipx",
+        "pnpm",
+        "uv",
+        "yarn",
+        "yum",
     }
 )
 
@@ -171,16 +185,25 @@ def _validate_install_command(value: str) -> tuple[str, ...]:
 
     operations = set(tokens[1:])
 
-    if executable in {"apt", "apt-get", "dnf", "yum"} and "install" not in operations:
+    if (
+        executable in {"apt", "apt-get", "dnf", "yum"}
+        and "install" not in operations
+    ):
         raise InstallationError(
             "System package installation commands must use install."
         )
+
     if executable == "apk" and "add" not in operations:
         raise InstallationError("apk installation commands must use add.")
-    if executable in {"pip", "pip3", "pipx"} and "install" not in operations:
+
+    if (
+        executable in {"pip", "pip3", "pipx"}
+        and "install" not in operations
+    ):
         raise InstallationError(
             "Python package installation commands must use install."
         )
+
     if executable == "uv":
         if len(tokens) < 3 or tuple(tokens[1:3]) not in {
             ("tool", "install"),
@@ -190,22 +213,30 @@ def _validate_install_command(value: str) -> tuple[str, ...]:
                 "uv installation commands must use 'uv tool install' "
                 "or 'uv pip install'."
             )
+
     if executable == "npm" and not {"install", "add"} & operations:
         raise InstallationError(
             "npm installation commands must use install or add."
         )
+
     if executable in {"pnpm", "yarn"} and not {"install", "add"} & operations:
         raise InstallationError(
             "Node package installation commands must use install or add."
         )
-    if executable in {"cargo", "go", "gem"} and "install" not in operations:
+
+    if (
+        executable in {"cargo", "go", "gem"}
+        and "install" not in operations
+    ):
         raise InstallationError(
             f"{executable} installation commands must use install."
         )
+
     if executable == "composer" and "require" not in operations:
         raise InstallationError(
             "Composer installation commands must use require."
         )
+
     if executable == "conda" and not {"install", "create"} & operations:
         raise InstallationError(
             "Conda installation commands must use install or create."
@@ -341,10 +372,27 @@ def execute_installation(
                 no_login_shell=True,
             )
 
-        success = result.exit_code == 0
+        if result.exit_code != 0:
+            mark_installation_finished(
+                consumed.request_id,
+                success=False,
+            )
+
+            diagnostic = (
+                result.stderr.strip()
+                or result.stdout.strip()
+                or "The package manager returned no diagnostic output."
+            )
+
+            raise InstallationError(
+                f"Installation failed in sandbox "
+                f"'{consumed.sandbox_name}' with exit code "
+                f"{result.exit_code}: {diagnostic}"
+            )
+
         mark_installation_finished(
             consumed.request_id,
-            success=success,
+            success=True,
         )
 
         return {
@@ -356,11 +404,13 @@ def execute_installation(
             "install_command": consumed.install_command,
             "approved": True,
             "executed": True,
-            "success": success,
+            "success": True,
             "stdout": result.stdout,
             "stderr": result.stderr,
             "return_code": result.exit_code,
         }
+    except InstallationError:
+        raise
     except Exception as exc:
         try:
             mark_installation_finished(

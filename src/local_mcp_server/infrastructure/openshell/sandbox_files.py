@@ -302,7 +302,7 @@ def execute_sandbox(*args, **kwargs):
 
 
 def validate_name(*args, **kwargs):
-    from .policy import validate_name as _validate_name
+    from ...sandbox.policy import validate_name as _validate_name
 
     return _validate_name(*args, **kwargs)
 

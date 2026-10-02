@@ -40,8 +40,18 @@ RUN groupadd \
         --shell /usr/sbin/nologin \
         appuser
 
-RUN mkdir -p /workspace \
-    && chown 10001:10001 /workspace
+RUN mkdir -p \
+        /workspace \
+        /workspace/.npm-global \
+        /workspace/.npm \
+    && printf '%s\n' 'prefix=/workspace/.npm-global' > /workspace/.npmrc \
+    && chown -R 10001:10001 \
+        /workspace \
+        /workspace/.npm-global \
+        /workspace/.npm \
+        /workspace/.npmrc
+
+ENV PATH=/workspace/.npm-global/bin:${PATH}
 
 USER 10001:10001
 

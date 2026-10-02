@@ -1,11 +1,15 @@
 from __future__ import annotations
 
+import asyncio
 import json
 from pathlib import Path
 
 import pytest
+from mcp.server import MCPServer
+from mcp.server.mcpserver.exceptions import ToolError
 
 from local_mcp_server.installation import service
+from local_mcp_server.installation import tools as installation_tools
 
 
 def _request(
@@ -123,6 +127,31 @@ def test_install_command_accepts_supported_package_managers(
         assert request.install_command == command
 
 
+def test_chrome_devtools_install_commands_are_accepted(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    state_file = tmp_path / "installations.json"
+    monkeypatch.setattr(service, "INSTALLATION_STATE_FILE", state_file)
+
+    for version in ("latest", "1.10.1"):
+        request = _request(
+            tool_name="chrome-devtools-mcp",
+            version=version,
+            source="npm",
+            install_command=(
+                f"npm install -g chrome-devtools-mcp@{version}"
+            ),
+            reason="Required for Chrome DevTools MCP integration testing.",
+        )
+
+        assert request.tool_name == "chrome-devtools-mcp"
+        assert request.version == version
+        assert request.install_command == (
+            f"npm install -g chrome-devtools-mcp@{version}"
+        )
+
+
 def test_execute_installation_runs_only_after_approval(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
@@ -162,7 +191,11 @@ def test_execute_installation_runs_only_after_approval(
         def from_active_cluster(cls):
             return FakeClient()
 
-    monkeypatch.setattr(service, "active_client", FakeSandboxClient.from_active_cluster)
+    monkeypatch.setattr(
+        service,
+        "active_client",
+        FakeSandboxClient.from_active_cluster,
+    )
 
     request = _request()
 
@@ -185,7 +218,7 @@ def test_execute_installation_runs_only_after_approval(
     assert state[request.request_id]["state"] == "completed"
 
 
-def test_failed_installation_is_recorded(
+def test_failed_installation_is_recorded_and_raised(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -212,16 +245,108 @@ def test_failed_installation_is_recorded(
         def from_active_cluster(cls):
             return FakeClient()
 
-    monkeypatch.setattr(service, "active_client", FakeSandboxClient.from_active_cluster)
+    monkeypatch.setattr(
+        service,
+        "active_client",
+        FakeSandboxClient.from_active_cluster,
+    )
 
     request = _request()
     service.approve_installation(request.request_id)
 
-    result = service.execute_installation(request)
-
-    assert result["executed"] is True
-    assert result["success"] is False
-    assert result["return_code"] == 1
+    with pytest.raises(
+        service.InstallationError,
+        match="exit code 1: package manager failed",
+    ):
+        service.execute_installation(request)
 
     state = json.loads(state_file.read_text(encoding="utf-8"))
     assert state[request.request_id]["state"] == "failed"
+
+
+def test_mcp_tool_exposes_installation_validation_error(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    state_file = tmp_path / "installations.json"
+    monkeypatch.setattr(service, "INSTALLATION_STATE_FILE", state_file)
+
+    mcp = MCPServer("installation-test")
+    installation_tools.register_tools(mcp)
+
+    with pytest.raises(
+        ToolError,
+        match="Invalid sandbox name",
+    ):
+        asyncio.run(
+            mcp.call_tool(
+                "request_tool_installation",
+                {
+                    "sandbox_name": "INVALID",
+                    "tool_name": "chrome-devtools-mcp",
+                    "version": "1.10.1",
+                    "source": "npm",
+                    "install_command": (
+                        "npm install -g chrome-devtools-mcp@1.10.1"
+                    ),
+                    "reason": "Test validation error visibility.",
+                },
+            )
+        )
+
+
+def test_mcp_tool_exposes_installation_execution_error(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    state_file = tmp_path / "installations.json"
+    monkeypatch.setattr(service, "INSTALLATION_STATE_FILE", state_file)
+
+    class FakeClient:
+        def __enter__(self):
+            return self
+
+        def __exit__(self, exc_type, exc, traceback):
+            return False
+
+        def exec(self, *args, **kwargs):
+            raise RuntimeError("gateway execution unavailable")
+
+    class FakeSandboxClient:
+        @classmethod
+        def from_active_cluster(cls):
+            return FakeClient()
+
+    monkeypatch.setattr(
+        service,
+        "active_client",
+        FakeSandboxClient.from_active_cluster,
+    )
+
+    mcp = MCPServer("installation-test")
+    installation_tools.register_tools(mcp)
+
+    with pytest.raises(
+        ToolError,
+        match="gateway execution unavailable",
+    ):
+        asyncio.run(
+            mcp.call_tool(
+                "request_tool_installation",
+                {
+                    "sandbox_name": "my-sandbox",
+                    "tool_name": "chrome-devtools-mcp",
+                    "version": "1.10.1",
+                    "source": "npm",
+                    "install_command": (
+                        "npm install -g chrome-devtools-mcp@1.10.1"
+                    ),
+                    "reason": "Test execution error visibility.",
+                },
+            )
+        )
+
+    state = json.loads(state_file.read_text(encoding="utf-8"))
+    assert len(state) == 1
+    request_state = next(iter(state.values()))
+    assert request_state["state"] == "failed"

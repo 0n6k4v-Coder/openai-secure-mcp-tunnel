@@ -4,8 +4,8 @@ import json
 
 import pytest
 
-from local_mcp_server.sandbox import policy
 from local_mcp_server.infrastructure.openshell import sandbox as service
+from local_mcp_server.sandbox import policy
 
 
 def test_default_memory_quantity_is_open_shell_compatible() -> None:
@@ -86,6 +86,59 @@ def test_build_sandbox_spec_emits_volume_mount_and_policy(
     assert spec.policy.landlock.compatibility == "hard_requirement"
 
 
+def test_build_sandbox_spec_emits_narrow_npm_network_policy(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(
+        policy,
+        "get_workspace_grant",
+        lambda workspace_id: {
+            "workspace_id": workspace_id,
+            "host_path": "/tmp/test-workspace",
+            "volume_name": "mcp-ws-testvolume123",
+            "target": "/workspace/project",
+            "read_only": False,
+        },
+    )
+
+    spec = policy.build_sandbox_spec("ws_test")
+
+    assert list(spec.policy.network_policies) == ["npm_registry"]
+
+    npm_policy = spec.policy.network_policies["npm_registry"]
+
+    assert npm_policy.name == "npm-registry"
+    assert len(npm_policy.binaries) == 1
+    assert npm_policy.binaries[0].path == "/usr/local/bin/node"
+
+    assert len(npm_policy.endpoints) == 1
+
+    endpoint = npm_policy.endpoints[0]
+
+    assert endpoint.host == "registry.npmjs.org"
+    assert endpoint.port == 443
+    assert endpoint.protocol == "rest"
+    assert endpoint.enforcement == "NETWORK_ENFORCEMENT_MODE_ENFORCE"
+    assert endpoint.allow_encoded_slash is True
+
+    assert [
+        (rule.allow.method, rule.allow.path)
+        for rule in endpoint.rules
+    ] == [
+        ("GET", "/**"),
+        ("HEAD", "/**"),
+        ("OPTIONS", "/**"),
+        (
+            "POST",
+            "/-/npm/v1/security/advisories/bulk",
+        ),
+        (
+            "POST",
+            "/-/npm/v1/security/audits/quick",
+        ),
+    ]
+
+
 def test_host_workspace_metadata_does_not_expose_host_path_or_volume(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -159,7 +212,9 @@ def test_sandbox_to_dict_does_not_expose_host_path_or_volume(
     assert "mcp-ws-secret-volume" not in serialized
 
 
-def test_client_uses_active_gateway_configuration(monkeypatch: pytest.MonkeyPatch) -> None:
+def test_client_uses_active_gateway_configuration(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
     calls: list[str] = []
 
     class FakeClient:
@@ -168,11 +223,14 @@ def test_client_uses_active_gateway_configuration(monkeypatch: pytest.MonkeyPatc
             calls.append("active")
             return cls()
 
-    monkeypatch.setattr(service, "active_client", FakeClient.from_active_cluster)
+    monkeypatch.setattr(
+        service,
+        "active_client",
+        FakeClient.from_active_cluster,
+    )
 
     assert isinstance(service._client(), FakeClient)
     assert calls == ["active"]
-
 
 
 def test_create_sandbox_rejects_arbitrary_host_path() -> None:

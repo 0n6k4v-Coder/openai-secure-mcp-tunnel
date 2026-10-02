@@ -29,7 +29,17 @@ _SANDBOX_NAME = re.compile(r"^[a-z0-9][a-z0-9-]{0,62}$")
 
 _CPU_QUANTITY = re.compile(r"^(?:\d+(?:\.\d+)?|\d+m)$")
 
-_MEMORY_QUANTITY = re.compile(r"^\d+(?:\.\d+)?(?:Ki|Mi|Gi|Ti|Pi|Ei|K|M|G|T|P|E)$")
+_MEMORY_QUANTITY = re.compile(
+    r"^\d+(?:\.\d+)?(?:Ki|Mi|Gi|Ti|Pi|Ei|K|M|G|T|P|E)$"
+)
+
+_NPM_NODE_BINARY = "/usr/local/bin/node"
+_NPM_REGISTRY_HOST = "registry.npmjs.org"
+_NPM_REGISTRY_PORT = 443
+_NPM_AUDIT_PATHS = (
+    "/-/npm/v1/security/advisories/bulk",
+    "/-/npm/v1/security/audits/quick",
+)
 
 
 def validate_name(name: str) -> str:
@@ -54,7 +64,9 @@ def validate_cpu(value: str) -> str:
 
 def validate_memory(value: str) -> str:
     if not isinstance(value, str) or not _MEMORY_QUANTITY.fullmatch(value):
-        raise ValueError("memory must be a quantity such as 512Mi, 4Gi, or 8G")
+        raise ValueError(
+            "memory must be a quantity such as 512Mi, 4Gi, or 8G"
+        )
 
     return value
 
@@ -90,15 +102,16 @@ def build_sandbox_spec(
     read_only = grant["read_only"]
 
     if not isinstance(volume_name, str) or not volume_name.strip():
-        raise ValueError(f"Workspace grant '{workspace_id}' has no valid volume name.")
+        raise ValueError(
+            f"Workspace grant '{workspace_id}' has no valid volume name."
+        )
 
     if not isinstance(target, str) or not target.strip():
-        raise ValueError(f"Workspace grant '{workspace_id}' has no valid mount target.")
+        raise ValueError(
+            f"Workspace grant '{workspace_id}' has no valid mount target."
+        )
 
-    if not isinstance(
-        read_only,
-        bool,
-    ):
+    if not isinstance(read_only, bool):
         raise ValueError(
             f"Workspace grant '{workspace_id}' has an invalid read_only value."
         )
@@ -161,6 +174,29 @@ def build_sandbox_spec(
             target,
         ]
     )
+
+    npm_policy = spec.policy.network_policies["npm_registry"]
+    npm_policy.name = "npm-registry"
+
+    npm_endpoint = npm_policy.endpoints.add()
+    npm_endpoint.host = _NPM_REGISTRY_HOST
+    npm_endpoint.port = _NPM_REGISTRY_PORT
+    npm_endpoint.protocol = "rest"
+    npm_endpoint.enforcement = "NETWORK_ENFORCEMENT_MODE_ENFORCE"
+    npm_endpoint.allow_encoded_slash = True
+
+    for method in ("GET", "HEAD", "OPTIONS"):
+        allow_rule = npm_endpoint.rules.add()
+        allow_rule.allow.method = method
+        allow_rule.allow.path = "/**"
+
+    for path in _NPM_AUDIT_PATHS:
+        allow_rule = npm_endpoint.rules.add()
+        allow_rule.allow.method = "POST"
+        allow_rule.allow.path = path
+
+    npm_binary = npm_policy.binaries.add()
+    npm_binary.path = _NPM_NODE_BINARY
 
     spec.policy.landlock.compatibility = "hard_requirement"
 

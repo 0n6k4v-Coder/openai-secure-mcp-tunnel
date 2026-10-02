@@ -4,7 +4,7 @@ import json
 
 import pytest
 
-from local_mcp_server import cli
+import local_mcp_server.cli.main as cli
 
 
 def test_status_value_prefers_status() -> None:
