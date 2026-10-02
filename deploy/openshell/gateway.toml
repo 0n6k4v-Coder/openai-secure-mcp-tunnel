@@ -8,6 +8,7 @@ log_level = "info"
 compute_driver = "docker"
 server_sans = [
   "openshell-gateway",
+  "host.openshell.internal",
   "localhost",
   "127.0.0.1"
 ]
@@ -42,7 +43,7 @@ default_image = "local-mcp-openshell-sandbox:1.0.0"
 image_pull_policy = "if_not_present"
 sandbox_label = "openshell"
 sandbox_pids_limit = 2048
-grpc_endpoint = "https://127.0.0.1:8080"
+grpc_endpoint = "https://host.openshell.internal:8080"
 allow_driver_config = true
 enable_bind_mounts = true
 

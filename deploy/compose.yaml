@@ -108,10 +108,47 @@ services:
     expose:
       - "8000"
 
+  browser-runtime:
+    build:
+      context: ./docker/browser-runtime
+      dockerfile: Dockerfile
+      args:
+        CHROME_VERSION: ${CHROME_FOR_TESTING_VERSION:-154.0.8037.92}
+    restart: unless-stopped
+    network_mode: host
+    user: "1000:1000"
+    read_only: true
+    security_opt:
+      - seccomp:./docker/browser-runtime/seccomp.json
+    cap_drop:
+      - ALL
+    tmpfs:
+      - /tmp:rw,noexec,nosuid,nodev
+      - /dev/shm:rw,nosuid,nodev,size=1g
+    extra_hosts:
+      - "host.openshell.internal:host-gateway"
+    environment:
+      BROWSER_BIND_HOST: ${BROWSER_BIND_HOST:-host.openshell.internal}
+      BROWSER_PORT: ${BROWSER_PORT:-9222}
+      BROWSER_USER_DATA_DIR: /tmp/chrome-profile
+      XDG_CACHE_HOME: /tmp/cache
+    healthcheck:
+      test:
+        [
+          "CMD-SHELL",
+          "curl --fail --silent http://${BROWSER_BIND_HOST:-host.openshell.internal}:${BROWSER_PORT:-9222}/json/version >/dev/null"
+        ]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 10s
+
   tunnel-client:
     image: ghcr.io/openai/tunnel-client:v0.0.15
     depends_on:
       mcp-server:
+        condition: service_healthy
+      browser-runtime:
         condition: service_healthy
     networks:
       - mcp-internal

@@ -41,6 +41,10 @@ _NPM_AUDIT_PATHS = (
     "/-/npm/v1/security/audits/quick",
 )
 
+_BROWSER_NODE_BINARY = "/usr/local/bin/node"
+_BROWSER_HOST = os.environ.get("BROWSER_ENDPOINT_HOST", "198.18.0.2")
+_BROWSER_PORT = int(os.environ.get("BROWSER_ENDPOINT_PORT", "9222"))
+
 
 def validate_name(name: str) -> str:
     if not isinstance(name, str) or not _SANDBOX_NAME.fullmatch(name):
@@ -197,6 +201,17 @@ def build_sandbox_spec(
 
     npm_binary = npm_policy.binaries.add()
     npm_binary.path = _NPM_NODE_BINARY
+
+    browser_policy = spec.policy.network_policies["browser_cdp"]
+    browser_policy.name = "browser-cdp"
+
+    browser_endpoint = browser_policy.endpoints.add()
+    browser_endpoint.host = _BROWSER_HOST
+    browser_endpoint.port = _BROWSER_PORT
+    browser_endpoint.protocol = "tcp"
+
+    browser_binary = browser_policy.binaries.add()
+    browser_binary.path = _BROWSER_NODE_BINARY
 
     spec.policy.landlock.compatibility = "hard_requirement"
 
