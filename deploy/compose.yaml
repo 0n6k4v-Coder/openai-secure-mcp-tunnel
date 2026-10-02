@@ -136,7 +136,7 @@ services:
       test:
         [
           "CMD-SHELL",
-          "curl --fail --silent http://${BROWSER_BIND_HOST:-host.openshell.internal}:${BROWSER_PORT:-9222}/json/version >/dev/null"
+          "curl --fail --silent http://127.0.0.1:${BROWSER_PORT:-9222}/json/version >/dev/null"
         ]
       interval: 10s
       timeout: 5s

@@ -1,10 +1,12 @@
 from __future__ import annotations
 
+import importlib
 import json
 
 import pytest
 
-import local_mcp_server.cli.main as cli
+
+cli = importlib.import_module("local_mcp_server.cli.main")
 
 
 def test_status_value_prefers_status() -> None:
@@ -421,7 +423,11 @@ def test_sandbox_lifecycle_commands(
             "create",
         ),
         (["sandbox", "shell", "project-api"], "sandbox", "shell"),
-        (["sandbox", "exec", "project-api", "--", "echo", "hello"], "sandbox", "exec"),
+        (
+            ["sandbox", "exec", "project-api", "--", "echo", "hello"],
+            "sandbox",
+            "exec",
+        ),
         (["sandbox", "logs", "project-api"], "sandbox", "logs"),
         (["sandbox", "start", "project-api"], "sandbox", "start"),
         (["sandbox", "stop", "project-api"], "sandbox", "stop"),

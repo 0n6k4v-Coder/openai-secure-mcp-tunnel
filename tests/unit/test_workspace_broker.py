@@ -186,11 +186,11 @@ def test_provision_sandbox_acl_uses_acl_helper(
     }
 
 
-def test_provision_sandbox_acl_uses_current_host_ids(
+def test_acl_helper_uses_current_host_ids(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    observed: dict[str, object] = {}
+    commands: list[list[str]] = []
 
     monkeypatch.setattr(
         broker.os,
@@ -203,26 +203,55 @@ def test_provision_sandbox_acl_uses_current_host_ids(
         lambda: 2002,
     )
     monkeypatch.setattr(
-        broker,
-        "_run_acl_helper",
-        lambda path, *, operation, host_uid=None, host_gid=None: observed.update(
-            {
-                "path": path,
-                "operation": operation,
-                "host_uid": host_uid,
-                "host_gid": host_gid,
-            }
-        ),
+        broker.shutil,
+        "which",
+        lambda name: "/usr/bin/docker",
     )
 
-    broker._provision_sandbox_acl(tmp_path)
+    def fake_run(
+        command: list[str],
+    ) -> subprocess.CompletedProcess[str]:
+        commands.append(command)
+        return subprocess.CompletedProcess(
+            command,
+            0,
+            stdout="",
+            stderr="",
+        )
 
-    assert observed == {
-        "path": tmp_path,
-        "operation": "provision-sandbox-acl",
-        "host_uid": 2001,
-        "host_gid": 2002,
-    }
+    monkeypatch.setattr(
+        broker,
+        "_run_command",
+        fake_run,
+    )
+
+    broker._run_acl_helper(
+        tmp_path,
+        operation="provision-sandbox-acl",
+    )
+
+    assert commands == [[
+        "/usr/bin/docker",
+        "run",
+        "--rm",
+        "--network",
+        "none",
+        "--read-only",
+        "--cap-drop",
+        "ALL",
+        "--cap-add",
+        "DAC_OVERRIDE",
+        "--cap-add",
+        "FOWNER",
+        "--user",
+        "0:0",
+        "--mount",
+        f"type=bind,source={tmp_path.resolve()},target=/workspace",
+        broker.ACL_HELPER_IMAGE,
+        "provision-sandbox-acl",
+        str(broker.SANDBOX_UID),
+        "2001",
+    ]]
 
 
 def test_provision_sandbox_acl_rejects_unsafe_protected_path(
