@@ -9,7 +9,7 @@ from collections.abc import Sequence
 from urllib.parse import urlparse
 
 
-DEFAULT_GATEWAY_ENDPOINT = "http://127.0.0.1:8080"
+DEFAULT_GATEWAY_ENDPOINT = "https://127.0.0.1:8080"
 GATEWAY_ENDPOINT_ENV = "OPENSHELL_CLI_GATEWAY"
 
 _COMMAND_TIMEOUT_SECONDS = 60

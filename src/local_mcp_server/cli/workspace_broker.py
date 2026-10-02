@@ -17,6 +17,10 @@ GRANTS_READ_ONLY = workspace_service.GRANTS_READ_ONLY
 SANDBOX_UID = 10001
 SANDBOX_GID = 10001
 SANDBOX_TARGET = "/workspace/project"
+ACL_HELPER_IMAGE = os.environ.get(
+    "WORKSPACE_ACL_HELPER_IMAGE",
+    "local-mcp-workspace-acl-helper:1.0.0",
+)
 
 PROTECTED_WORKSPACE_PATHS = (
     Path(".env"),
@@ -24,6 +28,20 @@ PROTECTED_WORKSPACE_PATHS = (
     Path(".state"),
     Path("deploy/openshell/jwt"),
 )
+
+EXCLUDED_WORKSPACE_PATHS = (
+    Path(".git"),
+    Path(".venv"),
+    Path(".ruff_cache"),
+    Path(".pytest_cache"),
+    Path(".mypy_cache"),
+    Path(".pyright"),
+    Path("deploy/docker/workspace-acl-helper"),
+)
+
+EXCLUDED_WORKSPACE_DIRECTORY_NAMES = {
+    "__pycache__",
+}
 
 OWNER_ONLY_DIRECTORY_MODE = 0o700
 OWNER_ONLY_FILE_MODE = 0o600
@@ -123,36 +141,23 @@ def _run_command(
         ) from exc
 
 
-def _require_setfacl() -> str:
-    executable = shutil.which("setfacl")
+def _host_user_id() -> int:
+    return os.getuid()
+
+
+def _host_group_id() -> int:
+    return os.getgid()
+
+
+def _require_docker() -> str:
+    executable = shutil.which("docker")
 
     if executable is None:
         raise RuntimeError(
-            "setfacl is required on the trusted host to provision "
-            "workspace permissions."
+            "docker is required to manage workspace ACLs."
         )
 
     return executable
-
-
-def _run_setfacl(
-    setfacl: str,
-    arguments: list[str],
-) -> None:
-    completed = _run_command(
-        [
-            setfacl,
-            *arguments,
-        ]
-    )
-
-    if completed.returncode != 0:
-        message = completed.stderr.strip()
-
-        if not message:
-            message = f"setfacl failed with exit code {completed.returncode}."
-
-        raise RuntimeError(message)
 
 
 def _is_protected_path(
@@ -166,6 +171,28 @@ def _is_protected_path(
 
     for protected in PROTECTED_WORKSPACE_PATHS:
         if relative == protected or protected in relative.parents:
+            return True
+
+    return False
+
+
+def _is_excluded_path(
+    path: Path,
+    root: Path,
+) -> bool:
+    try:
+        relative = path.relative_to(root)
+    except ValueError:
+        return True
+
+    if any(
+        part in EXCLUDED_WORKSPACE_DIRECTORY_NAMES
+        for part in relative.parts
+    ):
+        return True
+
+    for excluded in EXCLUDED_WORKSPACE_PATHS:
+        if relative == excluded or excluded in relative.parents:
             return True
 
     return False
@@ -199,170 +226,131 @@ def _validate_protected_path_permissions(
             )
 
 
-def _provision_sandbox_acl(
+def _run_acl_helper(
     host_path: Path,
+    *,
+    operation: str,
+    host_uid: int | None = None,
+    host_gid: int | None = None,
 ) -> None:
-    setfacl = _require_setfacl()
+    docker = _require_docker()
 
-    _validate_protected_path_permissions(host_path)
+    resolved_path = host_path.resolve()
 
-    _run_setfacl(
-        setfacl,
-        [
-            "-m",
-            f"u:{SANDBOX_UID}:rwx",
-            str(host_path),
-        ],
-    )
+    if host_uid is None:
+        host_uid = _host_user_id()
 
-    for current_root, dirnames, filenames in os.walk(
-        host_path,
-        topdown=True,
-        followlinks=False,
-    ):
-        current_path = Path(current_root)
+    if host_gid is None:
+        host_gid = _host_group_id()
 
-        protected_dirs: list[str] = []
-
-        for dirname in dirnames:
-            directory = current_path / dirname
-
-            if _is_protected_path(
-                directory,
-                host_path,
-            ):
-                protected_dirs.append(dirname)
-
-        for dirname in protected_dirs:
-            dirnames.remove(dirname)
-
-        if _is_protected_path(
-            current_path,
-            host_path,
-        ):
-            continue
-
-        if current_path != host_path:
-            _run_setfacl(
-                setfacl,
-                [
-                    "-m",
-                    f"u:{SANDBOX_UID}:rwx",
-                    str(current_path),
-                ],
-            )
-
-        _run_setfacl(
-            setfacl,
-            [
-                "-m",
-                f"d:u:{SANDBOX_UID}:rwx",
-                str(current_path),
-            ],
+    if host_uid < 1 or host_gid < 1:
+        raise RuntimeError(
+            "Workspace ACL helper requires a non-root host UID and GID."
         )
 
-        for filename in filenames:
-            file_path = current_path / filename
+    if SANDBOX_UID < 1 or SANDBOX_GID < 1:
+        raise RuntimeError(
+            "Workspace ACL helper requires a non-root Sandbox UID and GID."
+        )
 
-            if _is_protected_path(
-                file_path,
-                host_path,
-            ):
-                continue
+    if operation not in {
+        "provision-sandbox-acl",
+        "remove-sandbox-acl",
+    }:
+        raise ValueError(f"Unsupported workspace ACL operation: {operation}")
 
-            if file_path.is_symlink():
-                continue
+    if not resolved_path.is_dir():
+        raise RuntimeError(
+            f"Workspace grant host path is not a directory: {resolved_path}"
+        )
 
-            _run_setfacl(
-                setfacl,
-                [
-                    "-m",
-                    f"u:{SANDBOX_UID}:rwX",
-                    str(file_path),
-                ],
+    completed = _run_command(
+        [
+            docker,
+            "run",
+            "--rm",
+            "--network",
+            "none",
+            "--read-only",
+            "--cap-drop",
+            "ALL",
+            "--cap-add",
+            "DAC_OVERRIDE",
+            "--cap-add",
+            "FOWNER",
+            "--user",
+            "0:0",
+            "--mount",
+            f"type=bind,source={resolved_path},target=/workspace",
+            ACL_HELPER_IMAGE,
+            operation,
+            str(SANDBOX_UID),
+            str(host_uid),
+        ]
+    )
+
+    if completed.returncode != 0:
+        message = completed.stderr.strip()
+
+        if not message:
+            message = (
+                "Workspace ACL helper failed with "
+                f"exit code {completed.returncode}."
             )
+
+        raise RuntimeError(message)
+
+
+def _provision_sandbox_acl(
+    host_path: Path,
+    *,
+    host_uid: int | None = None,
+    host_gid: int | None = None,
+) -> None:
+    """Provision broker-managed ACLs through the constrained root helper.
+
+    Workspace files may already be owned by the Sandbox UID. Running setfacl
+    directly as the host user therefore cannot reliably modify them. The
+    helper receives only the canonical workspace path and has only the
+    capabilities required to manage POSIX ACL metadata.
+    """
+    _validate_protected_path_permissions(host_path)
+
+    _run_acl_helper(
+        host_path,
+        operation="provision-sandbox-acl",
+        host_uid=host_uid,
+        host_gid=host_gid,
+    )
 
 
 def _remove_sandbox_acl(
     host_path: Path,
+    *,
+    host_uid: int | None = None,
+    host_gid: int | None = None,
 ) -> None:
-    setfacl = _require_setfacl()
-
-    _run_setfacl(
-        setfacl,
-        [
-            "-x",
-            f"u:{SANDBOX_UID}",
-            str(host_path),
-        ],
+    """Remove broker-managed ACLs through the constrained root helper."""
+    _run_acl_helper(
+        host_path,
+        operation="remove-sandbox-acl",
+        host_uid=host_uid,
+        host_gid=host_gid,
     )
 
-    for current_root, dirnames, filenames in os.walk(
+
+def _remove_sandbox_acl_with_helper(
+    host_path: Path,
+    *,
+    host_uid: int | None = None,
+    host_gid: int | None = None,
+) -> None:
+    """Backward-compatible wrapper for the helper-based ACL removal."""
+    _remove_sandbox_acl(
         host_path,
-        topdown=True,
-        followlinks=False,
-    ):
-        current_path = Path(current_root)
-
-        protected_dirs: list[str] = []
-
-        for dirname in dirnames:
-            directory = current_path / dirname
-
-            if _is_protected_path(
-                directory,
-                host_path,
-            ):
-                protected_dirs.append(dirname)
-
-        for dirname in protected_dirs:
-            dirnames.remove(dirname)
-
-        if _is_protected_path(
-            current_path,
-            host_path,
-        ):
-            continue
-
-        if current_path != host_path:
-            _run_setfacl(
-                setfacl,
-                [
-                    "-x",
-                    f"u:{SANDBOX_UID}",
-                    str(current_path),
-                ],
-            )
-
-        _run_setfacl(
-            setfacl,
-            [
-                "-x",
-                f"d:u:{SANDBOX_UID}",
-                str(current_path),
-            ],
-        )
-
-        for filename in filenames:
-            file_path = current_path / filename
-
-            if _is_protected_path(
-                file_path,
-                host_path,
-            ):
-                continue
-
-            if file_path.is_symlink():
-                continue
-
-            _run_setfacl(
-                setfacl,
-                [
-                    "-x",
-                    f"u:{SANDBOX_UID}",
-                    str(file_path),
-                ],
-            )
+        host_uid=host_uid,
+        host_gid=host_gid,
+    )
 
 
 def _docker_volume_exists(
@@ -471,8 +459,14 @@ def create_workspace_grant(
 
     workspace_id = _workspace_id()
     volume_name = _volume_name(workspace_id)
+    host_uid = _host_user_id()
+    host_gid = _host_group_id()
 
-    _provision_sandbox_acl(resolved_host_path)
+    _provision_sandbox_acl(
+        resolved_host_path,
+        host_uid=host_uid,
+        host_gid=host_gid,
+    )
 
     try:
         if create_volume:
@@ -481,13 +475,19 @@ def create_workspace_grant(
                 resolved_host_path,
             )
     except Exception:
-        _remove_sandbox_acl(resolved_host_path)
+        _remove_sandbox_acl(
+            resolved_host_path,
+            host_uid=host_uid,
+            host_gid=host_gid,
+        )
         raise
 
     grants = _load_grants()
 
     grant = {
         "host_path": str(resolved_host_path),
+        "host_gid": host_gid,
+        "host_uid": host_uid,
         "read_only": False,
         "target": SANDBOX_TARGET,
         "volume_name": volume_name,
@@ -501,7 +501,11 @@ def create_workspace_grant(
         if create_volume:
             _remove_volume(volume_name)
 
-        _remove_sandbox_acl(resolved_host_path)
+        _remove_sandbox_acl(
+            resolved_host_path,
+            host_uid=host_uid,
+            host_gid=host_gid,
+        )
 
         raise
 
@@ -553,7 +557,27 @@ def revoke_workspace_grant(
     ):
         raise RuntimeError("Workspace grant has no valid volume name.")
 
-    _remove_sandbox_acl(host_path)
+    host_uid_value = grant.get("host_uid")
+    if host_uid_value is None:
+        host_uid = _host_user_id()
+    elif isinstance(host_uid_value, int) and not isinstance(host_uid_value, bool):
+        host_uid = host_uid_value
+    else:
+        raise RuntimeError("Workspace grant has no valid host UID.")
+
+    host_gid_value = grant.get("host_gid")
+    if host_gid_value is None:
+        host_gid = _host_group_id()
+    elif isinstance(host_gid_value, int) and not isinstance(host_gid_value, bool):
+        host_gid = host_gid_value
+    else:
+        raise RuntimeError("Workspace grant has no valid host GID.")
+
+    _remove_sandbox_acl_with_helper(
+        host_path,
+        host_uid=host_uid,
+        host_gid=host_gid,
+    )
 
     if remove_volume:
         _remove_volume(volume_name_value)

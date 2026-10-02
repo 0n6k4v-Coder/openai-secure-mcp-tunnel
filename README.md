@@ -1,11 +1,11 @@
 # OpenAI Secure MCP Tunnel
 
-**Repository:** `0n6k4v-Coder/openai-secure-mcp-tunnel`
+**Repository:** `0n6k4v-Coder/openai-secure-mcp-tunnel`  
 **Scope:** Private Python MCP server in Docker, connected to ChatGPT through OpenAI Secure MCP Tunnel and OpenShell sandbox execution.
 
 ---
 
-## Architecture
+# Architecture
 
 ```text
                               ChatGPT
@@ -27,11 +27,10 @@
                     │  tool authorization     │
                     │  sandbox API            │
                     │  workspace API          │
+                    │  installation API       │
                     └────────────┬────────────┘
                                  │
-                    plaintext internal HTTP
-                    OpenShell API
-                    (TLS disabled in deployment)
+                         TLS + mTLS
                                  │
                                  ▼
                     ┌─────────────────────────┐
@@ -41,6 +40,7 @@
                     │  policy                 │
                     │  Docker driver          │
                     │  sandbox registry       │
+                    │  mTLS authentication    │
                     └────────────┬────────────┘
                                  │
                          Docker driver
@@ -69,7 +69,45 @@ tunnel-client
 
 OpenShell creates and manages sandbox containers through its Docker compute driver.
 
-The previous `terminal-executor` service is no longer part of the current architecture.
+The previous `terminal-executor` service is no longer part of the architecture.
+
+### Workspace ACL helper
+
+Host workspace authorization is handled by the separate trusted host-side:
+
+```text
+workspace-broker
+```
+
+When a workspace is authorized, the broker provisions POSIX ACLs so that both the host user and the OpenShell sandbox user can work with the mounted workspace.
+
+The sandbox image runs as:
+
+```text
+UID 10001
+GID 10001
+```
+
+The broker grants the sandbox UID access to the authorized workspace and applies default ACLs to directories so files and directories created inside the sandbox remain accessible to the host user.
+
+During revocation, the broker uses:
+
+```text
+local-mcp-workspace-acl-helper:1.0.0
+```
+
+The helper is a minimal Alpine image containing `setfacl`. It runs with:
+
+```text
+network: none
+read-only root filesystem
+cap-drop: ALL
+cap-add: DAC_OVERRIDE
+cap-add: FOWNER
+user: root
+```
+
+It is bind-mounted only to the authorized workspace and removes the sandbox UID ACL entries.
 
 ---
 
@@ -158,7 +196,7 @@ Save the file.
 
 The project uses OpenShell Gateway with the Docker compute driver.
 
-The current deployment uses:
+The deployment uses:
 
 ```text
 OpenShell Gateway: ghcr.io/nvidia/openshell/gateway:latest
@@ -170,17 +208,17 @@ MCP SDK: mcp[cli]==2.2.0
 The Gateway configuration is located at:
 
 ```text
-openshell/gateway.toml
+deploy/openshell/gateway.toml
 ```
 
-The current deployment uses the Docker socket to allow OpenShell Gateway to create and manage sandbox containers.
+The Gateway uses the Docker socket to create and manage sandbox containers.
 
-The Gateway is configured for private internal communication:
+The current deployment enables Gateway TLS and mTLS authentication:
 
 ```text
 MCP Server
     │
-    │ HTTP
+    │ HTTPS + mTLS
     ▼
 OpenShell Gateway
     │
@@ -192,17 +230,162 @@ Docker
 Sandbox containers
 ```
 
-TLS is currently disabled for the internal Gateway connection.
+The Gateway listens on the host loopback interface:
+
+```text
+127.0.0.1:8080
+```
+
+and exposes its health endpoint on:
+
+```text
+127.0.0.1:8081
+```
+
+The Gateway certificates are mounted from:
+
+```text
+.secrets/openshell-tls/gateway/
+```
+
+The MCP server uses the corresponding client certificates from:
+
+```text
+.secrets/openshell-tls/client/
+```
+
+The Gateway is configured with:
+
+```toml
+disable_tls = false
+```
+
+and mTLS authentication is enabled.
 
 **Do not expose the OpenShell Gateway directly to an untrusted network.**
 
-For production or remote exposure, configure appropriate TLS and authentication.
+---
+
+# CLI Reference
+
+The project has two separate host-side CLI entry points.
+
+## Secure MCP CLI
+
+Run:
+
+```bash
+uv run secure-mcp --help
+```
+
+### Sandbox commands
+
+```bash
+uv run secure-mcp sandbox --help
+```
+
+The current sandbox CLI provides:
+
+```text
+create
+list
+status
+shell
+exec
+logs
+start
+stop
+delete
+```
+
+Examples:
+
+```bash
+uv run secure-mcp sandbox list
+```
+
+```bash
+uv run secure-mcp sandbox status <sandbox-name>
+```
+
+```bash
+uv run secure-mcp sandbox create <sandbox-name> --workspace <workspace-id>
+```
+
+```bash
+uv run secure-mcp sandbox delete <sandbox-name>
+```
+
+### Credential commands
+
+```bash
+uv run secure-mcp credential --help
+```
+
+Use this command to inspect the currently available credential-management CLI operations.
 
 ---
 
-## Step 5 - Build the Sandbox Image
+## Workspace Broker CLI
 
-The OpenShell Gateway uses the configured sandbox image:
+Workspace authorization is intentionally a separate trusted host-side CLI.
+
+Run:
+
+```bash
+uv run workspace-broker --help
+```
+
+The current commands are:
+
+```text
+authorize
+revoke
+list
+```
+
+List all authorized host workspaces:
+
+```bash
+uv run workspace-broker list
+```
+
+Authorize a workspace:
+
+```bash
+uv run workspace-broker authorize <host-path>
+```
+
+Revoke a workspace:
+
+```bash
+uv run workspace-broker revoke <workspace-id>
+```
+
+The workspace broker is responsible for:
+
+```text
+host path validation
+workspace authorization
+Docker volume creation
+POSIX ACL provisioning
+POSIX ACL revocation
+workspace grant registry
+```
+
+Do **not** use:
+
+```bash
+uv run secure-mcp workspace-broker ...
+```
+
+`workspace-broker` is a separate executable.
+
+---
+
+# Step 5 - Build the Sandbox Image
+
+The OpenShell Gateway uses:
 
 ```text
 local-mcp-openshell-sandbox:1.0.0
@@ -213,7 +396,7 @@ Build this image before creating OpenShell sandboxes.
 The image must exist locally with the exact tag configured in:
 
 ```text
-openshell/gateway.toml
+deploy/openshell/gateway.toml
 ```
 
 The current configuration uses:
@@ -224,32 +407,71 @@ default_image = "local-mcp-openshell-sandbox:1.0.0"
 image_pull_policy = "if_not_present"
 ```
 
+The sandbox image provides:
+
+```text
+Python
+Node.js
+npm
+Playwright
+Chromium
+git
+curl
+wget
+jq
+ripgrep
+OpenSSH client
+```
+
+The sandbox container runs as:
+
+```text
+UID 10001
+GID 10001
+```
+
 ---
 
-## Step 6 - Start the MCP Server, OpenShell Gateway, and Tunnel
+# Step 6 - Build the Workspace ACL Helper
+
+Build the trusted host-side ACL helper:
+
+```bash
+docker build \
+  -t local-mcp-workspace-acl-helper:1.0.0 \
+  deploy/docker/workspace-acl-helper
+```
+
+The helper is used by `workspace-broker` during workspace revocation.
+
+It does not provide a general-purpose shell or network access.
+
+Its only purpose is removing the OpenShell sandbox UID ACL entries from an authorized workspace.
+
+---
+
+# Step 7 - Start the MCP Server, OpenShell Gateway, and Tunnel
 
 Start the stack:
 
 ```bash
-docker compose up -d --remove-orphans
+docker compose \
+  --env-file .env \
+  -f deploy/compose.yaml \
+  up -d --remove-orphans
 ```
 
 The `--remove-orphans` option is intentional.
 
 It removes containers belonging to services that were previously defined in the Compose file but have since been removed.
 
-For example, older versions of this project used:
-
-```text
-terminal-executor
-```
-
-That service is no longer used.
-
 Check the service status:
 
 ```bash
-docker compose ps
+docker compose \
+  --env-file .env \
+  -f deploy/compose.yaml \
+  ps
 ```
 
 The expected application services are:
@@ -260,19 +482,18 @@ mcp-server
 tunnel-client
 ```
 
-The MCP server should become healthy.
-
 ---
 
-## Step 7 - Check the MCP Server
+# Step 8 - Check the MCP Server
 
 Check the MCP server logs:
 
 ```bash
-docker compose logs --tail=200 mcp-server
+docker compose \
+  --env-file .env \
+  -f deploy/compose.yaml \
+  logs --tail=200 mcp-server
 ```
-
-You should see the server start successfully.
 
 The MCP server exposes:
 
@@ -289,22 +510,28 @@ http://mcp-server:8000/healthz
 The MCP server should report a healthy status in:
 
 ```bash
-docker compose ps
+docker compose \
+  --env-file .env \
+  -f deploy/compose.yaml \
+  ps
 ```
 
 ---
 
-## Step 8 - Check the OpenShell Gateway
+# Step 9 - Check the OpenShell Gateway
 
 Check the Gateway logs:
 
 ```bash
-docker compose logs --tail=200 openshell-gateway
+docker compose \
+  --env-file .env \
+  -f deploy/compose.yaml \
+  logs --tail=200 openshell-gateway
 ```
 
 The Gateway should report that it is using the Docker compute driver.
 
-Expected log information includes:
+Expected information includes:
 
 ```text
 Using compute driver driver=docker
@@ -312,31 +539,22 @@ Compute driver connected configured_driver=docker advertised_driver=docker
 Gateway listener bound
 ```
 
-The Gateway communicates with the MCP server over the internal Docker network.
+The MCP server communicates with the Gateway using the configured TLS/mTLS connection.
 
 ---
 
-## Step 9 - Check the Tunnel
+# Step 10 - Check the Tunnel
 
 Follow the tunnel logs:
 
 ```bash
-docker compose logs -f tunnel-client
+docker compose \
+  --env-file .env \
+  -f deploy/compose.yaml \
+  logs -f tunnel-client
 ```
 
 The tunnel client should initialize the MCP session and start the tunnel successfully.
-
-You should see information similar to:
-
-```text
-MCP session initialized
-```
-
-and:
-
-```text
-tunnel started successfully
-```
 
 The exact log wording may vary between tunnel-client versions.
 
@@ -346,7 +564,7 @@ Do not depend on a specific emoji or exact startup message.
 
 # Connect the Tunnel to ChatGPT
 
-## Step 10 - Create the MCP App / Connector
+## Step 11 - Create the MCP App / Connector
 
 Open ChatGPT and create or configure the MCP connection using the existing OpenAI Secure MCP Tunnel.
 
@@ -360,15 +578,13 @@ as the connection type.
 
 Select the tunnel created in Step 2.
 
-For the current private deployment, use the authentication option configured for the MCP app.
-
 Complete the connection.
 
 ---
 
 # Verify the MCP Tools
 
-## Step 11 - Check the Available Tools
+## Step 12 - Check the Available Tools
 
 After connecting the MCP app, verify that the following tools are available:
 
@@ -381,23 +597,31 @@ delete_workspace_directory
 delete_workspace_file
 execute_sandbox_command
 get_system_info
+list_authorized_host_workspaces
 list_sandboxes
 list_workspace_files
 read_workspace_text_file
 rename_workspace_path
+request_tool_installation
 sandbox_status
 write_workspace_file
 ```
 
 The sandbox-related tools are backed by OpenShell.
 
-The workspace tools operate directly within the selected OpenShell sandbox's mounted workspace (`/workspace/project`).
+The workspace tools operate within the selected OpenShell sandbox's mounted workspace:
+
+```text
+/workspace/project
+```
+
+The installation tool provides controlled installation of approved development tools inside the authorized sandbox.
 
 ---
 
 # Verify OpenShell Sandbox Execution
 
-The most important functional test is to verify the complete path:
+The most important functional path is:
 
 ```text
 ChatGPT
@@ -411,21 +635,45 @@ OpenShell Gateway
 Docker sandbox
 ```
 
-## Step 12 - Create a Sandbox
+## Step 13 - Create a Sandbox
 
-Use the MCP tool:
+First authorize a host workspace:
+
+```bash
+uv run workspace-broker authorize "$HOME/path/to/workspace"
+```
+
+Record the returned:
+
+```text
+workspace_id
+```
+
+Then create the sandbox using the CLI:
+
+```bash
+uv run secure-mcp sandbox create \
+  <sandbox-name> \
+  --workspace <workspace-id>
+```
+
+Or use the MCP tool:
 
 ```text
 create_sandbox
 ```
 
-Confirm that the sandbox is created successfully.
-
 ---
 
-## Step 13 - Check Sandbox Status
+## Step 14 - Check Sandbox Status
 
 Use:
+
+```bash
+uv run secure-mcp sandbox status <sandbox-name>
+```
+
+or the MCP tool:
 
 ```text
 sandbox_status
@@ -435,27 +683,56 @@ Confirm that the sandbox reaches the expected ready/running state.
 
 ---
 
-## Step 14 - Execute a Command in the Sandbox
+## Step 15 - Execute a Command in the Sandbox
 
 Use:
 
-```text
-execute_sandbox_command
+```bash
+uv run secure-mcp sandbox exec <sandbox-name> -- \
+  sh -lc 'echo "OpenShell sandbox is working"'
 ```
 
-Run a simple command such as:
+or the MCP tool:
 
-```bash
-echo "OpenShell sandbox is working"
+```text
+execute_sandbox_command
 ```
 
 The command must execute inside the OpenShell sandbox rather than directly on the MCP server host.
 
 ---
 
-## Step 15 - Delete the Sandbox
+## Step 16 - Verify Host/Sandbox Workspace Editing
 
-After testing, use:
+The authorized workspace uses POSIX ACLs so that the host user and sandbox user can both modify workspace content.
+
+A useful test is:
+
+```text
+Sandbox creates file
+       ↓
+Host edits file
+       ↓
+Sandbox reads/edits file
+       ↓
+Sandbox is deleted
+       ↓
+Workspace grant is revoked
+```
+
+The workspace broker provisions default ACLs on directories so newly created files and directories remain accessible to the host user.
+
+---
+
+## Step 17 - Delete the Sandbox
+
+After testing:
+
+```bash
+uv run secure-mcp sandbox delete <sandbox-name>
+```
+
+or use:
 
 ```text
 delete_sandbox
@@ -465,15 +742,68 @@ Confirm that the sandbox is removed.
 
 ---
 
+## Step 18 - Revoke the Workspace
+
+After the sandbox has been deleted:
+
+```bash
+uv run workspace-broker revoke <workspace-id>
+```
+
+Then verify:
+
+```bash
+uv run workspace-broker list
+```
+
+The revoked workspace should no longer appear.
+
+---
+
+# Controlled Tool Installation
+
+The MCP server provides:
+
+```text
+request_tool_installation
+```
+
+Tool installation is performed inside the authorized sandbox rather than directly on the MCP server host.
+
+The workflow is:
+
+```text
+ChatGPT
+   ↓
+request_tool_installation
+   ↓
+MCP server authorization
+   ↓
+OpenShell sandbox
+   ↓
+sandbox network policy
+   ↓
+package/tool installation
+```
+
+For example, a development tool can be installed through the installation request mechanism while remaining inside the sandbox boundary.
+
+The host filesystem is not used as the installation target.
+
+---
+
 # Update MCP Server Tools
 
 When MCP server code or tool definitions change, rebuild the MCP server image and recreate the MCP server container.
 
-## Docker
+All Docker Compose commands in this document use the repository's explicit environment file and Compose file:
 
-All commands below assume that `.env` is located at the repository root and the Compose file is `deploy/compose.yaml`.
+```text
+--env-file .env
+-f deploy/compose.yaml
+```
 
-### 1. Rebuild the MCP server image
+## 1. Rebuild the MCP server image
 
 ```bash
 docker compose \
@@ -482,9 +812,7 @@ docker compose \
   build --no-cache mcp-server
 ```
 
-This rebuilds the image using the current MCP source code.
-
-### 2. Recreate the MCP server
+## 2. Recreate the MCP server
 
 ```bash
 docker compose \
@@ -507,11 +835,7 @@ docker compose \
   up -d --force-recreate --remove-orphans tunnel-client
 ```
 
-The `--remove-orphans` option ensures that old Compose services, such as the former `terminal-executor`, are cleaned up.
-
-If the OpenShell gateway or tunnel client is not already running, Compose will start required dependent services as needed.
-
-### 3. Check the service status
+## 3. Check the service status
 
 ```bash
 docker compose \
@@ -528,9 +852,7 @@ mcp-server
 tunnel-client
 ```
 
-The MCP server should become healthy.
-
-### 4. Check the MCP server logs
+## 4. Check the MCP server logs
 
 ```bash
 docker compose \
@@ -539,7 +861,7 @@ docker compose \
   logs --tail=200 mcp-server
 ```
 
-Or follow the logs:
+Or:
 
 ```bash
 docker compose \
@@ -548,9 +870,7 @@ docker compose \
   logs -f mcp-server
 ```
 
-Check for startup errors.
-
-### 5. Check the tunnel client
+## 5. Check the tunnel client
 
 ```bash
 docker compose \
@@ -559,11 +879,7 @@ docker compose \
   logs --tail=100 tunnel-client
 ```
 
-Confirm that the tunnel client remains connected to the existing tunnel.
-
-### 6. Verify Compose environment loading
-
-If Compose reports that `CONTROL_PLANE_TUNNEL_ID` is missing, verify that the root `.env` file is being used:
+## 6. Verify Compose environment loading
 
 ```bash
 docker compose \
@@ -600,19 +916,19 @@ The MCP server must be running and reachable through the tunnel before refreshin
 
 # If Refresh Does Not Show the New Tool
 
-Do **not** immediately create a new API key or OpenAI tunnel.
+Do not immediately create a new API key or OpenAI tunnel.
 
 First:
 
 1. Confirm the MCP server is healthy.
-2. Confirm the new tool appears in the MCP server's discovery/registry logs.
+2. Confirm the new tool appears in the MCP server discovery/registry.
 3. Refresh the MCP app/connector.
 4. If necessary, delete only the MCP app/connector.
 5. Create the MCP app/connector again.
 6. Select the **same existing tunnel**.
 7. Check the tool list again.
 
-The preferred workflow is:
+Preferred workflow:
 
 ```text
 Change MCP code
@@ -631,6 +947,51 @@ Verify tools
 ```
 
 There is normally no reason to create a new tunnel simply because the MCP tool list changed.
+
+---
+
+# Workspace Management
+
+List all authorized workspaces:
+
+```bash
+uv run workspace-broker list
+```
+
+Authorize a workspace:
+
+```bash
+uv run workspace-broker authorize "$HOME/path/to/workspace"
+```
+
+Revoke a workspace:
+
+```bash
+uv run workspace-broker revoke <workspace-id>
+```
+
+The broker records:
+
+```text
+workspace ID
+host path
+host UID
+host GID
+target
+Docker volume name
+read-only state
+```
+
+For writable workspaces, the broker provisions ACLs for:
+
+```text
+host user
+sandbox UID 10001
+```
+
+Directories also receive default ACLs so newly created content inherits the required access.
+
+Protected project paths such as secrets, state, and Gateway signing material are not granted sandbox ACL access.
 
 ---
 
@@ -653,13 +1014,19 @@ the service exists from an older version of the Compose configuration.
 Remove obsolete services with:
 
 ```bash
-docker compose up -d --remove-orphans
+docker compose \
+  --env-file .env \
+  -f deploy/compose.yaml \
+  up -d --remove-orphans
 ```
 
 Then verify:
 
 ```bash
-docker compose ps
+docker compose \
+  --env-file .env \
+  -f deploy/compose.yaml \
+  ps
 ```
 
 The current deployment should contain:
@@ -669,315 +1036,6 @@ openshell-gateway
 mcp-server
 tunnel-client
 ```
-
----
-
-# Quick Start
-
-## 1. Start the stack
-
-```bash
-docker compose up -d --remove-orphans
-```
-
-## 2. Check the services
-
-```bash
-docker compose ps
-```
-
-Expected:
-
-```text
-openshell-gateway
-mcp-server
-tunnel-client
-```
-
-## 3. Check the MCP server
-
-```bash
-docker compose logs --tail=200 mcp-server
-```
-
-## 4. Check OpenShell Gateway
-
-```bash
-docker compose logs --tail=200 openshell-gateway
-```
-
-## 5. Check the tunnel
-
-```bash
-docker compose logs --tail=100 tunnel-client
-```
-
-## 6. Verify the MCP tools in ChatGPT
-
-Confirm that the current sandbox and workspace tools are available.
-
-## 7. Test sandbox execution
-
-Use:
-
-```text
-create_sandbox
-sandbox_status
-execute_sandbox_command
-delete_sandbox
-```
-
----
-
-# Stop
-
-Stop and remove the current Compose containers and network:
-
-```bash
-docker compose down
-```
-
-This does not remove Docker images.
-
----
-
-# Restart
-
-Start the stack again:
-
-```bash
-docker compose up -d --remove-orphans
-```
-
-Check the status:
-
-```bash
-docker compose ps
-```
-
-Check the MCP server:
-
-```bash
-docker compose logs --tail=200 mcp-server
-```
-
-Check the Gateway:
-
-```bash
-docker compose logs --tail=200 openshell-gateway
-```
-
-Check the tunnel:
-
-```bash
-docker compose logs --tail=100 tunnel-client
-```
-
----
-
-# Rebuild the MCP Server
-
-When source code or dependencies change:
-
-```bash
-docker compose build --no-cache mcp-server
-```
-
-Then:
-
-```bash
-docker compose up -d --force-recreate --remove-orphans mcp-server
-```
-
-Check:
-
-```bash
-docker compose ps
-```
-
-And:
-
-```bash
-docker compose logs --tail=200 mcp-server
-```
-
----
-
-# Troubleshooting
-
-## Tunnel is not starting
-
-Check:
-
-```bash
-docker compose logs --tail=100 tunnel-client
-```
-
-Verify that `.env` contains:
-
-```env
-CONTROL_PLANE_TUNNEL_ID=<Correct Tunnel ID>
-```
-
-Also verify that:
-
-```text
-.secrets/control-plane-api-key
-```
-
-exists and contains the correct API key.
-
----
-
-## MCP server is unhealthy
-
-Check:
-
-```bash
-docker compose ps
-```
-
-Then:
-
-```bash
-docker compose logs --tail=200 mcp-server
-```
-
-The MCP server health endpoint is:
-
-```text
-/mcp
-```
-
-for MCP traffic and:
-
-```text
-/healthz
-```
-
-for health checks.
-
----
-
-## OpenShell Gateway is not starting
-
-Check:
-
-```bash
-docker compose logs --tail=200 openshell-gateway
-```
-
-Verify:
-
-```text
-openshell/gateway:latest
-```
-
-is configured as the Gateway image.
-
-Verify that:
-
-```text
-openshell/gateway.toml
-```
-
-contains the current OpenShell v2 configuration.
-
-The Docker socket must also be available to the Gateway:
-
-```text
-/var/run/docker.sock
-```
-
----
-
-## Sandbox creation fails
-
-Check both the MCP server and Gateway logs:
-
-```bash
-docker compose logs --tail=200 mcp-server
-```
-
-```bash
-docker compose logs --tail=200 openshell-gateway
-```
-
-Verify that the configured sandbox image exists locally:
-
-```text
-local-mcp-openshell-sandbox:1.0.0
-```
-
-Also verify that the Gateway is configured with:
-
-```toml
-compute_driver = "docker"
-```
-
-and:
-
-```toml
-image_pull_policy = "if_not_present"
-```
-
----
-
-## ChatGPT shows an old tool list
-
-First verify that the MCP server itself exposes the new tools.
-
-Then:
-
-```text
-Rebuild
-    ↓
-Recreate MCP server
-    ↓
-Check MCP logs
-    ↓
-Check tunnel-client
-    ↓
-Refresh MCP app
-```
-
-If the old tool list remains:
-
-```text
-Delete only the MCP App / Connector
-        ↓
-Create it again
-        ↓
-Select the same existing tunnel
-        ↓
-Verify the tools
-```
-
-Do not immediately create a new API key or tunnel.
-
----
-
-## Old `terminal-executor` container still exists
-
-If:
-
-```bash
-docker compose ps
-```
-
-or Compose startup reports:
-
-```text
-Found orphan containers
-```
-
-run:
-
-```bash
-docker compose up -d --remove-orphans
-```
-
-The obsolete `terminal-executor` container should be removed.
 
 ---
 
@@ -994,43 +1052,60 @@ delete_workspace_directory
 delete_workspace_file
 execute_sandbox_command
 get_system_info
+list_authorized_host_workspaces
 list_sandboxes
 list_workspace_files
 read_workspace_text_file
 rename_workspace_path
+request_tool_installation
 sandbox_status
 write_workspace_file
 ```
 
-Sandbox execution is performed through OpenShell rather than a separate host-level terminal executor.
+Sandbox execution is performed through OpenShell.
+
+Workspace operations are constrained to the authorized workspace mounted at:
+
+```text
+/workspace/project
+```
+
+Tool installation is performed through the controlled installation workflow inside the authorized sandbox.
 
 ---
 
 # Security Notes
 
-The current deployment intentionally keeps the OpenShell Gateway on the internal Docker network and uses plaintext HTTP between the MCP server and Gateway.
+The current deployment uses TLS and mTLS for communication between the MCP server and OpenShell Gateway.
 
-The Gateway should not be exposed directly to an untrusted network.
+The Gateway is bound to the local host interface and should not be exposed directly to an untrusted network.
 
 The deployment also uses:
 
 ```text
+TLS
+mTLS authentication
 read-only MCP container filesystem
 no-new-privileges
 capability drop
 internal Docker networks
 workspace boundary controls
+POSIX ACLs
 OpenShell sandbox isolation
+controlled tool installation
 ```
+
+The OpenShell Gateway requires client authentication.
 
 Secrets must remain outside Git:
 
 ```text
 .env
 .secrets/control-plane-api-key
+.secrets/openshell-tls/
 ```
 
-Do not commit API keys, tunnel credentials, or other secrets.
+Do not commit API keys, tunnel credentials, TLS private keys, or other secrets.
 
 ---
 
@@ -1048,9 +1123,11 @@ tunnel-client
    ▼
 mcp-server
    │
+   │ HTTPS + mTLS
    ▼
 openshell-gateway
    │
+   │ Docker socket
    ▼
 Docker
    │
@@ -1059,6 +1136,31 @@ Docker
    └── OpenShell Sandbox C
 ```
 
+Host workspace lifecycle:
+
+```text
+Host directory
+      │
+      ▼
+workspace-broker authorize
+      │
+      ├── Docker volume
+      ├── workspace grant
+      └── POSIX ACLs
+              │
+              ▼
+       OpenShell sandbox
+              │
+              ▼
+       /workspace/project
+              │
+              ▼
+workspace-broker revoke
+              │
+              ▼
+workspace-acl-helper
+```
+
 The project no longer uses a separate `terminal-executor` service.
 
-The MCP server exposes sandbox operations through OpenShell and keeps workspace operations inside the configured workspace boundary.
+The MCP server exposes sandbox operations through OpenShell, workspace operations through authorized workspace boundaries, and controlled tool installation through the sandbox installation workflow.

@@ -124,6 +124,12 @@ def test_create_workspace_grant_round_trip(
         False,
     )
 
+    monkeypatch.setattr(
+        workspace_broker,
+        "_provision_sandbox_acl",
+        lambda path, *, host_uid=None, host_gid=None: None,
+    )
+
     grant = workspace_broker.create_workspace_grant(
         str(tmp_path),
         create_volume=False,
@@ -289,6 +295,12 @@ def test_revoke_workspace_grant_round_trip(
         False,
     )
 
+    monkeypatch.setattr(
+        workspace_broker,
+        "_provision_sandbox_acl",
+        lambda path, *, host_uid=None, host_gid=None: None,
+    )
+
     grant = workspace_broker.create_workspace_grant(
         str(tmp_path),
         create_volume=False,
@@ -296,6 +308,12 @@ def test_revoke_workspace_grant_round_trip(
 
     ws_id = str(
         grant["workspace_id"],
+    )
+
+    monkeypatch.setattr(
+        workspace_broker,
+        "_remove_sandbox_acl_with_helper",
+        lambda path, **kwargs: None,
     )
 
     assert (
