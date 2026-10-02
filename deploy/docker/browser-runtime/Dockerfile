@@ -15,15 +15,8 @@ RUN apt-get update \
     && unzip -q /tmp/chrome-headless-shell.zip -d /opt \
     && mv /opt/chrome-headless-shell-linux64 /opt/chrome \
     && rm -f /tmp/chrome-headless-shell.zip \
-    && curl --fail --silent --show-error --location --output /tmp/chrome.zip \
-        "https://storage.googleapis.com/chrome-for-testing-public/${CHROME_VERSION}/linux64/chrome-linux64.zip" \
-    && unzip -p /tmp/chrome.zip chrome-linux64/chrome_sandbox > /opt/chrome/chrome_sandbox \
-    && rm -f /tmp/chrome.zip \
     && groupadd --gid 1000 chrome \
     && useradd --uid 1000 --gid 1000 --create-home --shell /usr/sbin/nologin chrome \
-    && chown root:root /opt/chrome/chrome_sandbox \
-    && chmod 4755 /opt/chrome/chrome_sandbox \
-    && ln -s chrome_sandbox /opt/chrome/chrome-sandbox \
     && mkdir -p /home/chrome/profile \
     && chown -R 1000:1000 /home/chrome
 
