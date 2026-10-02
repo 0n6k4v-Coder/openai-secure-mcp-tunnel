@@ -835,6 +835,20 @@ docker compose \
   up -d --force-recreate --remove-orphans tunnel-client
 ```
 
+```bash
+docker compose \
+  --env-file .env \
+  -f deploy/compose.yaml \
+  up -d --force-recreate --remove-orphans browser-runtime
+```
+
+```bash
+docker compose \
+  --env-file .env \
+  -f deploy/compose.yaml \
+  up -d --force-recreate --remove-orphans cdp-relay
+```
+
 ## 3. Check the service status
 
 ```bash

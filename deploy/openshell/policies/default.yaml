@@ -19,3 +19,14 @@ filesystem_policy:
 
 landlock:
   compatibility: hard_requirement
+network_policies:
+  browser_cdp:
+    endpoints:
+      - host: host.openshell.internal
+        ports:
+          - 9223
+        protocol: tcp
+    binaries:
+      - path: /usr/bin/curl
+      - path: /usr/bin/python3.12
+      - path: /usr/local/lib/python3.12/dist-packages/playwright/driver/node

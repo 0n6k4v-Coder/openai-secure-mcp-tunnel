@@ -1089,6 +1089,30 @@
       "args": [
         {
           "index": 0,
+          "value": 536870912,
+          "valueTwo": 536870912,
+          "op": "SCMP_CMP_MASKED_EQ"
+        }
+      ],
+      "excludes": {
+        "caps": [
+          "CAP_SYS_ADMIN"
+        ],
+        "arches": [
+          "s390",
+          "s390x"
+        ]
+      },
+      "comment": "Chromium sandbox: permit unprivileged CLONE_NEWPID after entering user namespace"
+    },
+    {
+      "names": [
+        "clone"
+      ],
+      "action": "SCMP_ACT_ALLOW",
+      "args": [
+        {
+          "index": 0,
           "value": 1879048192,
           "valueTwo": 1879048192,
           "op": "SCMP_CMP_MASKED_EQ"
