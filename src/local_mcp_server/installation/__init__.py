@@ -5,6 +5,7 @@ from .service import (
     consume_installation_approval,
     create_installation_request,
     deny_installation,
+    execute_installation,
     mark_installation_finished,
 )
 
@@ -15,5 +16,6 @@ __all__ = [
     "consume_installation_approval",
     "create_installation_request",
     "deny_installation",
+    "execute_installation",
     "mark_installation_finished",
 ]

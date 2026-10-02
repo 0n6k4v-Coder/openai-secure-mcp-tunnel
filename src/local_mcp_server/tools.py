@@ -12,9 +12,8 @@ from pydantic import BaseModel
 
 from .installation import (
     approve_installation,
-    consume_installation_approval,
     create_installation_request,
-    mark_installation_finished,
+    execute_installation,
 )
 from .sandbox import (
     create_sandbox as create_sandbox_impl,
@@ -38,52 +37,8 @@ from .workspace.sandbox_files import (
 )
 
 
-class InstallationApproval(BaseModel):
-    approved: bool
-
-
 class SandboxDeletionApproval(BaseModel):
     approved: bool
-
-
-def _installation_approval_message(
-    *,
-    tool_name: str,
-    version: str,
-    source: str,
-    install_command: str,
-    reason: str,
-) -> str:
-    return (
-        "SOFTWARE INSTALLATION APPROVAL REQUIRED\n\n"
-        f"Tool: {tool_name}\n"
-        f"Version: {version}\n"
-        f"Source: {source}\n"
-        f"Command: {install_command}\n"
-        f"Reason: {reason}\n\n"
-        "This approval applies only to this exact installation request.\n\n"
-        "Approve this installation?"
-    )
-
-
-async def _installation_approval(
-    *,
-    tool_name: str,
-    version: str,
-    source: str,
-    install_command: str,
-    reason: str,
-) -> Elicit[InstallationApproval]:
-    return Elicit(
-        _installation_approval_message(
-            tool_name=tool_name,
-            version=version,
-            source=source,
-            install_command=install_command,
-            reason=reason,
-        ),
-        InstallationApproval,
-    )
 
 
 def _sandbox_deletion_approval_message(
@@ -380,35 +335,24 @@ def register_tools(
             openWorldHint=False,
         )
     )
-    async def request_tool_installation(
+    def request_tool_installation(
         sandbox_name: str,
         tool_name: str,
         version: str,
         source: str,
         install_command: str,
         reason: str,
-        approval: Annotated[
-            ElicitationResult[InstallationApproval],
-            Resolve(_installation_approval),
-        ],
     ) -> dict[str, object]:
         """
-        Request a one-time, human-approved software installation.
+        Install an approved software tool inside one specific OpenShell sandbox.
 
-        The approval question is transport-compatible across MCP protocol
-        eras. No installation request is created until the user accepts,
-        which prevents resolver retries from creating duplicate records.
-        The current implementation still stops after approval and does not
-        execute an installation command.
+        The connected MCP host must require explicit approval for this
+        destructive action. The server executes only after the host has
+        allowed the tool call.
+
+        The command is validated and executed inside the requested OpenShell
+        sandbox, never on the MCP server host.
         """
-        if approval.action != "accept" or approval.data is None:
-            return {
-                "request_id": None,
-                "approved": False,
-                "executed": False,
-                "message": ("Installation denied or cancelled by the user."),
-            }
-
         request = create_installation_request(
             sandbox_name=sandbox_name,
             tool_name=tool_name,
@@ -418,25 +362,13 @@ def register_tools(
             reason=reason,
         )
 
-        approved = approve_installation(request.request_id)
-
-        consumed = consume_installation_approval(approved.request_id)
-
-        mark_installation_finished(
-            consumed.request_id,
-            success=False,
+        approved = approve_installation(
+            request.request_id,
         )
 
-        return {
-            "request_id": consumed.request_id,
-            "approved": True,
-            "executed": False,
-            "message": (
-                "Installation approval was granted and consumed, "
-                "but no installation worker is configured. "
-                "No command was executed."
-            ),
-        }
+        return execute_installation(
+            approved,
+        )
 
     @mcp.tool(
         annotations=ToolAnnotations(

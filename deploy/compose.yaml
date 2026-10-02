@@ -38,9 +38,11 @@ services:
     environment:
       OPENSHELL_GATEWAY_CONFIG: /etc/openshell/gateway.toml
       OPENSHELL_DB_URL: sqlite:/var/lib/local-mcp-server/config/openshell.db
+
       XDG_DATA_HOME: /var/lib/local-mcp-server/config
       XDG_STATE_HOME: /var/lib/local-mcp-server/config
       HOME: /var/lib/local-mcp-server/config
+
       OPENSHELL_TLS_CERT: /etc/openshell/certs/gateway.crt
       OPENSHELL_TLS_KEY: /etc/openshell/certs/gateway.key
       OPENSHELL_TLS_CLIENT_CA: /etc/openshell/certs/ca.crt
@@ -77,8 +79,22 @@ services:
 
     volumes:
       - ${MCP_INSTALLATION_STATE_FILE:-../.state/installations.json}:/var/lib/local-mcp-server/installations.json:rw
+
       - ${WORKSPACE_GRANTS_DIR:-../.state/workspace-grants}:/var/lib/local-mcp-server/workspace-grants:ro
 
+      # OpenShell SDK gateway registration.
+      - type: bind
+        source: ./openshell/gateway-metadata.json
+        target: /config/openshell/gateways/local/metadata.json
+        read_only: true
+
+      # OpenShell SDK mTLS credentials.
+      - type: bind
+        source: ../.secrets/openshell-tls/client
+        target: /config/openshell/gateways/local/mtls
+        read_only: true
+
+      # Existing MCP/OpenShell TLS bundle.
       - type: bind
         source: ../.secrets/openshell-tls/client
         target: /etc/openshell
@@ -95,14 +111,23 @@ services:
 
     environment:
       OPENSHELL_WORKSPACE: ${OPENSHELL_WORKSPACE:-default}
+      OPENSHELL_GATEWAY: ${OPENSHELL_GATEWAY:-local}
+
+      # OpenShell SDK resolves its gateway registry through XDG_CONFIG_HOME.
+      XDG_CONFIG_HOME: /config
+
       SANDBOX_IMAGE: ${SANDBOX_IMAGE:-local-mcp-openshell-sandbox:1.0.0}
       SANDBOX_DEFAULT_CPU: ${SANDBOX_DEFAULT_CPU:-1}
       SANDBOX_DEFAULT_MEMORY: ${SANDBOX_DEFAULT_MEMORY:-1Gi}
+
       WORKSPACE_GRANTS_FILE: /var/lib/local-mcp-server/workspace-grants/workspace-grants.json
       WORKSPACE_GRANTS_READ_ONLY: "true"
+
       INSTALLATION_STATE_FILE: /var/lib/local-mcp-server/installations.json
+
       LOG_LEVEL: INFO
-      OPENSHELL_SYSTEM_GATEWAY_DIR: /etc/openshell
+
+      OPENSHELL_SYSTEM_GATEWAY_DIR: /config
 
     healthcheck:
       test:
