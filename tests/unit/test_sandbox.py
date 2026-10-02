@@ -62,8 +62,8 @@ def test_build_sandbox_spec_emits_narrow_network_policies(
     assert browser_policy.name == "browser-cdp"
 
     browser_endpoint = browser_policy.endpoints[0]
-    assert browser_endpoint.host == "198.18.0.2"
-    assert browser_endpoint.port == 9222
+    assert browser_endpoint.host == "host.openshell.internal"
+    assert browser_endpoint.port == 9223
     assert browser_endpoint.protocol == "tcp"
 
     browser_binary = browser_policy.binaries[0]

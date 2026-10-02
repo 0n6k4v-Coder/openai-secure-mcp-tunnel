@@ -92,6 +92,8 @@ services:
       SANDBOX_IMAGE: ${SANDBOX_IMAGE:-local-mcp-openshell-sandbox:1.0.0}
       SANDBOX_DEFAULT_CPU: ${SANDBOX_DEFAULT_CPU:-1}
       SANDBOX_DEFAULT_MEMORY: ${SANDBOX_DEFAULT_MEMORY:-1Gi}
+      BROWSER_ENDPOINT_HOST: ${BROWSER_ENDPOINT_HOST:-host.openshell.internal}
+      BROWSER_ENDPOINT_PORT: ${BROWSER_RELAY_PORT:-9223}
       WORKSPACE_GRANTS_FILE: /var/lib/local-mcp-server/workspace-grants/workspace-grants.json
       WORKSPACE_GRANTS_READ_ONLY: "true"
       INSTALLATION_STATE_FILE: /var/lib/local-mcp-server/state/installations.json
@@ -147,6 +149,31 @@ services:
       retries: 10
       start_period: 10s
 
+  cdp-relay:
+    build:
+      context: ./docker/cdp-relay
+      dockerfile: Dockerfile
+    restart: unless-stopped
+    network_mode: host
+    user: "relay:relay"
+    read_only: true
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
+    tmpfs:
+      - /tmp:rw,noexec,nosuid,nodev
+    environment:
+      CDP_LISTEN_HOST: 0.0.0.0
+      CDP_LISTEN_PORT: ${BROWSER_RELAY_PORT:-9223}
+      CDP_UPSTREAM_HOST: ${BROWSER_UPSTREAM_HOST:-198.18.0.2}
+      CDP_UPSTREAM_PORT: ${BROWSER_PORT:-9222}
+      CDP_PUBLIC_HOST: ${BROWSER_ENDPOINT_HOST:-host.openshell.internal}
+      CDP_PUBLIC_PORT: ${BROWSER_RELAY_PORT:-9223}
+    depends_on:
+      browser-runtime:
+        condition: service_healthy
+
   tunnel-client:
     image: ghcr.io/openai/tunnel-client:v0.0.15
     depends_on:
@@ -154,6 +181,8 @@ services:
         condition: service_healthy
       browser-runtime:
         condition: service_healthy
+      cdp-relay:
+        condition: service_started
     networks:
       - mcp-internal
       - tunnel-egress

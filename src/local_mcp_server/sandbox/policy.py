@@ -42,8 +42,16 @@ _NPM_AUDIT_PATHS = (
 )
 
 _BROWSER_NODE_BINARY = "/usr/local/bin/node"
-_BROWSER_HOST = os.environ.get("BROWSER_ENDPOINT_HOST", "198.18.0.2")
-_BROWSER_PORT = int(os.environ.get("BROWSER_ENDPOINT_PORT", "9222"))
+_BROWSER_HOST = os.environ.get(
+    "BROWSER_ENDPOINT_HOST",
+    "host.openshell.internal",
+)
+_BROWSER_PORT = int(
+    os.environ.get(
+        "BROWSER_ENDPOINT_PORT",
+        "9223",
+    )
+)
 
 
 def validate_name(name: str) -> str:
@@ -149,9 +157,9 @@ def build_sandbox_spec(
                         "source": volume_name,
                         "target": target,
                         "read_only": read_only,
-                    }
-                ]
-            }
+                    },
+                ],
+            },
         }
     )
 
