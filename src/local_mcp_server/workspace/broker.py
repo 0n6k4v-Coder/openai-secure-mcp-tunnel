@@ -612,7 +612,13 @@ def main(
     revoke_parser = subparsers.add_parser("revoke")
     revoke_parser.add_argument("workspace_id")
 
-    subparsers.add_parser("list")
+    list_parser = subparsers.add_parser("list")
+    list_parser.add_argument(
+        "--json",
+        action="store_true",
+        dest="json_output",
+        help="Output workspace grants as JSON.",
+    )
 
     args = parser.parse_args(argv)
 
@@ -637,12 +643,24 @@ def main(
         return 0
 
     if args.command == "list":
-        print(
-            json.dumps(
-                _list_grants(),
-                ensure_ascii=False,
+        result = _list_grants()
+
+        if args.json_output:
+            print(
+                json.dumps(
+                    result,
+                    ensure_ascii=False,
+                    indent=2,
+                )
             )
-        )
+        else:
+            print(
+                json.dumps(
+                    result,
+                    ensure_ascii=False,
+                )
+            )
+
         return 0
 
     raise RuntimeError(f"Unsupported command: {args.command}")
