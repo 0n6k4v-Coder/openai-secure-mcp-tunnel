@@ -28,6 +28,7 @@
                     │  sandbox API            │
                     │  workspace API          │
                     │  installation API       │
+                    │  browser API            │
                     └────────────┬────────────┘
                                  │
                          TLS + mTLS
@@ -41,6 +42,7 @@
                     │  Docker driver          │
                     │  sandbox registry       │
                     │  mTLS authentication    │
+                    │  credential subsystem   │
                     └────────────┬────────────┘
                                  │
                          Docker driver
@@ -54,7 +56,7 @@
        │                │    │                          │   │
        │ Python         │    │ Chrome for Testing       │   │
        │ Node.js / npm  │    │ Chrome DevTools MCP      │   │
-       │ Playwright     │    │ fixed local CDP :9222   │   │
+       │ Playwright     │    │ sandbox-local CDP :9222 │   │
        │ workspace      │    │ workspace                │   │
        └────────────────┘    └──────────────────────────┘   │
               │                      │                      │
@@ -73,7 +75,11 @@ tunnel-client
 
 OpenShell creates and manages sandbox containers through its Docker compute driver. Sandbox containers are created on demand and are not long-running Docker Compose services.
 
-The project supports separate sandbox profiles. The `default` profile is used for normal development and command execution. The `browser` profile provides an isolated Chrome runtime and Chrome DevTools MCP daemon. Browser lifecycle is owned by the OpenShell sandbox lifecycle.
+The project supports separate sandbox profiles.
+
+The `default` profile is used for normal development and command execution.
+
+The `browser` profile provides an isolated Chrome runtime and Chrome DevTools MCP daemon. Browser lifecycle is owned by the OpenShell browser sandbox lifecycle.
 
 The previous `terminal-executor` service is no longer part of the architecture.
 
@@ -85,9 +91,16 @@ Host workspace authorization is handled by the separate trusted host-side:
 workspace-broker
 ```
 
-When a workspace is authorized, the broker provisions POSIX ACLs so that both the host user and the OpenShell sandbox user can work with the mounted workspace.
+When a workspace is authorized, the broker:
 
-The sandbox image runs as:
+```text
+validates the host path
+provisions POSIX ACLs
+creates a host-backed Docker volume
+stores an opaque workspace grant
+```
+
+The OpenShell sandbox uses:
 
 ```text
 UID 10001
@@ -102,7 +115,9 @@ During revocation, the broker uses:
 local-mcp-workspace-acl-helper:1.0.0
 ```
 
-The helper is a minimal Alpine image containing `setfacl`. It runs with:
+The helper is a minimal Alpine image containing `setfacl`.
+
+It runs with:
 
 ```text
 network: none
@@ -127,17 +142,37 @@ Install the CLI:
 ./scripts/install-cli.sh
 ```
 
-Activate the virtual environment:
+Synchronize the locked Python environment:
 
 ```bash
-source .venv/bin/activate
+uv sync --locked --all-groups
 ```
 
-After activation, the CLI is available as:
+The project requires:
+
+```text
+Python >=3.14,<3.15
+```
+
+The primary operator CLI is:
 
 ```bash
-local-mcp-server --help
+uv run secure-mcp --help
 ```
+
+The configuration and OpenShell TLS control CLI is:
+
+```bash
+uv run mcpctl --help
+```
+
+The trusted host-side workspace broker is:
+
+```bash
+uv run workspace-broker --help
+```
+
+---
 
 ## Step 1 - Clone the repository
 
@@ -148,7 +183,96 @@ cd openai-secure-mcp-tunnel
 
 ---
 
-## Step 2 - Create and Configure the OpenAI Tunnel
+## Step 2 - Create the deployment environment
+
+Environment templates are stored under:
+
+```text
+deploy/
+```
+
+The default deployment environment template is:
+
+```text
+deploy/.env.example
+```
+
+Create the default deployment environment:
+
+```bash
+cp deploy/.env.example deploy/.env
+```
+
+For development, use:
+
+```bash
+cp deploy/.env.development.example deploy/.env.development
+```
+
+For production, use:
+
+```bash
+cp deploy/.env.production.example deploy/.env.production
+```
+
+The default `deploy/.env` is automatically discovered by Docker Compose when using:
+
+```bash
+docker compose -f deploy/compose.yaml ...
+```
+
+There is therefore no need to add:
+
+```text
+--env-file .env
+```
+
+to normal commands.
+
+For an alternate environment file such as:
+
+```text
+deploy/.env.development
+```
+
+use an explicit environment file:
+
+```bash
+docker compose \
+  --env-file deploy/.env.development \
+  -f deploy/compose.yaml \
+  up -d --remove-orphans
+```
+
+The deployment environment contains runtime configuration such as:
+
+```text
+COMPOSE_PROJECT_NAME
+OPENSHELL_WORKSPACE
+OPENSHELL_IMAGE_TAG
+OPENSHELL_PORT
+OPENSHELL_HEALTH_PORT
+OPENSHELL_GATEWAY
+OPENSHELL_CLI_GATEWAY
+MCP_PORT
+MCP_CONFIG_DIR
+MCP_STATE_DIR
+WORKSPACE_GRANTS_DIR
+SANDBOX_IMAGE
+BROWSER_SANDBOX_IMAGE
+WORKSPACE_ACL_HELPER_IMAGE
+SANDBOX_DEFAULT_CPU
+SANDBOX_DEFAULT_MEMORY
+BROWSER_ALLOWED_ENDPOINTS
+INSTALLATION_TIMEOUT_SECONDS
+LOG_LEVEL
+```
+
+The OpenAI tunnel ID and control-plane API key are configured separately through the `mcpctl` OpenAI client configuration command.
+
+---
+
+## Step 3 - Create and Configure the OpenAI Tunnel
 
 Open:
 
@@ -162,125 +286,117 @@ Create a new tunnel with a name such as:
 openai-secure-mcp-tunnel
 ```
 
-After creating the tunnel, copy the Tunnel ID:
+After creating the tunnel, copy the Tunnel ID.
+
+The expected format is:
 
 ```text
-tunnel_xxx
+tunnel_xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx
 ```
 
-Create a `.env` file at the project root:
+Do not place the tunnel ID in the Docker Compose environment file.
+
+Configure the OpenAI MCP client through:
 
 ```bash
-touch .env
+uv run mcpctl config mcp-client openai
 ```
 
-Add:
+The command prompts for:
 
-```env
-CONTROL_PLANE_TUNNEL_ID=<Copied Tunnel ID>
+```text
+CONTROL_PLANE_TUNNEL_ID
+CONTROL_PLANE_API_KEY
 ```
+
+The configuration is stored under:
+
+```text
+${XDG_CONFIG_HOME:-$HOME/.config}/local-mcp-server/mcp-clients/openai/
+```
+
+The resulting files are:
+
+```text
+config.yaml
+credentials
+```
+
+The configuration file contains the tunnel ID and MCP server URL.
+
+The credentials file contains the control-plane API key.
+
+The files are created with private permissions.
+
+**Do not commit these files to Git.**
 
 ---
 
-## Step 3 - Create and Configure the OpenAI Control Plane API Key
+## Step 4 - Configure OpenShell TLS
 
-Open the OpenAI API Keys page:
+The project uses OpenShell Gateway with TLS and mTLS authentication.
 
-https://platform.openai.com/api-keys
-
-Create a new API key with the permissions required for the tunnel.
-
-Copy the API key immediately after creating it.
-
-Create the secrets directory:
+Initialize the OpenShell TLS runtime state:
 
 ```bash
-mkdir -p .secrets
+uv run mcpctl setup
 ```
 
-Create the API key file:
+Check the TLS state:
 
 ```bash
-touch .secrets/control-plane-api-key
+uv run mcpctl status
 ```
 
-Open `.secrets/control-plane-api-key` and paste the API key into the file.
-
-The file should contain only the API key:
+The TLS root is:
 
 ```text
-sk-xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx
+${XDG_STATE_HOME:-$HOME/.local/state}/local-mcp-server/openshell/tls
 ```
 
-Save the file.
-
-**Do not commit this file to Git.**
-
----
-
-## Step 4 - Configure the OpenShell Deployment
-
-The project uses OpenShell Gateway with the Docker compute driver.
-
-The deployment uses:
+The expected structure is:
 
 ```text
-OpenShell Gateway: ghcr.io/nvidia/openshell/gateway:latest
-OpenShell Python SDK: openshell==0.1.1
-Python: 3.14
-MCP SDK: mcp[cli]==2.2.0
+openshell/tls/
+├── ca.crt
+├── server/
+│   ├── tls.crt
+│   └── tls.key
+├── client/
+│   ├── ca.crt
+│   ├── tls.crt
+│   └── tls.key
+└── jwt/
+    ├── signing.pem
+    ├── public.pem
+    └── kid
 ```
 
-The Gateway configuration is located at:
+The MCP server receives the client mTLS material through the Compose mount:
 
 ```text
-deploy/openshell/gateway.toml
+/config/openshell/gateways/local/mtls
 ```
 
-The Gateway uses the Docker socket to create and manage sandbox containers.
-
-The current deployment enables Gateway TLS and mTLS authentication:
+The OpenShell CLI mTLS bundle is synchronized under:
 
 ```text
-MCP Server
-    │
-    │ HTTPS + mTLS
-    ▼
-OpenShell Gateway
-    │
-    │ Docker socket
-    ▼
-Docker
-    │
-    ▼
-Sandbox containers
+${XDG_CONFIG_HOME:-$HOME/.config}/openshell/gateways/local/mtls
 ```
 
-The Gateway listens on the host loopback interface:
+If the TLS state becomes incomplete or has incorrect permissions, repair it with:
 
-```text
-127.0.0.1:8080
+```bash
+uv run mcpctl repair
 ```
 
-and exposes its health endpoint on:
+Check again:
 
-```text
-127.0.0.1:8081
+```bash
+uv run mcpctl status
 ```
 
-The Gateway certificates are mounted from:
-
-```text
-.secrets/openshell-tls/gateway/
-```
-
-The MCP server uses the corresponding client certificates from:
-
-```text
-.secrets/openshell-tls/client/
-```
-
-The Gateway is configured with:
+The OpenShell Gateway is configured with:
 
 ```toml
 disable_tls = false
@@ -288,13 +404,15 @@ disable_tls = false
 
 and mTLS authentication is enabled.
 
+Unauthenticated Gateway users are disabled.
+
 **Do not expose the OpenShell Gateway directly to an untrusted network.**
 
 ---
 
 # CLI Reference
 
-The project has two separate host-side CLI entry points.
+The project has three separate host-side CLI entry points.
 
 ## Secure MCP CLI
 
@@ -304,7 +422,85 @@ Run:
 uv run secure-mcp --help
 ```
 
-### Sandbox commands
+The current top-level commands are:
+
+```text
+start
+stop
+restart
+status
+logs
+sandbox
+credential
+```
+
+### Start the Compose stack
+
+```bash
+uv run secure-mcp start
+```
+
+### Stop the Compose stack
+
+```bash
+uv run secure-mcp stop
+```
+
+### Restart the Compose stack
+
+```bash
+uv run secure-mcp restart
+```
+
+### Show Compose service status
+
+```bash
+uv run secure-mcp status
+```
+
+JSON output:
+
+```bash
+uv run secure-mcp status --json
+```
+
+### Show Compose logs
+
+```bash
+uv run secure-mcp logs
+```
+
+Show one service:
+
+```bash
+uv run secure-mcp logs mcp-server
+```
+
+Follow logs:
+
+```bash
+uv run secure-mcp logs --follow
+```
+
+Follow one service:
+
+```bash
+uv run secure-mcp logs --follow mcp-server
+```
+
+The service choices are:
+
+```text
+openshell-gateway
+mcp-server
+tunnel-client
+```
+
+---
+
+## Sandbox commands
+
+Run:
 
 ```bash
 uv run secure-mcp sandbox --help
@@ -321,48 +517,243 @@ exec
 logs
 start
 stop
+restart
+repair
 delete
+recreate
 ```
 
-The `create` command supports the sandbox profile option:
+The `create` command supports:
 
 ```text
 --profile default|browser
 ```
 
-Examples:
+### List sandboxes
 
 ```bash
 uv run secure-mcp sandbox list
 ```
 
+### Check a sandbox
+
 ```bash
 uv run secure-mcp sandbox status <sandbox-name>
 ```
 
-```bash
-uv run secure-mcp sandbox create <sandbox-name> --workspace <workspace-id>
-```
-
-Create a browser sandbox:
+JSON output:
 
 ```bash
-uv run secure-mcp sandbox create <sandbox-name> --workspace <workspace-id> --profile browser
+uv run secure-mcp sandbox status <sandbox-name> --json
 ```
 
-The default profile remains the normal sandbox for development and command execution. The `browser` profile selects the dedicated browser image and Chrome DevTools runtime.
+### Create a default sandbox
+
+```bash
+uv run secure-mcp sandbox create \
+  <sandbox-name> \
+  --workspace <workspace-id>
+```
+
+### Create a browser sandbox
+
+```bash
+uv run secure-mcp sandbox create \
+  <sandbox-name> \
+  --workspace <workspace-id> \
+  --profile browser
+```
+
+The default profile is used for normal development and command execution.
+
+The `browser` profile selects:
+
+```text
+local-mcp-browser-sandbox:1.0.0
+```
+
+and starts the browser runtime inside the OpenShell sandbox.
+
+### Open an interactive shell
+
+```bash
+uv run secure-mcp sandbox shell <sandbox-name>
+```
+
+### Execute a command
+
+```bash
+uv run secure-mcp sandbox exec <sandbox-name> -- \
+  sh -lc 'echo "OpenShell sandbox is working"'
+```
+
+### Show sandbox logs
+
+```bash
+uv run secure-mcp sandbox logs <sandbox-name>
+```
+
+### Start a sandbox
+
+```bash
+uv run secure-mcp sandbox start <sandbox-name>
+```
+
+Start is used for a stopped sandbox or a retained failed sandbox.
+
+### Stop a sandbox
+
+```bash
+uv run secure-mcp sandbox stop <sandbox-name>
+```
+
+Stop retains the sandbox record and workspace association.
+
+### Restart a sandbox
+
+```bash
+uv run secure-mcp sandbox restart <sandbox-name>
+```
+
+Restart is implemented as:
+
+```text
+stop
+  ↓
+start
+```
+
+There is no separate custom OpenShell restart API used by the project.
+
+### Repair a sandbox
+
+```bash
+uv run secure-mcp sandbox repair <sandbox-name>
+```
+
+Repair retries OpenShell startup of the existing sandbox.
+
+It does **not** delete and recreate the sandbox.
+
+### Delete a sandbox
 
 ```bash
 uv run secure-mcp sandbox delete <sandbox-name>
 ```
 
-### Credential commands
+Deletion permanently removes the OpenShell sandbox.
+
+Deletion does not revoke the associated host workspace grant.
+
+### Recreate a sandbox
+
+```bash
+uv run secure-mcp sandbox recreate <sandbox-name> --yes
+```
+
+Recreate is destructive.
+
+It:
+
+```text
+reads the current managed sandbox metadata
+        ↓
+retains the managed host workspace ID
+        ↓
+retains the sandbox profile
+        ↓
+deletes the existing sandbox
+        ↓
+creates a new sandbox with the same name
+```
+
+The `--yes` flag is required.
+
+Recreate does not preserve runtime state from the deleted sandbox.
+
+---
+
+## Credential commands
+
+Run:
 
 ```bash
 uv run secure-mcp credential --help
 ```
 
-Use this command to inspect the currently available credential-management CLI operations.
+The current credential commands are:
+
+```text
+create
+list
+get
+update
+delete
+grant
+revoke
+```
+
+Credential operations are host-side OpenShell credential-provider operations.
+
+Credential values are not returned through the CLI's normal inspection operations.
+
+---
+
+## OpenShell TLS CLI
+
+Run:
+
+```bash
+uv run mcpctl --help
+```
+
+The current configuration commands are:
+
+```text
+setup
+status
+repair
+sandbox
+credential
+workspace
+config
+```
+
+### OpenShell TLS setup
+
+```bash
+uv run mcpctl setup
+```
+
+### OpenShell TLS status
+
+```bash
+uv run mcpctl status
+```
+
+### OpenShell TLS repair
+
+```bash
+uv run mcpctl repair
+```
+
+### Configure the OpenAI MCP client
+
+```bash
+uv run mcpctl config mcp-client openai
+```
+
+The command stores:
+
+```text
+OpenAI tunnel ID
+OpenAI control-plane API key
+OpenAI MCP server configuration
+```
+
+under the user-local XDG configuration directory.
+
+The `mcpctl sandbox ...`, `mcpctl credential ...`, and `mcpctl workspace ...` commands provide the same operator functionality through the secondary CLI entry point.
 
 ---
 
@@ -390,6 +781,12 @@ List all authorized host workspaces:
 uv run workspace-broker list
 ```
 
+List as JSON:
+
+```bash
+uv run workspace-broker list --json
+```
+
 Authorize a workspace:
 
 ```bash
@@ -406,6 +803,7 @@ The workspace broker is responsible for:
 
 ```text
 host path validation
+protected path validation
 workspace authorization
 Docker volume creation
 POSIX ACL provisioning
@@ -432,9 +830,13 @@ local-mcp-openshell-sandbox:1.0.0
 local-mcp-browser-sandbox:1.0.0
 ```
 
-The default image is used by the `default` profile. The browser image is used by the `browser` profile and contains Chrome for Testing and `chrome-devtools-mcp`.
+The default image is used by the `default` profile.
 
-Build the default sandbox image before creating standard OpenShell sandboxes:
+The browser image is used by the `browser` profile.
+
+---
+
+## Build the default sandbox image
 
 ```bash
 docker build \
@@ -442,7 +844,29 @@ docker build \
   deploy/docker/openshell-sandbox
 ```
 
-Build the browser sandbox image before creating browser sandboxes:
+The default image contains:
+
+```text
+Python
+Node.js
+npm
+Playwright
+git
+curl
+wget
+jq
+ripgrep
+OpenSSH client
+procps
+```
+
+The image is based on the Playwright Python image and includes Node.js/npm tooling.
+
+The OpenShell policy provides access to the authorized workspace and sandbox filesystem.
+
+---
+
+## Build the browser sandbox image
 
 ```bash
 docker build \
@@ -450,58 +874,33 @@ docker build \
   deploy/docker/browser-sandbox
 ```
 
-The default image must exist locally with the exact tag configured in:
-
-```text
-deploy/openshell/gateway.toml
-```
-
-The browser image is selected by the browser sandbox policy through the configured browser image setting. The current default is:
-
-```text
-local-mcp-browser-sandbox:1.0.0
-```
-
-The current configuration uses:
-
-```toml
-[openshell.drivers.docker]
-default_image = "local-mcp-openshell-sandbox:1.0.0"
-image_pull_policy = "if_not_present"
-```
-
-The default sandbox image provides:
-
-```text
-Python
-Node.js
-npm
-Playwright
-Chromium
-git
-curl
-wget
-jq
-ripgrep
-OpenSSH client
-```
-
-The browser sandbox image provides:
+The browser image contains:
 
 ```text
 Chrome for Testing
 chrome-devtools-mcp
-OpenShell Sandbox CA trust configuration
+Chrome runtime dependencies
+OpenShell Sandbox CA trust support
 ```
 
-Chrome and the Chrome DevTools MCP daemon run inside the browser sandbox. The browser endpoint is fixed to the sandbox-local Chrome CDP endpoint and is not supplied by the caller for individual commands.
-
-The sandbox container runs as:
+The browser sandbox runs as:
 
 ```text
 UID 10001
 GID 10001
 ```
+
+Chrome runs inside the browser sandbox.
+
+The browser CDP endpoint is fixed to:
+
+```text
+http://127.0.0.1:9222
+```
+
+The caller cannot override the browser connection endpoint.
+
+The `execute_chrome_devtools_command` tool rejects Chrome connection override arguments.
 
 ---
 
@@ -515,34 +914,58 @@ docker build \
   deploy/docker/workspace-acl-helper
 ```
 
-The helper is used by `workspace-broker` during workspace revocation.
+The helper is used by `workspace-broker` during workspace authorization and revocation.
 
 It does not provide a general-purpose shell or network access.
 
-Its only purpose is removing the OpenShell sandbox UID ACL entries from an authorized workspace.
+Its purpose is limited to managing the broker-controlled POSIX ACL entries for the OpenShell sandbox UID.
 
 ---
 
 # Step 7 - Start the MCP Server, OpenShell Gateway, and Tunnel
 
-Start the stack:
+Start the default deployment:
 
 ```bash
 docker compose \
-  --env-file .env \
   -f deploy/compose.yaml \
   up -d --remove-orphans
 ```
+
+The default command automatically uses:
+
+```text
+deploy/.env
+```
+
+when that file exists.
 
 The `--remove-orphans` option is intentional.
 
 It removes containers belonging to services that were previously defined in the Compose file but have since been removed.
 
+For the development environment:
+
+```bash
+docker compose \
+  --env-file deploy/.env.development \
+  -f deploy/compose.yaml \
+  up -d --remove-orphans
+```
+
+For the production environment:
+
+```bash
+docker compose \
+  --env-file deploy/.env.production \
+  -f deploy/compose.yaml \
+  up -d --remove-orphans
+```
+
 Check the service status:
 
 ```bash
 docker compose \
-  --env-file .env \
   -f deploy/compose.yaml \
   ps
 ```
@@ -565,12 +988,17 @@ Check the MCP server logs:
 
 ```bash
 docker compose \
-  --env-file .env \
   -f deploy/compose.yaml \
   logs --tail=200 mcp-server
 ```
 
-The MCP server exposes:
+The MCP server listens inside the container on:
+
+```text
+0.0.0.0:8000
+```
+
+The MCP endpoint is:
 
 ```text
 http://mcp-server:8000/mcp
@@ -582,14 +1010,25 @@ The health endpoint is:
 http://mcp-server:8000/healthz
 ```
 
-The MCP server should report a healthy status in:
+The Compose healthcheck calls:
+
+```text
+http://127.0.0.1:8000/healthz
+```
+
+inside the MCP container.
+
+Check the service status:
 
 ```bash
 docker compose \
-  --env-file .env \
   -f deploy/compose.yaml \
   ps
 ```
+
+The `mcp-server` service should report healthy.
+
+The MCP server is not intended to be directly exposed to the public Internet.
 
 ---
 
@@ -599,22 +1038,63 @@ Check the Gateway logs:
 
 ```bash
 docker compose \
-  --env-file .env \
   -f deploy/compose.yaml \
   logs --tail=200 openshell-gateway
 ```
 
-The Gateway should report that it is using the Docker compute driver.
-
-Expected information includes:
+The Gateway uses:
 
 ```text
-Using compute driver driver=docker
-Compute driver connected configured_driver=docker advertised_driver=docker
-Gateway listener bound
+compute driver: docker
 ```
 
-The MCP server communicates with the Gateway using the configured TLS/mTLS connection.
+The Gateway configuration is:
+
+```text
+deploy/openshell/gateway.toml
+```
+
+The Gateway listens on:
+
+```text
+127.0.0.1:8080
+```
+
+The Gateway health listener is:
+
+```text
+127.0.0.1:8081
+```
+
+The Gateway uses TLS:
+
+```toml
+disable_tls = false
+```
+
+and mTLS authentication:
+
+```toml
+[openshell.gateway.mtls_auth]
+enabled = true
+```
+
+Unauthenticated users are disabled:
+
+```toml
+[openshell.gateway.auth]
+allow_unauthenticated_users = false
+```
+
+The MCP server communicates with the Gateway through the private Docker network using mTLS.
+
+The Gateway receives the Docker socket:
+
+```text
+/var/run/docker.sock
+```
+
+The MCP server does not receive the Docker socket.
 
 ---
 
@@ -624,12 +1104,31 @@ Follow the tunnel logs:
 
 ```bash
 docker compose \
-  --env-file .env \
   -f deploy/compose.yaml \
   logs -f tunnel-client
 ```
 
-The tunnel client should initialize the MCP session and start the tunnel successfully.
+The tunnel client uses:
+
+```text
+/etc/tunnel-client/openai.yaml
+```
+
+inside the container.
+
+The configuration is mounted from the user-local OpenAI MCP client configuration:
+
+```text
+${XDG_CONFIG_HOME:-$HOME/.config}/local-mcp-server/mcp-clients/openai/config.yaml
+```
+
+The control-plane API key is supplied separately as the Docker secret:
+
+```text
+CONTROL_PLANE_API_KEY
+```
+
+The tunnel client should initialize the MCP connection and start the tunnel successfully.
 
 The exact log wording may vary between tunnel-client versions.
 
@@ -639,9 +1138,9 @@ Do not depend on a specific emoji or exact startup message.
 
 # Connect the Tunnel to ChatGPT
 
-## Step 11 - Create the MCP App / Connector
+## Step 11 - Create or Configure the MCP Connection
 
-Open ChatGPT and create or configure the MCP connection using the existing OpenAI Secure MCP Tunnel.
+Open ChatGPT and configure the MCP connection using the existing OpenAI Secure MCP Tunnel.
 
 Select:
 
@@ -651,9 +1150,17 @@ Tunnel
 
 as the connection type.
 
-Select the tunnel created in Step 2.
+Select the tunnel created earlier.
 
 Complete the connection.
+
+The MCP server endpoint used by the tunnel client is:
+
+```text
+http://mcp-server:8000/mcp
+```
+
+The MCP server is reached by the tunnel client over the private Docker network.
 
 ---
 
@@ -661,62 +1168,74 @@ Complete the connection.
 
 ## Step 12 - Check the Available Tools
 
-After connecting the MCP app, verify that the following tools are available:
+The current MCP server registers the following tools:
+
+```text
+get_system_info
+
+create_sandbox
+list_sandboxes
+sandbox_status
+sandbox_logs
+start_sandbox
+stop_sandbox
+restart_sandbox
+repair_sandbox
+recreate_sandbox
+delete_sandbox
+execute_sandbox_command
+
+list_workspace_files
+read_workspace_text_file
+create_workspace_file
+write_workspace_file
+create_workspace_directory
+rename_workspace_path
+delete_workspace_file
+delete_workspace_directory
+list_authorized_host_workspaces
+
+request_tool_installation
+
+execute_chrome_devtools_command
+```
+
+The sandbox lifecycle tools are:
 
 ```text
 create_sandbox
-create_workspace_directory
-create_workspace_file
-delete_sandbox
-delete_workspace_directory
-delete_workspace_file
-execute_chrome_devtools_command
-execute_sandbox_command
-get_system_info
-list_authorized_host_workspaces
 list_sandboxes
-list_workspace_files
-read_workspace_text_file
-rename_workspace_path
-request_tool_installation
 sandbox_status
+sandbox_logs
 start_sandbox
 stop_sandbox
-write_workspace_file
+restart_sandbox
+repair_sandbox
+recreate_sandbox
+delete_sandbox
 ```
 
-The sandbox-related tools are backed by OpenShell. `start_sandbox` and `stop_sandbox` control the OpenShell sandbox lifecycle; for browser sandboxes this lifecycle includes Chrome and the Chrome DevTools MCP daemon.
-
-For browser automation, create a sandbox with the `browser` profile and use:
+The sandbox execution tool is:
 
 ```text
-execute_chrome_devtools_command
+execute_sandbox_command
 ```
 
-Example CLI flow:
-
-```bash
-uv run secure-mcp sandbox create clone-web \
-  --workspace <workspace-id> \
-  --profile browser
-```
-
-Then execute Chrome DevTools commands through the browser sandbox:
-
-```bash
-uv run secure-mcp sandbox exec clone-web -- \
-  chrome-devtools list_pages --output-format=json
-```
-
-The browser sandbox owns Chrome and the Chrome DevTools MCP daemon lifecycle. The browser endpoint is fixed to the sandbox-local Chrome CDP endpoint.
-
-The workspace tools operate within the selected OpenShell sandbox's mounted workspace:
+Workspace operations are constrained to the authorized workspace mounted at:
 
 ```text
 /workspace/project
 ```
 
-The installation tool provides controlled installation of approved development tools inside the authorized sandbox.
+The installation tool provides controlled installation of approved development tools inside the selected sandbox.
+
+The browser tool is:
+
+```text
+execute_chrome_devtools_command
+```
+
+It only operates against a sandbox using the `browser` profile.
 
 ---
 
@@ -736,7 +1255,7 @@ OpenShell Gateway
 Docker sandbox
 ```
 
-## Step 13 - Create a Sandbox
+## Step 13 - Authorize a Host Workspace
 
 First authorize a host workspace:
 
@@ -750,7 +1269,21 @@ Record the returned:
 workspace_id
 ```
 
-Then create the sandbox using the CLI:
+The workspace ID has the form:
+
+```text
+ws_<identifier>
+```
+
+The workspace ID is an opaque authorization capability.
+
+The sandbox creation API does not accept arbitrary host filesystem paths.
+
+---
+
+## Step 14 - Create a Sandbox
+
+Create a default sandbox:
 
 ```bash
 uv run secure-mcp sandbox create \
@@ -758,7 +1291,7 @@ uv run secure-mcp sandbox create \
   --workspace <workspace-id>
 ```
 
-For browser automation, create the sandbox with the browser profile:
+For browser automation:
 
 ```bash
 uv run secure-mcp sandbox create \
@@ -773,11 +1306,24 @@ Or use the MCP tool:
 create_sandbox
 ```
 
-When using a browser sandbox, use `execute_chrome_devtools_command` for Chrome DevTools operations.
+The MCP tool accepts:
+
+```text
+name
+host_workspace_id
+profile
+```
+
+The supported profiles are:
+
+```text
+default
+browser
+```
 
 ---
 
-## Step 14 - Check Sandbox Status
+## Step 15 - Check Sandbox Status
 
 Use:
 
@@ -785,41 +1331,92 @@ Use:
 uv run secure-mcp sandbox status <sandbox-name>
 ```
 
-or the MCP tool:
+or:
 
 ```text
 sandbox_status
 ```
 
-Confirm that the sandbox reaches the expected ready/running state.
+The status includes information such as:
 
-A stopped sandbox can be started again with:
+```text
+sandbox name
+OpenShell workspace
+phase/status
+profile
+host workspace ID
+sandbox ID
+```
+
+The exact numeric OpenShell phase/status values are implementation details and should not be hard-coded into operational documentation.
+
+---
+
+## Step 16 - Start, Stop, Restart, or Repair a Sandbox
+
+Start a stopped or retained failed sandbox:
 
 ```bash
 uv run secure-mcp sandbox start <sandbox-name>
 ```
 
-or the MCP tool:
+or:
 
 ```text
 start_sandbox
 ```
 
-Stop a running sandbox with:
+Stop a running sandbox:
 
 ```bash
 uv run secure-mcp sandbox stop <sandbox-name>
 ```
 
-or the MCP tool:
+or:
 
 ```text
 stop_sandbox
 ```
 
+Restart a sandbox:
+
+```bash
+uv run secure-mcp sandbox restart <sandbox-name>
+```
+
+or:
+
+```text
+restart_sandbox
+```
+
+Restart performs:
+
+```text
+stop
+↓
+start
+```
+
+Repair a retained failed sandbox:
+
+```bash
+uv run secure-mcp sandbox repair <sandbox-name>
+```
+
+or:
+
+```text
+repair_sandbox
+```
+
+Repair performs a fresh OpenShell `start` operation against the existing sandbox.
+
+It does not delete or recreate the sandbox.
+
 ---
 
-## Step 15 - Execute a Command in the Sandbox
+## Step 17 - Execute a Command in the Sandbox
 
 Use:
 
@@ -836,9 +1433,11 @@ execute_sandbox_command
 
 The command must execute inside the OpenShell sandbox rather than directly on the MCP server host.
 
+The sandbox command path is separate from the controlled installation workflow.
+
 ---
 
-## Step 16 - Verify Host/Sandbox Workspace Editing
+## Step 18 - Verify Host/Sandbox Workspace Editing
 
 The authorized workspace uses POSIX ACLs so that the host user and sandbox user can both modify workspace content.
 
@@ -851,52 +1450,78 @@ Host edits file
        ↓
 Sandbox reads/edits file
        ↓
-Sandbox is deleted
+Sandbox is stopped or deleted
        ↓
-Workspace grant is revoked
+Workspace grant remains separate
 ```
 
 The workspace broker provisions default ACLs on directories so newly created files and directories remain accessible to the host user.
 
----
-
-## Step 17 - Delete the Sandbox
-
-After testing:
-
-```bash
-uv run secure-mcp sandbox delete <sandbox-name>
-```
-
-or use:
+The sandbox sees the authorized workspace at:
 
 ```text
-delete_sandbox
+/workspace/project
 ```
 
-Confirm that the sandbox is removed. For a browser sandbox, deleting the OpenShell sandbox also removes its Chrome and Chrome DevTools MCP runtime.
+The sandbox does not receive an arbitrary host filesystem path from the MCP caller.
 
 ---
 
-## Step 18 - Revoke the Workspace
+## Step 19 - Browser Sandbox Verification
 
-After the sandbox has been deleted:
-
-```bash
-uv run workspace-broker revoke <workspace-id>
-```
-
-Then verify:
+Create a browser sandbox:
 
 ```bash
-uv run workspace-broker list
+uv run secure-mcp sandbox create \
+  browser-test \
+  --workspace <workspace-id> \
+  --profile browser
 ```
 
-The revoked workspace should no longer appear.
+Check its status:
+
+```bash
+uv run secure-mcp sandbox status browser-test
+```
+
+Use:
+
+```text
+execute_chrome_devtools_command
+```
+
+for Chrome DevTools operations.
+
+The browser runtime uses:
+
+```text
+Chrome for Testing
+chrome-devtools-mcp
+```
+
+The browser endpoint is fixed to:
+
+```text
+http://127.0.0.1:9222
+```
+
+The caller cannot provide or override the browser endpoint.
+
+Chrome DevTools lifecycle commands such as:
+
+```text
+start
+stop
+status
+```
+
+are intentionally not exposed through `execute_chrome_devtools_command`.
+
+Browser lifecycle is controlled by the OpenShell browser sandbox lifecycle.
 
 ---
 
-# Controlled Tool Installation
+## Step 20 - Controlled Tool Installation
 
 The MCP server provides:
 
@@ -922,9 +1547,119 @@ sandbox network policy
 package/tool installation
 ```
 
-For example, a development tool can be installed through the installation request mechanism while remaining inside the selected sandbox boundary. Browser runtime dependencies are baked into the browser image rather than installed dynamically through this mechanism.
+The installation request contains:
+
+```text
+sandbox_name
+tool_name
+version
+source
+install_command
+reason
+```
+
+The server validates the installation request before executing it.
+
+The installation command is executed inside the selected OpenShell sandbox.
 
 The host filesystem is not used as the installation target.
+
+Browser runtime dependencies are baked into the browser image rather than installed dynamically through this mechanism.
+
+---
+
+## Step 21 - Delete the Sandbox
+
+After testing:
+
+```bash
+uv run secure-mcp sandbox delete <sandbox-name>
+```
+
+or use:
+
+```text
+delete_sandbox
+```
+
+Sandbox deletion is destructive and requires explicit confirmation when performed through the MCP tool.
+
+Deleting the OpenShell sandbox removes its sandbox runtime.
+
+For a browser sandbox, this also removes the Chrome and Chrome DevTools MCP runtime associated with that sandbox.
+
+Deleting a sandbox does **not** automatically revoke the host workspace grant.
+
+---
+
+## Step 22 - Recreate a Sandbox
+
+When a sandbox needs a fresh runtime while retaining its managed workspace capability and profile:
+
+```bash
+uv run secure-mcp sandbox recreate <sandbox-name> --yes
+```
+
+The MCP tool:
+
+```text
+recreate_sandbox
+```
+
+requires explicit user approval.
+
+Recreation performs:
+
+```text
+inspect current sandbox
+        ↓
+retain host workspace ID
+        ↓
+retain profile
+        ↓
+delete sandbox
+        ↓
+create sandbox again
+```
+
+The following are not preserved:
+
+```text
+running processes
+runtime state
+instance-specific state
+static instance state
+```
+
+Recreation is a destructive operation.
+
+---
+
+## Step 23 - Revoke the Workspace
+
+After the sandbox has been deleted:
+
+```bash
+uv run workspace-broker revoke <workspace-id>
+```
+
+Then verify:
+
+```bash
+uv run workspace-broker list
+```
+
+The revoked workspace should no longer appear.
+
+Workspace revocation removes:
+
+```text
+sandbox UID ACL entries
+host-backed Docker volume
+workspace grant record
+```
+
+The workspace broker performs the ACL removal through the constrained helper container.
 
 ---
 
@@ -932,54 +1667,85 @@ The host filesystem is not used as the installation target.
 
 When MCP server code or tool definitions change, rebuild the MCP server image and recreate the MCP server container.
 
-All Docker Compose commands in this document use the repository's explicit environment file and Compose file:
+The Compose file is:
+
+```text
+deploy/compose.yaml
+```
+
+The default environment file is:
+
+```text
+deploy/.env
+```
+
+Normal commands therefore do not require:
 
 ```text
 --env-file .env
--f deploy/compose.yaml
 ```
 
 ## 1. Rebuild the MCP server image
 
 ```bash
 docker compose \
-  --env-file .env \
   -f deploy/compose.yaml \
   build --no-cache mcp-server
 ```
 
 ## 2. Recreate the MCP server
 
-For MCP server code or tool-definition changes, recreate the MCP server:
+For MCP server code or tool-definition changes:
 
 ```bash
 docker compose \
-  --env-file .env \
   -f deploy/compose.yaml \
   up -d --force-recreate --remove-orphans mcp-server
 ```
 
-Recreate `openshell-gateway` or `tunnel-client` only when their configuration or image has changed:
+Recreate `openshell-gateway` only when its configuration or image has changed:
 
 ```bash
 docker compose \
-  --env-file .env \
   -f deploy/compose.yaml \
   up -d --force-recreate --remove-orphans openshell-gateway
 ```
 
+Recreate `tunnel-client` only when its configuration or image has changed:
+
 ```bash
 docker compose \
-  --env-file .env \
   -f deploy/compose.yaml \
   up -d --force-recreate --remove-orphans tunnel-client
 ```
+
+For the development environment, add:
+
+```text
+--env-file deploy/.env.development
+```
+
+before:
+
+```text
+-f deploy/compose.yaml
+```
+
+For example:
+
+```bash
+docker compose \
+  --env-file deploy/.env.development \
+  -f deploy/compose.yaml \
+  up -d --force-recreate --remove-orphans mcp-server
+```
+
+---
 
 ## 3. Check the service status
 
 ```bash
 docker compose \
-  --env-file .env \
   -f deploy/compose.yaml \
   ps
 ```
@@ -992,11 +1758,12 @@ mcp-server
 tunnel-client
 ```
 
+---
+
 ## 4. Check the MCP server logs
 
 ```bash
 docker compose \
-  --env-file .env \
   -f deploy/compose.yaml \
   logs --tail=200 mcp-server
 ```
@@ -1005,30 +1772,70 @@ Or:
 
 ```bash
 docker compose \
-  --env-file .env \
   -f deploy/compose.yaml \
   logs -f mcp-server
 ```
 
-## 5. Check the tunnel client
+---
+
+## 5. Check the OpenShell Gateway logs
 
 ```bash
 docker compose \
-  --env-file .env \
+  -f deploy/compose.yaml \
+  logs --tail=200 openshell-gateway
+```
+
+---
+
+## 6. Check the tunnel client
+
+```bash
+docker compose \
   -f deploy/compose.yaml \
   logs --tail=100 tunnel-client
 ```
 
-## 6. Verify Compose environment loading
+Or:
 
 ```bash
 docker compose \
-  --env-file .env \
   -f deploy/compose.yaml \
-  config --environment | grep '^CONTROL_PLANE_TUNNEL_ID='
+  logs -f tunnel-client
 ```
 
-The command should print the variable name with a value.
+---
+
+## 7. Verify Compose environment loading
+
+```bash
+docker compose \
+  -f deploy/compose.yaml \
+  config --environment
+```
+
+For a specific value:
+
+```bash
+docker compose \
+  -f deploy/compose.yaml \
+  config --environment | grep '^OPENSHELL_WORKSPACE='
+```
+
+The default environment is loaded from:
+
+```text
+deploy/.env
+```
+
+For development:
+
+```bash
+docker compose \
+  --env-file deploy/.env.development \
+  -f deploy/compose.yaml \
+  config --environment
+```
 
 ---
 
@@ -1052,6 +1859,12 @@ Refresh the MCP connection so ChatGPT can rediscover the current MCP tool list.
 
 The MCP server must be running and reachable through the tunnel before refreshing.
 
+The current MCP endpoint is:
+
+```text
+http://mcp-server:8000/mcp
+```
+
 ---
 
 # If Refresh Does Not Show the New Tool
@@ -1061,25 +1874,26 @@ Do not immediately create a new API key or OpenAI tunnel.
 First:
 
 1. Confirm the MCP server is healthy.
-2. Confirm the new tool appears in the MCP server discovery/registry.
-3. Refresh the MCP app/connector.
-4. If necessary, delete only the MCP app/connector.
-5. Create the MCP app/connector again.
-6. Select the **same existing tunnel**.
-7. Check the tool list again.
+2. Confirm the expected tool is registered by the MCP server.
+3. Confirm the tunnel client is running.
+4. Refresh the MCP app/connector.
+5. If necessary, delete only the MCP app/connector.
+6. Create the MCP app/connector again.
+7. Select the **same existing tunnel**.
+8. Check the tool list again.
 
 Preferred workflow:
 
 ```text
 Change MCP code
       ↓
-Rebuild
+Rebuild MCP server
       ↓
 Recreate MCP server
       ↓
 Check MCP logs
       ↓
-Check tunnel
+Check tunnel-client
       ↓
 Refresh MCP app
       ↓
@@ -1096,6 +1910,12 @@ List all authorized workspaces:
 
 ```bash
 uv run workspace-broker list
+```
+
+List as JSON:
+
+```bash
+uv run workspace-broker list --json
 ```
 
 Authorize a workspace:
@@ -1122,7 +1942,19 @@ Docker volume name
 read-only state
 ```
 
-For writable workspaces, the broker provisions ACLs for:
+The current writable workspace grant uses:
+
+```text
+/workspace/project
+```
+
+The sandbox UID/GID is:
+
+```text
+10001:10001
+```
+
+The broker provisions ACLs for:
 
 ```text
 host user
@@ -1131,7 +1963,7 @@ sandbox UID 10001
 
 Directories also receive default ACLs so newly created content inherits the required access.
 
-Protected project paths such as secrets, state, and Gateway signing material are not granted sandbox ACL access.
+Protected project paths are excluded from sandbox workspace authorization.
 
 ---
 
@@ -1143,21 +1975,20 @@ If Compose reports:
 Found orphan containers
 ```
 
-for example:
+for example containers from older services such as:
 
 ```text
-openai-secure-mcp-tunnel-terminal-executor-1
-openai-secure-mcp-tunnel-browser-runtime-1
-openai-secure-mcp-tunnel-cdp-relay-1
+terminal-executor
+browser-runtime
+cdp-relay
 ```
 
-the service exists from an older version of the Compose configuration.
+the service may belong to an older version of the Compose configuration.
 
 Remove obsolete services with:
 
 ```bash
 docker compose \
-  --env-file .env \
   -f deploy/compose.yaml \
   up -d --remove-orphans
 ```
@@ -1166,18 +1997,19 @@ Then verify:
 
 ```bash
 docker compose \
-  --env-file .env \
   -f deploy/compose.yaml \
   ps
 ```
 
-The current deployment should contain:
+The current Compose deployment should contain:
 
 ```text
 openshell-gateway
 mcp-server
 tunnel-client
 ```
+
+OpenShell sandbox containers are not Compose services and should not be expected in this list.
 
 ---
 
@@ -1186,28 +2018,36 @@ tunnel-client
 The current MCP server provides:
 
 ```text
-create_sandbox
-create_workspace_directory
-create_workspace_file
-delete_sandbox
-delete_workspace_directory
-delete_workspace_file
-execute_chrome_devtools_command
-execute_sandbox_command
 get_system_info
-list_authorized_host_workspaces
+
+create_sandbox
 list_sandboxes
-list_workspace_files
-read_workspace_text_file
-rename_workspace_path
-request_tool_installation
 sandbox_status
+sandbox_logs
 start_sandbox
 stop_sandbox
+restart_sandbox
+repair_sandbox
+recreate_sandbox
+delete_sandbox
+execute_sandbox_command
+
+list_workspace_files
+read_workspace_text_file
+create_workspace_file
 write_workspace_file
+create_workspace_directory
+rename_workspace_path
+delete_workspace_file
+delete_workspace_directory
+list_authorized_host_workspaces
+
+request_tool_installation
+
+execute_chrome_devtools_command
 ```
 
-Sandbox execution is performed through OpenShell.
+Sandbox lifecycle is performed through OpenShell.
 
 Workspace operations are constrained to the authorized workspace mounted at:
 
@@ -1217,19 +2057,124 @@ Workspace operations are constrained to the authorized workspace mounted at:
 
 Tool installation is performed through the controlled installation workflow inside the authorized sandbox.
 
+Browser automation is performed through the browser sandbox and:
+
+```text
+execute_chrome_devtools_command
+```
+
+The browser connection endpoint is fixed to:
+
+```text
+http://127.0.0.1:9222
+```
+
+and cannot be overridden by the caller.
+
+---
+
+# Current Deployment Configuration
+
+The main deployment files are:
+
+```text
+deploy/
+├── compose.yaml
+├── .env.example
+├── .env.development.example
+├── .env.production.example
+├── openshell/
+│   ├── gateway.toml
+│   └── gateway-metadata.json
+└── docker/
+    ├── mcp-server/
+    ├── openshell-sandbox/
+    ├── browser-sandbox/
+    └── workspace-acl-helper/
+```
+
+The default environment file is:
+
+```text
+deploy/.env
+```
+
+The development environment file is:
+
+```text
+deploy/.env.development
+```
+
+The production environment file is:
+
+```text
+deploy/.env.production
+```
+
+These local files are deployment configuration and should not contain secret API keys.
+
+---
+
+# Current Runtime Versions
+
+The Python project requires:
+
+```text
+Python >=3.14,<3.15
+```
+
+The current project dependencies include:
+
+```text
+MCP Python SDK: mcp[cli]==2.2.0
+OpenShell Python SDK: openshell==0.1.2
+argcomplete: 3.7.2
+```
+
+The OpenAI tunnel client is:
+
+```text
+ghcr.io/openai/tunnel-client:v0.0.15
+```
+
+The OpenShell Gateway image is configured as:
+
+```text
+ghcr.io/nvidia/openshell/gateway:${OPENSHELL_IMAGE_TAG:-latest}
+```
+
+The default OpenShell sandbox image is:
+
+```text
+local-mcp-openshell-sandbox:1.0.0
+```
+
+The browser sandbox image is:
+
+```text
+local-mcp-browser-sandbox:1.0.0
+```
+
+The workspace ACL helper image is:
+
+```text
+local-mcp-workspace-acl-helper:1.0.0
+```
+
 ---
 
 # Security Notes
 
 The current deployment uses TLS and mTLS for communication between the MCP server and OpenShell Gateway.
 
-The Gateway is bound to the local host interface and should not be exposed directly to an untrusted network.
+The Gateway is bound to local host interfaces and should not be exposed directly to an untrusted network.
 
-The deployment also uses:
+The deployment uses:
 
 ```text
 TLS
 mTLS authentication
+unauthenticated Gateway users disabled
 read-only MCP container filesystem
 no-new-privileges
 capability drop
@@ -1240,25 +2185,92 @@ OpenShell sandbox isolation
 OpenShell browser policy isolation
 fixed sandbox-local Chrome CDP endpoint
 blocked caller-controlled Chrome connection overrides
-Chrome trust through the OpenShell Sandbox CA
 controlled tool installation
+Docker secret delivery for the tunnel API key
 ```
 
-The browser sandbox does not expose a separate host-side browser runtime or CDP relay. Chrome runs inside the OpenShell browser sandbox, and `execute_chrome_devtools_command` connects only to the fixed sandbox-local Chrome CDP endpoint.
-
-The browser image imports the OpenShell Sandbox CA into Chrome's NSS trust database so HTTPS traffic intercepted by the OpenShell network policy can be validated without disabling certificate verification.
-
-The OpenShell Gateway requires client authentication.
-
-Secrets must remain outside Git:
+The Gateway is the only Compose service that receives:
 
 ```text
-.env
-.secrets/control-plane-api-key
-.secrets/openshell-tls/
+/var/run/docker.sock
 ```
 
-Do not commit API keys, tunnel credentials, TLS private keys, or other secrets.
+The MCP server does not receive the Docker socket.
+
+The browser sandbox does not expose a separate host-side browser runtime or CDP relay.
+
+Chrome runs inside the OpenShell browser sandbox.
+
+The browser endpoint is fixed to:
+
+```text
+http://127.0.0.1:9222
+```
+
+The `execute_chrome_devtools_command` implementation blocks caller-supplied browser connection overrides.
+
+The OpenShell Gateway uses:
+
+```text
+server certificate
+server private key
+client CA
+client certificates
+JWT signing material
+```
+
+from the XDG OpenShell TLS state directory.
+
+The host-side TLS root is:
+
+```text
+${XDG_STATE_HOME:-$HOME/.local/state}/local-mcp-server/openshell/tls
+```
+
+The MCP server receives only the client mTLS material required for its Gateway connection.
+
+The OpenAI MCP client configuration is stored under:
+
+```text
+${XDG_CONFIG_HOME:-$HOME/.config}/local-mcp-server/mcp-clients/openai/
+```
+
+The control-plane API key is stored in:
+
+```text
+${XDG_CONFIG_HOME:-$HOME/.config}/local-mcp-server/mcp-clients/openai/credentials
+```
+
+and supplied to `tunnel-client` through the Docker Compose secret:
+
+```text
+CONTROL_PLANE_API_KEY
+```
+
+Do not commit:
+
+```text
+deploy/.env
+deploy/.env.development
+deploy/.env.production
+OpenAI credentials
+TLS private keys
+TLS client keys
+TLS server keys
+JWT signing keys
+OpenShell credential encryption keys
+```
+
+Do not put the OpenAI API key in:
+
+```text
+compose.yaml
+Dockerfile
+README.md
+tracked source files
+```
+
+The OpenAI tunnel ID is configuration data and is stored in the user-local OpenAI MCP client configuration rather than as a Docker Compose secret.
 
 ---
 
@@ -1285,11 +2297,17 @@ openshell-gateway
 Docker
    │
    ├── OpenShell default sandboxes
-   │      └── normal development and command execution
+   │      ├── Python
+   │      ├── Node.js / npm
+   │      ├── Playwright
+   │      ├── Git
+   │      └── authorized workspace
+   │
    └── OpenShell browser sandboxes
           ├── Chrome for Testing
           ├── Chrome DevTools MCP
-          └── sandbox-local CDP :9222
+          ├── sandbox-local CDP :9222
+          └── authorized workspace
 ```
 
 Host workspace lifecycle:
@@ -1300,9 +2318,10 @@ Host directory
       ▼
 workspace-broker authorize
       │
+      ├── validate host path
+      ├── POSIX ACL provisioning
       ├── Docker volume
-      ├── workspace grant
-      └── POSIX ACLs
+      └── workspace grant
               │
               ▼
        OpenShell sandbox
@@ -1315,8 +2334,37 @@ workspace-broker revoke
               │
               ▼
 workspace-acl-helper
+              │
+              ▼
+       ACL removal
 ```
 
-The project no longer uses a separate `terminal-executor` service.
+Sandbox lifecycle:
 
-The MCP server exposes sandbox operations through OpenShell, workspace operations through authorized workspace boundaries, and controlled tool installation through the sandbox installation workflow.
+```text
+create
+  │
+  ▼
+OpenShell sandbox
+  │
+  ├── start
+  ├── stop
+  ├── restart
+  ├── repair
+  ├── recreate
+  └── delete
+```
+
+The project no longer uses a separate:
+
+```text
+terminal-executor
+browser-runtime
+CDP relay
+```
+
+Compose service.
+
+The MCP server exposes sandbox operations through OpenShell, workspace operations through authorized workspace boundaries, controlled tool installation through the sandbox installation workflow, and browser automation through the isolated browser sandbox.
+
+The trusted host-side workspace broker remains separate from the MCP server and is responsible for host filesystem authorization, Docker volume provisioning, and POSIX ACL lifecycle.

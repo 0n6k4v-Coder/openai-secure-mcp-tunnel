@@ -2,8 +2,11 @@ from __future__ import annotations
 
 import json
 import os
+import stat
 from pathlib import Path
 from threading import Lock
+
+from ..config.paths import workspace_grants_file
 
 
 def _default_grants_file() -> Path:
@@ -19,11 +22,7 @@ def _default_grants_file() -> Path:
     if container_path.parent.exists():
         return container_path.resolve()
 
-    project_root = Path(__file__).resolve().parents[3]
-
-    return (
-        project_root / ".state" / "workspace-grants" / "workspace-grants.json"
-    ).resolve()
+    return workspace_grants_file().resolve()
 
 
 WORKSPACE_GRANTS_FILE = _default_grants_file()
@@ -52,10 +51,21 @@ def _grants_file() -> Path:
 
 
 def _ensure_grants_directory() -> None:
-    _grants_file().parent.mkdir(
+    grants_directory = _grants_file().parent
+
+    grants_directory.mkdir(
         parents=True,
         exist_ok=True,
+        mode=0o700,
     )
+
+    mode = stat.S_IMODE(grants_directory.stat().st_mode)
+
+    if mode & 0o077:
+        raise RuntimeError(
+            "Workspace grants directory must not be accessible "
+            "by group or other users."
+        )
 
 
 def _load_workspace_grants() -> dict[str, dict[str, object]]:
@@ -106,7 +116,9 @@ def _load_workspace_grants() -> dict[str, dict[str, object]]:
                     "host_path": host_path,
                     "volume_name": volume_name,
                     "target": (
-                        target if isinstance(target, str) else "/workspace/project"
+                        target
+                        if isinstance(target, str)
+                        else "/workspace/project"
                     ),
                     "read_only": read_only,
                 }
@@ -146,10 +158,14 @@ def _save_workspace_grants(
         encoding="utf-8",
     )
 
+    os.chmod(temporary, 0o600)
+
     os.replace(
         temporary,
         grants_file,
     )
+
+    os.chmod(grants_file, 0o600)
 
 
 def resolve_workspace_grant(

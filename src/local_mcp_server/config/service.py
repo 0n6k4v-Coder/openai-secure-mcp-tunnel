@@ -6,6 +6,14 @@ import stat
 import tempfile
 from pathlib import Path
 
+from .paths import (
+    app_config_root,
+    mcp_clients_root,
+    openai_api_key_file,
+    openai_config_file,
+    openai_root,
+)
+
 CONTROL_PLANE_TUNNEL_ID_PATTERN = re.compile(
     r"^tunnel_[0-9a-f]{32}$",
 )
@@ -15,23 +23,12 @@ class ConfigError(RuntimeError):
     """Raised when application configuration is invalid or cannot be saved."""
 
 
-def _xdg_config_home() -> Path:
-    value = os.environ.get("XDG_CONFIG_HOME")
+CONFIG_ROOT = app_config_root()
+MCP_CLIENTS_ROOT = mcp_clients_root()
 
-    if value:
-        candidate = Path(value).expanduser()
-        if candidate.is_absolute():
-            return candidate
-
-    return Path.home() / ".config"
-
-
-CONFIG_ROOT = _xdg_config_home() / "local-mcp-server"
-MCP_CLIENTS_ROOT = CONFIG_ROOT / "mcp-clients"
-
-OPENAI_ROOT = MCP_CLIENTS_ROOT / "openai"
-OPENAI_CONFIG_FILE = OPENAI_ROOT / "config.yaml"
-OPENAI_API_KEY_FILE = OPENAI_ROOT / "credentials"
+OPENAI_ROOT = openai_root()
+OPENAI_CONFIG_FILE = openai_config_file()
+OPENAI_API_KEY_FILE = openai_api_key_file()
 
 OPENAI_CONFIG_TEMPLATE = """\
 config_version: 1

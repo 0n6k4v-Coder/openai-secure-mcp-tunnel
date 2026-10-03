@@ -4,10 +4,12 @@ import argparse
 import json
 import os
 import shutil
+import stat
 import subprocess
 import uuid
 from pathlib import Path
 
+from ..config.paths import app_config_root, app_state_root
 from ..workspace import repository as workspace_service
 from ..workspace.domain import canonicalize_host_workspace
 
@@ -17,6 +19,7 @@ GRANTS_READ_ONLY = workspace_service.GRANTS_READ_ONLY
 SANDBOX_UID = 10001
 SANDBOX_GID = 10001
 SANDBOX_TARGET = "/workspace/project"
+
 ACL_HELPER_IMAGE = os.environ.get(
     "WORKSPACE_ACL_HELPER_IMAGE",
     "local-mcp-workspace-acl-helper:1.0.0",
@@ -45,6 +48,37 @@ EXCLUDED_WORKSPACE_DIRECTORY_NAMES = {
 
 OWNER_ONLY_DIRECTORY_MODE = 0o700
 OWNER_ONLY_FILE_MODE = 0o600
+
+
+def _protected_workspace_paths(
+    root: Path,
+) -> tuple[Path, ...]:
+    root = root.resolve()
+    paths = list(PROTECTED_WORKSPACE_PATHS)
+
+    for sensitive_root in (
+        app_config_root(),
+        app_state_root(),
+    ):
+        sensitive_root = sensitive_root.expanduser().resolve()
+
+        try:
+            relative = sensitive_root.relative_to(root)
+        except ValueError:
+            continue
+
+        if relative == Path("."):
+            paths.append(Path("."))
+        else:
+            paths.append(relative)
+
+    unique: list[Path] = []
+
+    for path in paths:
+        if path not in unique:
+            unique.append(path)
+
+    return tuple(unique)
 
 
 def _load_grants() -> dict[str, dict[str, object]]:
@@ -93,7 +127,16 @@ def _save_grants(
     grants_file.parent.mkdir(
         parents=True,
         exist_ok=True,
+        mode=OWNER_ONLY_DIRECTORY_MODE,
     )
+
+    directory_mode = stat.S_IMODE(grants_file.parent.stat().st_mode)
+
+    if directory_mode & 0o077:
+        raise RuntimeError(
+            "Workspace grants directory must not be accessible "
+            "by group or other users."
+        )
 
     temporary_path = grants_file.with_suffix(".tmp")
 
@@ -108,9 +151,19 @@ def _save_grants(
         encoding="utf-8",
     )
 
+    os.chmod(
+        temporary_path,
+        OWNER_ONLY_FILE_MODE,
+    )
+
     os.replace(
         temporary_path,
         grants_file,
+    )
+
+    os.chmod(
+        grants_file,
+        OWNER_ONLY_FILE_MODE,
     )
 
 
@@ -165,11 +218,16 @@ def _is_protected_path(
     root: Path,
 ) -> bool:
     try:
-        relative = path.relative_to(root)
+        relative = path.resolve().relative_to(root.resolve())
     except ValueError:
         return True
 
-    for protected in PROTECTED_WORKSPACE_PATHS:
+    protected_paths = _protected_workspace_paths(root)
+
+    if Path(".") in protected_paths:
+        return True
+
+    for protected in protected_paths:
         if relative == protected or protected in relative.parents:
             return True
 
@@ -201,7 +259,7 @@ def _is_excluded_path(
 def _validate_protected_path_permissions(
     host_path: Path,
 ) -> None:
-    for relative in PROTECTED_WORKSPACE_PATHS:
+    for relative in _protected_workspace_paths(host_path):
         protected_path = host_path / relative
 
         if not protected_path.exists():
@@ -439,7 +497,10 @@ def _remove_volume(
         message = completed.stderr.strip()
 
         if not message:
-            message = f"docker volume rm failed with exit code {completed.returncode}."
+            message = (
+                f"docker volume rm failed with exit code "
+                f"{completed.returncode}."
+            )
 
         raise RuntimeError(message)
 
@@ -558,6 +619,7 @@ def revoke_workspace_grant(
         raise RuntimeError("Workspace grant has no valid volume name.")
 
     host_uid_value = grant.get("host_uid")
+
     if host_uid_value is None:
         host_uid = _host_user_id()
     elif isinstance(host_uid_value, int) and not isinstance(host_uid_value, bool):
@@ -566,6 +628,7 @@ def revoke_workspace_grant(
         raise RuntimeError("Workspace grant has no valid host UID.")
 
     host_gid_value = grant.get("host_gid")
+
     if host_gid_value is None:
         host_gid = _host_group_id()
     elif isinstance(host_gid_value, int) and not isinstance(host_gid_value, bool):
@@ -622,7 +685,9 @@ def main(
     argv: list[str] | None = None,
 ) -> int:
     parser = argparse.ArgumentParser(
-        description=("Trusted host-side workspace ACL and Docker-volume broker.")
+        description=(
+            "Trusted host-side workspace ACL and Docker-volume broker."
+        )
     )
 
     subparsers = parser.add_subparsers(

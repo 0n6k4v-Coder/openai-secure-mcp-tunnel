@@ -18,7 +18,7 @@ services:
         source: ${MCP_CONFIG_DIR:-${XDG_STATE_HOME:-$HOME/.local/state}/local-mcp-server/config}
         target: /var/lib/local-mcp-server/config
         bind:
-          create_host_path: true
+          create_host_path: false
 
       - type: bind
         source: ./openshell/gateway.toml
@@ -29,6 +29,8 @@ services:
         source: ${XDG_STATE_HOME:-$HOME/.local/state}/local-mcp-server/openshell/tls
         target: /etc/openshell/tls
         read_only: true
+        bind:
+          create_host_path: false
 
     environment:
       OPENSHELL_GATEWAY_CONFIG: /etc/openshell/gateway.toml
@@ -79,9 +81,18 @@ services:
       - /tmp:rw,noexec,nosuid,nodev
 
     volumes:
-      - ${MCP_STATE_DIR:-../.state}:/var/lib/local-mcp-server/state:rw
+      - type: bind
+        source: ${MCP_STATE_DIR:-${XDG_STATE_HOME:-$HOME/.local/state}/local-mcp-server/mcp}
+        target: /var/lib/local-mcp-server/state
+        bind:
+          create_host_path: false
 
-      - ${WORKSPACE_GRANTS_DIR:-../.state/workspace-grants}:/var/lib/local-mcp-server/workspace-grants:ro
+      - type: bind
+        source: ${WORKSPACE_GRANTS_DIR:-${XDG_STATE_HOME:-$HOME/.local/state}/local-mcp-server/mcp/workspace-grants}
+        target: /var/lib/local-mcp-server/workspace-grants
+        read_only: true
+        bind:
+          create_host_path: false
 
       - type: bind
         source: ./openshell/gateway-metadata.json
@@ -92,6 +103,8 @@ services:
         source: ${XDG_STATE_HOME:-$HOME/.local/state}/local-mcp-server/openshell/tls/client
         target: /config/openshell/gateways/local/mtls
         read_only: true
+        bind:
+          create_host_path: false
 
     networks:
       - mcp-internal

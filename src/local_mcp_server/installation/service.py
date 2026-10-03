@@ -5,22 +5,26 @@ import os
 import re
 import secrets
 import shlex
+import stat
 from datetime import datetime, timezone
 from pathlib import Path
 from threading import Lock
 from typing import Final
 
-from .domain import InstallationRequest
+from ..config.paths import installation_state_file
 from ..infrastructure.openshell.client import active_client
 from ..infrastructure.openshell.sandbox import OPENSHELL_WORKSPACE
+from .domain import InstallationRequest
 
+
+_INSTALLATION_STATE_DEFAULT = installation_state_file()
 
 INSTALLATION_STATE_FILE = Path(
     os.environ.get(
         "INSTALLATION_STATE_FILE",
-        "/var/lib/local-mcp-server/installations.json",
+        str(_INSTALLATION_STATE_DEFAULT),
     )
-).resolve()
+).expanduser().resolve()
 
 INSTALLATION_TIMEOUT_SECONDS: Final[int] = int(
     os.environ.get("INSTALLATION_TIMEOUT_SECONDS", "300")
@@ -64,11 +68,28 @@ class InstallationError(RuntimeError):
 
 
 def _ensure_state_directory() -> None:
-    INSTALLATION_STATE_FILE.parent.mkdir(parents=True, exist_ok=True)
+    try:
+        INSTALLATION_STATE_FILE.parent.mkdir(
+            parents=True,
+            exist_ok=True,
+            mode=0o700,
+        )
+        mode = stat.S_IMODE(INSTALLATION_STATE_FILE.parent.stat().st_mode)
+    except OSError as exc:
+        raise InstallationError(
+            "Installation state directory could not be prepared."
+        ) from exc
+
+    if mode & 0o077:
+        raise InstallationError(
+            "Installation state directory must not be accessible "
+            "by group or other users."
+        )
 
 
 def _load_state() -> dict[str, dict[str, object]]:
     _ensure_state_directory()
+
     if not INSTALLATION_STATE_FILE.exists():
         return {}
 
@@ -89,9 +110,11 @@ def _load_state() -> dict[str, dict[str, object]]:
 
 def _save_state(state: dict[str, dict[str, object]]) -> None:
     _ensure_state_directory()
+
     temporary = INSTALLATION_STATE_FILE.with_suffix(
         INSTALLATION_STATE_FILE.suffix + ".tmp"
     )
+
     temporary.write_text(
         json.dumps(
             state,
@@ -101,7 +124,10 @@ def _save_state(state: dict[str, dict[str, object]]) -> None:
         ),
         encoding="utf-8",
     )
+
+    os.chmod(temporary, 0o600)
     os.replace(temporary, INSTALLATION_STATE_FILE)
+    os.chmod(INSTALLATION_STATE_FILE, 0o600)
 
 
 def _validate_sandbox_name(name: str) -> str:
@@ -125,22 +151,30 @@ def _validate_version(value: str) -> str:
 def _validate_source(value: str) -> str:
     if not isinstance(value, str):
         raise InstallationError("Installation source must be a string.")
+
     source = value.strip()
+
     if not source:
         raise InstallationError("Installation source must not be empty.")
+
     if len(source) > 2048:
         raise InstallationError("Installation source is too long.")
+
     return source
 
 
 def _validate_reason(value: str) -> str:
     if not isinstance(value, str):
         raise InstallationError("Installation reason must be a string.")
+
     reason = value.strip()
+
     if not reason:
         raise InstallationError("Installation reason must not be empty.")
+
     if len(reason) > 4096:
         raise InstallationError("Installation reason is too long.")
+
     return reason
 
 
@@ -149,6 +183,7 @@ def _validate_timeout() -> int:
         raise InstallationError(
             "INSTALLATION_TIMEOUT_SECONDS must be between 1 and 3600."
         )
+
     return INSTALLATION_TIMEOUT_SECONDS
 
 
@@ -157,10 +192,13 @@ def _validate_install_command(value: str) -> tuple[str, ...]:
         raise InstallationError("install_command must be a string.")
 
     command = value.strip()
+
     if not command:
         raise InstallationError("install_command must not be empty.")
+
     if len(command) > 8192:
         raise InstallationError("install_command is too long.")
+
     if any(char in command for char in _FORBIDDEN_SHELL_CHARS):
         raise InstallationError(
             "install_command contains forbidden shell syntax."
@@ -177,6 +215,7 @@ def _validate_install_command(value: str) -> tuple[str, ...]:
         raise InstallationError("install_command is empty.")
 
     executable = tokens[0]
+
     if executable not in _ALLOWED_ENTRYPOINTS:
         raise InstallationError(
             "Installation command must start with an approved "
@@ -270,6 +309,7 @@ def create_installation_request(
 
     with _INSTALLATION_LOCK:
         state = _load_state()
+
         state[request.request_id] = {
             "sandbox_name": request.sandbox_name,
             "tool_name": request.tool_name,
@@ -280,6 +320,7 @@ def create_installation_request(
             "created_at": request.created_at,
             "state": "pending",
         }
+
         _save_state(state)
 
     return request
@@ -289,12 +330,15 @@ def approve_installation(request_id: str) -> InstallationRequest:
     with _INSTALLATION_LOCK:
         state = _load_state()
         entry = state.get(request_id)
+
         if entry is None:
             raise InstallationError("Installation request was not found.")
+
         if entry.get("state") != "pending":
             raise InstallationError(
                 "Installation request is no longer pending."
             )
+
         entry["state"] = "approved"
         entry["approved_at"] = datetime.now(timezone.utc).isoformat()
         _save_state(state)
@@ -306,12 +350,15 @@ def deny_installation(request_id: str) -> None:
     with _INSTALLATION_LOCK:
         state = _load_state()
         entry = state.get(request_id)
+
         if entry is None:
             raise InstallationError("Installation request was not found.")
+
         if entry.get("state") != "pending":
             raise InstallationError(
                 "Installation request is no longer pending."
             )
+
         entry["state"] = "denied"
         entry["finished_at"] = datetime.now(timezone.utc).isoformat()
         _save_state(state)
@@ -323,12 +370,15 @@ def consume_installation_approval(
     with _INSTALLATION_LOCK:
         state = _load_state()
         entry = state.get(request_id)
+
         if entry is None:
             raise InstallationError("Installation request was not found.")
+
         if entry.get("state") != "approved":
             raise InstallationError(
                 "Installation request has not been approved."
             )
+
         entry["state"] = "consumed"
         entry["consumed_at"] = datetime.now(timezone.utc).isoformat()
         _save_state(state)
@@ -344,12 +394,15 @@ def mark_installation_finished(
     with _INSTALLATION_LOCK:
         state = _load_state()
         entry = state.get(request_id)
+
         if entry is None:
             raise InstallationError("Installation request was not found.")
+
         if entry.get("state") != "consumed":
             raise InstallationError(
                 "Installation request is not in the consumed state."
             )
+
         entry["state"] = "completed" if success else "failed"
         entry["finished_at"] = datetime.now(timezone.utc).isoformat()
         _save_state(state)
@@ -440,7 +493,9 @@ def _request_from_state(
         "reason",
         "created_at",
     )
+
     missing = [field for field in required if field not in entry]
+
     if missing:
         raise InstallationError(
             "Installation state is missing fields: " + ", ".join(missing)
