@@ -2,7 +2,9 @@ services:
   openshell-gateway:
     image: ghcr.io/nvidia/openshell/gateway:${OPENSHELL_IMAGE_TAG:-latest}
     restart: unless-stopped
-    command: []
+    command:
+      - --config
+      - /etc/openshell/gateway.toml
     user: "0"
 
     ports:
