@@ -16,7 +16,6 @@ disable_tls = false
 guest_tls_ca = "/etc/openshell/tls/ca.crt"
 guest_tls_cert = "/etc/openshell/tls/client/tls.crt"
 guest_tls_key = "/etc/openshell/tls/client/tls.key"
-
 [openshell.gateway.tls]
 cert_path = "/etc/openshell/tls/server/tls.crt"
 key_path = "/etc/openshell/tls/server/tls.key"
@@ -33,7 +32,6 @@ signing_key_path = "/etc/openshell/tls/jwt/signing.pem"
 public_key_path = "/etc/openshell/tls/jwt/public.pem"
 kid_path = "/etc/openshell/tls/jwt/kid"
 gateway_id = "openai-secure-mcp-tunnel"
-
 [openshell.gateway.credential_storage]
 key_encryption_key_path = "/var/lib/local-mcp-server/config/credentials/key-encryption-key.bin"
 
