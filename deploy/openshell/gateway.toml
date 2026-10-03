@@ -2,8 +2,8 @@
 version = 2
 
 [openshell.gateway]
-bind_address = "0.0.0.0:8080"
-health_bind_address = "0.0.0.0:8081"
+bind_address = "127.0.0.1:8080"
+health_bind_address = "127.0.0.1:8081"
 log_level = "info"
 compute_driver = "docker"
 server_sans = [
@@ -13,14 +13,14 @@ server_sans = [
   "127.0.0.1"
 ]
 disable_tls = false
-guest_tls_ca = "/etc/openshell/client-tls/ca.crt"
-guest_tls_cert = "/etc/openshell/client-tls/tls.crt"
-guest_tls_key = "/etc/openshell/client-tls/tls.key"
+guest_tls_ca = "/etc/openshell/tls/ca.crt"
+guest_tls_cert = "/etc/openshell/tls/client/tls.crt"
+guest_tls_key = "/etc/openshell/tls/client/tls.key"
 
 [openshell.gateway.tls]
-cert_path = "/etc/openshell/certs/gateway.crt"
-key_path = "/etc/openshell/certs/gateway.key"
-client_ca_path = "/etc/openshell/certs/ca.crt"
+cert_path = "/etc/openshell/tls/server/tls.crt"
+key_path = "/etc/openshell/tls/server/tls.key"
+client_ca_path = "/etc/openshell/tls/ca.crt"
 
 [openshell.gateway.auth]
 allow_unauthenticated_users = false
@@ -29,9 +29,9 @@ allow_unauthenticated_users = false
 enabled = true
 
 [openshell.gateway.gateway_jwt]
-signing_key_path = "/etc/openshell/jwt/signing.pem"
-public_key_path = "/etc/openshell/jwt/public.pem"
-kid_path = "/etc/openshell/jwt/kid"
+signing_key_path = "/etc/openshell/tls/jwt/signing.pem"
+public_key_path = "/etc/openshell/tls/jwt/public.pem"
+kid_path = "/etc/openshell/tls/jwt/kid"
 gateway_id = "openai-secure-mcp-tunnel"
 
 [openshell.gateway.credential_storage]
@@ -42,8 +42,7 @@ socket_path = "/var/run/docker.sock"
 default_image = "local-mcp-openshell-sandbox:1.0.0"
 image_pull_policy = "if_not_present"
 sandbox_label = "openshell"
-sandbox_pids_limit = 2048
-grpc_endpoint = "https://127.0.0.1:8080"
+grpc_endpoint = "https://host.openshell.internal:8080"
 allow_driver_config = true
 enable_bind_mounts = true
 

@@ -4,43 +4,55 @@ services:
     restart: unless-stopped
     command: []
     user: "0"
+
     ports:
       - "127.0.0.1:${OPENSHELL_PORT:-8080}:8080"
       - "127.0.0.1:${OPENSHELL_HEALTH_PORT:-8081}:8081"
+
     volumes:
       - type: bind
         source: /var/run/docker.sock
         target: /var/run/docker.sock
+
       - type: bind
         source: ${MCP_CONFIG_DIR:-${XDG_STATE_HOME:-$HOME/.local/state}/local-mcp-server/config}
         target: /var/lib/local-mcp-server/config
         bind:
           create_host_path: true
+
       - type: bind
         source: ./openshell/gateway.toml
         target: /etc/openshell/gateway.toml
         read_only: true
+
       - type: bind
         source: ${XDG_STATE_HOME:-$HOME/.local/state}/local-mcp-server/openshell/tls
         target: /etc/openshell/tls
         read_only: true
+
     environment:
       OPENSHELL_GATEWAY_CONFIG: /etc/openshell/gateway.toml
       OPENSHELL_DB_URL: sqlite:/var/lib/local-mcp-server/config/openshell.db
+
       XDG_DATA_HOME: /var/lib/local-mcp-server/config
       XDG_STATE_HOME: /var/lib/local-mcp-server/config
       HOME: /var/lib/local-mcp-server/config
+
       OPENSHELL_LOCAL_TLS_DIR: /etc/openshell/tls
       OPENSHELL_TLS_CERT: /etc/openshell/tls/server/tls.crt
       OPENSHELL_TLS_KEY: /etc/openshell/tls/server/tls.key
       OPENSHELL_TLS_CLIENT_CA: /etc/openshell/tls/ca.crt
+
       OPENSHELL_ENABLE_MTLS_AUTH: "true"
+
       OPENSHELL_DOCKER_TLS_CA: /etc/openshell/tls/ca.crt
       OPENSHELL_DOCKER_TLS_CERT: /etc/openshell/tls/client/tls.crt
       OPENSHELL_DOCKER_TLS_KEY: /etc/openshell/tls/client/tls.key
+
     extra_hosts:
       - "host.docker.internal:host-gateway"
       - "host.openshell.internal:host-gateway"
+
     networks:
       - openshell-gateway
       - openshell-internal
@@ -49,54 +61,72 @@ services:
     build:
       context: ..
       dockerfile: deploy/docker/mcp-server/Dockerfile
+
     user: "${MCP_UID:-1000}:${MCP_GID:-1000}"
+
     ports:
       - "127.0.0.1:${MCP_PORT:-8000}:8000"
+
     read_only: true
+
     security_opt:
       - no-new-privileges:true
+
     cap_drop:
       - ALL
+
     tmpfs:
       - /tmp:rw,noexec,nosuid,nodev
+
     volumes:
       - ${MCP_STATE_DIR:-../.state}:/var/lib/local-mcp-server/state:rw
+
       - ${WORKSPACE_GRANTS_DIR:-../.state/workspace-grants}:/var/lib/local-mcp-server/workspace-grants:ro
+
       - type: bind
         source: ./openshell/gateway-metadata.json
         target: /config/openshell/gateways/local/metadata.json
         read_only: true
+
       - type: bind
         source: ${XDG_STATE_HOME:-$HOME/.local/state}/local-mcp-server/openshell/tls/client
         target: /config/openshell/gateways/local/mtls
         read_only: true
-      - type: bind
-        source: ${XDG_STATE_HOME:-$HOME/.local/state}/local-mcp-server/openshell/tls/ca.crt
-        target: /config/openshell/gateways/local/mtls/ca.crt
-        read_only: true
+
     networks:
       - mcp-internal
       - openshell-internal
       - mcp-host-publish
+
     depends_on:
       openshell-gateway:
         condition: service_started
+
     environment:
       OPENSHELL_WORKSPACE: ${OPENSHELL_WORKSPACE:-default}
       OPENSHELL_GATEWAY: ${OPENSHELL_GATEWAY:-local}
       OPENSHELL_CLI_GATEWAY: ${OPENSHELL_CLI_GATEWAY:-https://host.openshell.internal:8080}
+
       XDG_CONFIG_HOME: /config
+
       SANDBOX_IMAGE: ${SANDBOX_IMAGE:-local-mcp-openshell-sandbox:1.0.0}
       BROWSER_SANDBOX_IMAGE: ${BROWSER_SANDBOX_IMAGE:-local-mcp-browser-sandbox:1.0.0}
+
       BROWSER_ALLOWED_ENDPOINTS: ${BROWSER_ALLOWED_ENDPOINTS:-host.openshell.internal:4173,mtioon.com:443,www.mtioon.com:443}
+
       SANDBOX_DEFAULT_CPU: ${SANDBOX_DEFAULT_CPU:-1}
       SANDBOX_DEFAULT_MEMORY: ${SANDBOX_DEFAULT_MEMORY:-1Gi}
+
       WORKSPACE_GRANTS_FILE: /var/lib/local-mcp-server/workspace-grants/workspace-grants.json
       WORKSPACE_GRANTS_READ_ONLY: "true"
+
       INSTALLATION_STATE_FILE: /var/lib/local-mcp-server/state/installations.json
       INSTALLATION_TIMEOUT_SECONDS: ${INSTALLATION_TIMEOUT_SECONDS:-300}
+
       LOG_LEVEL: ${LOG_LEVEL:-INFO}
+
       OPENSHELL_SYSTEM_GATEWAY_DIR: /config
+
     healthcheck:
       test:
         [
@@ -109,19 +139,24 @@ services:
       timeout: 5s
       retries: 5
       start_period: 10s
+
     expose:
       - "8000"
 
   tunnel-client:
     image: ghcr.io/openai/tunnel-client:v0.0.15
+
     depends_on:
       mcp-server:
         condition: service_healthy
+
     networks:
       - mcp-internal
       - tunnel-egress
+
     environment:
       TUNNEL_CLIENT_CONFIG: /etc/tunnel-client/openai.yaml
+
     volumes:
       - type: bind
         source: ${XDG_CONFIG_HOME:-$HOME/.config}/local-mcp-server/mcp-clients/openai/config.yaml
@@ -129,19 +164,25 @@ services:
         read_only: true
         bind:
           create_host_path: false
+
     command: []
+
     secrets:
       - CONTROL_PLANE_API_KEY
 
 networks:
   mcp-internal:
     internal: true
+
   openshell-internal:
     internal: true
+
   mcp-host-publish:
     driver: bridge
+
   openshell-gateway:
     driver: bridge
+
   tunnel-egress:
 
 secrets:
