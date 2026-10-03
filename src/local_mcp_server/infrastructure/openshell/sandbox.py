@@ -342,7 +342,7 @@ def sandbox_status(
 def start_sandbox(
     name: str,
 ) -> str:
-    """Start a stopped OpenShell sandbox."""
+    """Start a stopped or retained failed OpenShell sandbox."""
     name = validate_name(name)
 
     _run_openshell_control(
@@ -507,4 +507,67 @@ def delete_sandbox(
     except Exception as exc:
         raise SandboxError(
             f"Failed to delete sandbox '{name}': {type(exc).__name__}: {exc}"
+        ) from exc
+
+
+def recreate_sandbox(
+    name: str,
+) -> str:
+    """
+    Delete and recreate a managed sandbox using its existing workspace grant
+    and sandbox profile.
+
+    Recreate is intentionally destructive. The caller is responsible for
+    explicit confirmation before invoking this function.
+    """
+    name = validate_name(name)
+
+    try:
+        current = json.loads(
+            sandbox_status(name),
+        )
+
+        if not isinstance(current, dict):
+            raise SandboxError(
+                f"Sandbox '{name}' returned invalid metadata."
+            )
+
+        workspace_id = current.get("host_workspace_id")
+
+        if (
+            not isinstance(workspace_id, str)
+            or not workspace_id
+        ):
+            raise SandboxError(
+                f"Sandbox '{name}' does not contain a managed host workspace ID."
+            )
+
+        profile = current.get(
+            "profile",
+            "default",
+        )
+
+        if profile not in {"default", "browser"}:
+            raise SandboxError(
+                f"Sandbox '{name}' has unsupported profile '{profile}'."
+            )
+
+        delete_sandbox(name)
+
+        return create_sandbox(
+            name=name,
+            workspace_id=workspace_id,
+            profile=profile,
+        )
+
+    except SandboxError:
+        raise
+
+    except ValueError:
+        raise
+
+    except Exception as exc:
+        raise SandboxError(
+            f"Failed to recreate sandbox '{name}': "
+            f"{type(exc).__name__}: {exc}"
         ) from exc

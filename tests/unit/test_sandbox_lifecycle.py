@@ -1,0 +1,264 @@
+from __future__ import annotations
+
+import importlib
+import json
+
+import pytest
+
+
+cli = importlib.import_module("local_mcp_server.cli.main")
+mcpctl = importlib.import_module("local_mcp_server.cli.mcpctl")
+sandbox = importlib.import_module(
+    "local_mcp_server.infrastructure.openshell.sandbox",
+)
+
+
+def test_main_parser_contains_extended_sandbox_lifecycle_commands() -> None:
+    parser = cli._build_parser()
+
+    args = parser.parse_args(
+        ["sandbox", "restart", "project-api"],
+    )
+
+    assert args.command == "sandbox"
+    assert args.sandbox_command == "restart"
+    assert callable(args.handler)
+
+    args = parser.parse_args(
+        ["sandbox", "repair", "project-api"],
+    )
+
+    assert args.sandbox_command == "repair"
+    assert callable(args.handler)
+
+    args = parser.parse_args(
+        ["sandbox", "recreate", "project-api", "--yes"],
+    )
+
+    assert args.sandbox_command == "recreate"
+    assert args.confirmed is True
+    assert callable(args.handler)
+
+
+def test_mcpctl_parser_contains_extended_sandbox_lifecycle_commands() -> None:
+    parser = mcpctl._build_parser()
+
+    for command in ("restart", "repair"):
+        args = parser.parse_args(
+            ["sandbox", command, "project-api"],
+        )
+
+        assert args.command == "sandbox"
+        assert args.sandbox_command == command
+
+    args = parser.parse_args(
+        ["sandbox", "recreate", "project-api", "--yes"],
+    )
+
+    assert args.command == "sandbox"
+    assert args.sandbox_command == "recreate"
+    assert args.confirmed is True
+
+
+def test_recreate_requires_confirmation(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(
+        cli,
+        "recreate_sandbox",
+        lambda name: json.dumps({"name": name}),
+    )
+
+    with pytest.raises(
+        ValueError,
+        match=r"sandbox recreate requires --yes",
+    ):
+        cli._sandbox_recreate(
+            "project-api",
+            False,
+        )
+
+
+def test_restart_stops_then_starts(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    calls: list[str] = []
+
+    monkeypatch.setattr(
+        cli,
+        "_sandbox_stop",
+        lambda name: calls.append(f"stop:{name}") or cli.EXIT_OK,
+    )
+
+    monkeypatch.setattr(
+        cli,
+        "_sandbox_start",
+        lambda name: calls.append(f"start:{name}") or cli.EXIT_OK,
+    )
+
+    assert cli._sandbox_restart("project-api") == cli.EXIT_OK
+
+    assert calls == [
+        "stop:project-api",
+        "start:project-api",
+    ]
+
+
+def test_restart_does_not_start_after_stop_failure(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    calls: list[str] = []
+
+    monkeypatch.setattr(
+        cli,
+        "_sandbox_stop",
+        lambda name: calls.append(f"stop:{name}") or 17,
+    )
+
+    monkeypatch.setattr(
+        cli,
+        "_sandbox_start",
+        lambda name: calls.append(f"start:{name}") or cli.EXIT_OK,
+    )
+
+    assert cli._sandbox_restart("project-api") == 17
+
+    assert calls == [
+        "stop:project-api",
+    ]
+
+
+def test_repair_reuses_open_shell_start(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    calls: list[str] = []
+
+    monkeypatch.setattr(
+        cli,
+        "_sandbox_start",
+        lambda name: calls.append(name) or cli.EXIT_OK,
+    )
+
+    assert cli._sandbox_repair("project-api") == cli.EXIT_OK
+
+    assert calls == ["project-api"]
+
+
+def test_recreate_preserves_workspace_and_profile(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    calls: list[tuple[str, object]] = []
+
+    monkeypatch.setattr(
+        sandbox,
+        "sandbox_status",
+        lambda name: json.dumps(
+            {
+                "name": name,
+                "profile": "browser",
+                "host_workspace_id": "ws_project",
+            }
+        ),
+    )
+
+    monkeypatch.setattr(
+        sandbox,
+        "delete_sandbox",
+        lambda name: (
+            calls.append(("delete", name)),
+            json.dumps(
+                {
+                    "name": name,
+                    "deleted": True,
+                }
+            )[1],
+        )[1],
+    )
+
+    monkeypatch.setattr(
+        sandbox,
+        "create_sandbox",
+        lambda *, name, workspace_id, profile: (
+            calls.append(
+                (
+                    "create",
+                    {
+                        "name": name,
+                        "workspace_id": workspace_id,
+                        "profile": profile,
+                    },
+                )
+            ),
+            json.dumps(
+                {
+                    "name": name,
+                    "profile": profile,
+                    "host_workspace_id": workspace_id,
+                }
+            ),
+        )[1],
+    )
+
+    result = sandbox.recreate_sandbox("project-api")
+    data = json.loads(result)
+
+    assert data == {
+        "name": "project-api",
+        "profile": "browser",
+        "host_workspace_id": "ws_project",
+    }
+
+    assert calls == [
+        ("delete", "project-api"),
+        (
+            "create",
+            {
+                "name": "project-api",
+                "workspace_id": "ws_project",
+                "profile": "browser",
+            },
+        ),
+    ]
+
+
+def test_recreate_rejects_missing_workspace_label(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(
+        sandbox,
+        "sandbox_status",
+        lambda name: json.dumps(
+            {
+                "name": name,
+                "profile": "default",
+            }
+        ),
+    )
+
+    with pytest.raises(
+        sandbox.SandboxError,
+        match="does not contain a managed host workspace ID",
+    ):
+        sandbox.recreate_sandbox("project-api")
+
+
+def test_recreate_rejects_unsupported_profile(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(
+        sandbox,
+        "sandbox_status",
+        lambda name: json.dumps(
+            {
+                "name": name,
+                "profile": "unknown",
+                "host_workspace_id": "ws_project",
+            }
+        ),
+    )
+
+    with pytest.raises(
+        sandbox.SandboxError,
+        match="unsupported profile",
+    ):
+        sandbox.recreate_sandbox("project-api")

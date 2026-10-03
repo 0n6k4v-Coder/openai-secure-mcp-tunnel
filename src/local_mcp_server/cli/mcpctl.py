@@ -218,17 +218,31 @@ def _build_parser() -> argparse.ArgumentParser:
 
     sandbox_start = sandbox_commands.add_parser(
         "start",
-        help="Start a stopped sandbox.",
+        help="Start a stopped or retained failed sandbox.",
     )
 
     sandbox_start.add_argument("name")
 
     sandbox_stop = sandbox_commands.add_parser(
         "stop",
-        help="Stop a sandbox.",
+        help="Stop a sandbox while retaining its state.",
     )
 
     sandbox_stop.add_argument("name")
+
+    sandbox_restart = sandbox_commands.add_parser(
+        "restart",
+        help="Restart a sandbox using OpenShell stop then start.",
+    )
+
+    sandbox_restart.add_argument("name")
+
+    sandbox_repair = sandbox_commands.add_parser(
+        "repair",
+        help="Retry startup of a retained failed sandbox.",
+    )
+
+    sandbox_repair.add_argument("name")
 
     sandbox_delete = sandbox_commands.add_parser(
         "delete",
@@ -241,6 +255,20 @@ def _build_parser() -> argparse.ArgumentParser:
         "--json",
         dest="json_output",
         action="store_true",
+    )
+
+    sandbox_recreate = sandbox_commands.add_parser(
+        "recreate",
+        help="Delete and recreate a sandbox with its existing workspace and profile.",
+    )
+
+    sandbox_recreate.add_argument("name")
+
+    sandbox_recreate.add_argument(
+        "--yes",
+        action="store_true",
+        dest="confirmed",
+        help="Confirm destructive delete-and-recreate operation.",
     )
 
     credential = commands.add_parser(
@@ -444,11 +472,24 @@ def _sandbox_arguments(args: argparse.Namespace) -> list[str]:
         "logs",
         "start",
         "stop",
+        "restart",
+        "repair",
     }:
         return [
             args.sandbox_command,
             args.name,
         ]
+
+    if args.sandbox_command == "recreate":
+        arguments = [
+            "recreate",
+            args.name,
+        ]
+
+        if args.confirmed:
+            arguments.append("--yes")
+
+        return arguments
 
     if args.sandbox_command == "exec":
         return [

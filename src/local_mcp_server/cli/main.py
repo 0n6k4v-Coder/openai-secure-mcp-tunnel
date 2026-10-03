@@ -53,6 +53,7 @@ from ..sandbox.service import (  # noqa: E402
     create_sandbox,
     delete_sandbox,
     list_sandboxes,
+    recreate_sandbox,
     sandbox_status,
     validate_command,
     validate_name,
@@ -391,11 +392,6 @@ def _sandbox_delete(name: str, json_output: bool) -> int:
     return EXIT_OK
 
 
-def _openshell_command(*args: str) -> list[str]:
-    _command_exists("openshell")
-    return ["openshell", *args]
-
-
 def _sandbox_shell(name: str) -> int:
     validate_name(name)
 
@@ -449,6 +445,57 @@ def _sandbox_start(name: str) -> int:
 def _sandbox_stop(name: str) -> int:
     validate_name(name)
     return _run_passthrough(_openshell_command("sandbox", "stop", name))
+
+
+def _sandbox_restart(name: str) -> int:
+    validate_name(name)
+
+    stop_result = _sandbox_stop(name)
+
+    if stop_result != EXIT_OK:
+        return stop_result
+
+    return _sandbox_start(name)
+
+
+def _sandbox_repair(name: str) -> int:
+    validate_name(name)
+
+    return _sandbox_start(name)
+
+
+def _sandbox_recreate(
+    name: str,
+    confirmed: bool,
+) -> int:
+    if not confirmed:
+        raise ValueError("sandbox recreate requires --yes.")
+
+    data = _parse_json(
+        recreate_sandbox(name),
+    )
+
+    if not isinstance(data, dict):
+        raise RuntimeError("OpenShell returned invalid sandbox metadata.")
+
+    print("Sandbox recreated.")
+    print(f"Name:                {data.get('name', name)}")
+    print(f"Status:              {_status_value(data)}")
+    print(f"Profile:             {data.get('profile', 'default')}")
+
+    host_workspace_id = data.get("host_workspace_id")
+
+    if host_workspace_id:
+        print(f"Host workspace ID:   {host_workspace_id}")
+
+    print("Sandbox path:        /workspace/project")
+
+    return EXIT_OK
+
+
+def _openshell_command(*args: str) -> list[str]:
+    _command_exists("openshell")
+    return ["openshell", *args]
 
 
 def _credential_create(
@@ -590,19 +637,49 @@ def _build_parser() -> argparse.ArgumentParser:
 
     start_parser = sandbox_commands.add_parser(
         "start",
-        help="Start a stopped sandbox.",
+        help="Start a stopped or retained failed sandbox.",
     )
     start_parser.add_argument("name")
     start_parser.set_defaults(handler=_sandbox_start)
 
-    stop_parser = sandbox_commands.add_parser("stop", help="Stop a sandbox.")
+    stop_parser = sandbox_commands.add_parser(
+        "stop",
+        help="Stop a sandbox while retaining its state.",
+    )
     stop_parser.add_argument("name")
     stop_parser.set_defaults(handler=_sandbox_stop)
+
+    restart_parser = sandbox_commands.add_parser(
+        "restart",
+        help="Restart a sandbox using OpenShell stop then start.",
+    )
+    restart_parser.add_argument("name")
+    restart_parser.set_defaults(handler=_sandbox_restart)
+
+    repair_parser = sandbox_commands.add_parser(
+        "repair",
+        help="Retry startup of a retained failed sandbox.",
+    )
+    repair_parser.add_argument("name")
+    repair_parser.set_defaults(handler=_sandbox_repair)
 
     delete = sandbox_commands.add_parser("delete", help="Delete a sandbox.")
     delete.add_argument("name")
     delete.add_argument("--json", dest="json_output", action="store_true")
     delete.set_defaults(handler=_sandbox_delete)
+
+    recreate = sandbox_commands.add_parser(
+        "recreate",
+        help="Delete and recreate a sandbox with its existing workspace and profile.",
+    )
+    recreate.add_argument("name")
+    recreate.add_argument(
+        "--yes",
+        action="store_true",
+        dest="confirmed",
+        help="Confirm destructive delete-and-recreate operation.",
+    )
+    recreate.set_defaults(handler=_sandbox_recreate)
 
     credential = commands.add_parser(
         "credential",
@@ -706,8 +783,14 @@ def main(argv: Sequence[str] | None = None) -> int:
         if args.command == "sandbox" and args.sandbox_command == "list":
             return args.handler(args.json_output)
 
-        if args.command == "sandbox" and args.sandbox_command in {"status", "delete"}:
+        if args.command == "sandbox" and args.sandbox_command in {
+            "status",
+            "delete",
+        }:
             return args.handler(args.name, args.json_output)
+
+        if args.command == "sandbox" and args.sandbox_command == "recreate":
+            return args.handler(args.name, args.confirmed)
 
         if args.command == "sandbox":
             return args.handler(args.name)
