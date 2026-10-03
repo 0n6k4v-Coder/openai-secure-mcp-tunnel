@@ -2,26 +2,38 @@ from __future__ import annotations
 
 import os
 import re
+import stat
 import tempfile
 from pathlib import Path
 
-CONTROL_PLANE_TUNNEL_ID_PATTERN = re.compile(r"^tunnel_[0-9a-f]{32}$")
-PROJECT_ROOT = Path(__file__).resolve().parents[3]
-CONFIG_ENV_VALUE = os.environ.get("MCP_CONFIG_DIR")
-if CONFIG_ENV_VALUE:
-    _configured_root = Path(CONFIG_ENV_VALUE)
-    CONFIG_ROOT = (
-        (_configured_root if _configured_root.is_absolute() else PROJECT_ROOT / "deploy" / _configured_root)
-        .resolve()
-    )
-else:
-    CONFIG_ROOT = Path("/var/lib/local-mcp-server/config")
+CONTROL_PLANE_TUNNEL_ID_PATTERN = re.compile(
+    r"^tunnel_[0-9a-f]{32}$",
+)
 
+
+class ConfigError(RuntimeError):
+    """Raised when application configuration is invalid or cannot be saved."""
+
+
+def _xdg_config_home() -> Path:
+    value = os.environ.get("XDG_CONFIG_HOME")
+
+    if value:
+        candidate = Path(value).expanduser()
+        if candidate.is_absolute():
+            return candidate
+
+    return Path.home() / ".config"
+
+
+CONFIG_ROOT = _xdg_config_home() / "local-mcp-server"
 MCP_CLIENTS_ROOT = CONFIG_ROOT / "mcp-clients"
+
 OPENAI_ROOT = MCP_CLIENTS_ROOT / "openai"
-OPENAI_CONFIG_FILE = OPENAI_ROOT / "openai.yaml"
-OPENAI_API_KEY_FILE = OPENAI_ROOT / "CONTROL_PLANE_API_KEY"
-OPENAI_CONFIG_TEMPLATE = """\\
+OPENAI_CONFIG_FILE = OPENAI_ROOT / "config.yaml"
+OPENAI_API_KEY_FILE = OPENAI_ROOT / "credentials"
+
+OPENAI_CONFIG_TEMPLATE = """\
 config_version: 1
 control_plane:
   base_url: https://api.openai.com
@@ -33,36 +45,85 @@ mcp:
       url: http://mcp-server:8000/mcp
 """
 
-class ConfigError(RuntimeError):
-    """Raised when application configuration is invalid or cannot be saved."""
 
 def _validate_tunnel_id(value: str) -> str:
     tunnel_id = value.strip()
+
     if not CONTROL_PLANE_TUNNEL_ID_PATTERN.fullmatch(tunnel_id):
-        raise ConfigError("CONTROL_PLANE_TUNNEL_ID must match 'tunnel_' followed by 32 lowercase hexadecimal characters.")
+        raise ConfigError(
+            "CONTROL_PLANE_TUNNEL_ID must match "
+            "'tunnel_' followed by 32 lowercase hexadecimal characters.",
+        )
+
     return tunnel_id
+
 
 def _validate_api_key(value: str) -> str:
     api_key = value.strip()
+
     if not api_key:
-        raise ConfigError("CONTROL_PLANE_API_KEY must not be empty.")
-    if "\\n" in api_key or "\\r" in api_key:
-        raise ConfigError("CONTROL_PLANE_API_KEY must be a single line.")
+        raise ConfigError(
+            "CONTROL_PLANE_API_KEY must not be empty.",
+        )
+
+    if "\n" in api_key or "\r" in api_key:
+        raise ConfigError(
+            "CONTROL_PLANE_API_KEY must be a single line.",
+        )
+
     return api_key
 
-def _atomic_write(path: Path, content: str, *, mode: int) -> None:
-    path.parent.mkdir(parents=True, exist_ok=True, mode=0o700)
-    path.parent.chmod(0o700)
-    fd, temporary_name = tempfile.mkstemp(prefix=f".{path.name}.", dir=path.parent, text=True)
+
+def _ensure_private_directory(path: Path) -> None:
+    try:
+        path.mkdir(
+            parents=True,
+            exist_ok=True,
+            mode=0o700,
+        )
+        mode = stat.S_IMODE(path.stat().st_mode)
+    except OSError as exc:
+        raise ConfigError(
+            f"Unable to prepare configuration directory {path}: {exc}",
+        ) from exc
+
+    if mode & 0o077:
+        raise ConfigError(
+            f"Configuration directory {path} must not be accessible "
+            f"by group or other users; current mode is {mode:04o}.",
+        )
+
+
+def _atomic_write(
+    path: Path,
+    content: str,
+    *,
+    mode: int,
+) -> None:
+    _ensure_private_directory(path.parent)
+
+    fd, temporary_name = tempfile.mkstemp(
+        prefix=f".{path.name}.",
+        dir=path.parent,
+        text=True,
+    )
     temporary_path = Path(temporary_name)
+
     try:
         os.chmod(temporary_path, mode)
-        with os.fdopen(fd, "w", encoding="utf-8") as handle:
+
+        with os.fdopen(
+            fd,
+            "w",
+            encoding="utf-8",
+        ) as handle:
             handle.write(content)
             handle.flush()
             os.fsync(handle.fileno())
+
         os.replace(temporary_path, path)
         os.chmod(path, mode)
+
     except Exception:
         try:
             temporary_path.unlink()
@@ -70,14 +131,37 @@ def _atomic_write(path: Path, content: str, *, mode: int) -> None:
             pass
         raise
 
-def configure_openai(tunnel_id: str, api_key: str) -> None:
+
+def configure_openai(
+    tunnel_id: str,
+    api_key: str,
+) -> None:
     validated_tunnel_id = _validate_tunnel_id(tunnel_id)
     validated_api_key = _validate_api_key(api_key)
-    OPENAI_ROOT.mkdir(parents=True, exist_ok=True, mode=0o700)
-    OPENAI_ROOT.chmod(0o700)
-    config_content = OPENAI_CONFIG_TEMPLATE.format(tunnel_id=validated_tunnel_id)
+    config_content = OPENAI_CONFIG_TEMPLATE.format(
+        tunnel_id=validated_tunnel_id,
+    )
+
     try:
-        _atomic_write(OPENAI_API_KEY_FILE, f"{validated_api_key}\\n", mode=0o600)
-        _atomic_write(OPENAI_CONFIG_FILE, config_content, mode=0o600)
+        _ensure_private_directory(CONFIG_ROOT)
+        _ensure_private_directory(MCP_CLIENTS_ROOT)
+        _ensure_private_directory(OPENAI_ROOT)
+
+        _atomic_write(
+            OPENAI_API_KEY_FILE,
+            f"{validated_api_key}\n",
+            mode=0o600,
+        )
+        _atomic_write(
+            OPENAI_CONFIG_FILE,
+            config_content,
+            mode=0o600,
+        )
+
+    except ConfigError:
+        raise
     except OSError as exc:
-        raise ConfigError(f"Unable to save OpenAI MCP client configuration: {exc}") from exc
+        raise ConfigError(
+            "Unable to save OpenAI MCP client configuration: "
+            f"{exc}",
+        ) from exc

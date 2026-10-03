@@ -196,6 +196,9 @@ def test_build_mcpctl_completion_parser_contains_nested_commands() -> None:
     assert "mcpctl sandbox create" in parsers
     assert "mcpctl credential create" in parsers
     assert "mcpctl workspace authorize" in parsers
+    assert "mcpctl config" in parsers
+    assert "mcpctl config mcp-client" in parsers
+    assert "mcpctl config mcp-client openai" in parsers
 
     sandbox_create = parsers["mcpctl sandbox create"]
     workspace_action = next(
@@ -204,6 +207,38 @@ def test_build_mcpctl_completion_parser_contains_nested_commands() -> None:
         if action.dest == "workspace_id"
     )
     assert workspace_action.completer is completion._workspace_id_completer
+
+
+def test_mcpctl_config_help_contains_mcp_client() -> None:
+    parser = completion._build_mcpctl_completion_parser()
+    config = next(
+        current_parser
+        for current_parser in completion._iter_parsers(parser)
+        if current_parser.prog == "mcpctl config"
+    )
+    subparsers = next(
+        action
+        for action in config._actions
+        if isinstance(action, argparse._SubParsersAction)
+    )
+
+    assert "mcp-client" in subparsers.choices
+
+
+def test_mcpctl_config_mcp_client_contains_openai() -> None:
+    parser = completion._build_mcpctl_completion_parser()
+    mcp_client = next(
+        current_parser
+        for current_parser in completion._iter_parsers(parser)
+        if current_parser.prog == "mcpctl config mcp-client"
+    )
+    subparsers = next(
+        action
+        for action in mcp_client._actions
+        if isinstance(action, argparse._SubParsersAction)
+    )
+
+    assert "openai" in subparsers.choices
 
 
 def test_mcpctl_shellcode_targets_mcpctl() -> None:

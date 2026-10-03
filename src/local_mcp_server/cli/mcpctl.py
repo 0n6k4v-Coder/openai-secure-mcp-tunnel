@@ -31,11 +31,7 @@ def _prompt_choice(title: str, options: list[str]) -> int:
     return choice
 
 
-def _config() -> int:
-    if _prompt_choice("Configuration", ["MCP Clients"]) != 1:
-        raise ValueError("Unsupported configuration selection.")
-    if _prompt_choice("MCP Clients", ["OpenAI"]) != 1:
-        raise ValueError("Unsupported MCP client selection.")
+def _configure_openai() -> int:
     print()
     print("OpenAI MCP Client Configuration")
     print()
@@ -45,6 +41,18 @@ def _config() -> int:
     print()
     print("OpenAI MCP client configuration saved.")
     return EXIT_OK
+
+
+def _config_mcp_client() -> int:
+    if _prompt_choice("MCP Clients", ["OpenAI"]) != 1:
+        raise ValueError("Unsupported MCP client selection.")
+    return _configure_openai()
+
+
+def _config() -> int:
+    if _prompt_choice("Configuration", ["MCP Clients"]) != 1:
+        raise ValueError("Unsupported configuration selection.")
+    return _config_mcp_client()
 
 
 def _build_parser() -> argparse.ArgumentParser:
@@ -200,7 +208,27 @@ def _build_parser() -> argparse.ArgumentParser:
     )
     workspace_list.add_argument("--json", dest="json_output", action="store_true")
 
-    commands.add_parser("config", help="Configure the application.")
+    config = commands.add_parser(
+        "config",
+        help="Configure application components.",
+    )
+    config_commands = config.add_subparsers(
+        dest="config_command",
+        required=True,
+    )
+
+    mcp_client = config_commands.add_parser(
+        "mcp-client",
+        help="Configure MCP clients.",
+    )
+    mcp_client_commands = mcp_client.add_subparsers(
+        dest="mcp_client_command",
+    )
+    mcp_client_commands.add_parser(
+        "openai",
+        help="Configure the OpenAI MCP client.",
+    )
+
     return parser
 
 
@@ -306,7 +334,17 @@ def main(argv: list[str] | None = None) -> int:
 
     try:
         if args.command == "config":
-            return _config()
+            if args.config_command != "mcp-client":
+                raise RuntimeError(
+                    f"Unsupported config command: {args.config_command}"
+                )
+            if args.mcp_client_command is None:
+                return _config_mcp_client()
+            if args.mcp_client_command == "openai":
+                return _configure_openai()
+            raise RuntimeError(
+                f"Unsupported MCP client command: {args.mcp_client_command}"
+            )
         if args.command == "sandbox":
             return _delegate_local_cli("sandbox", _sandbox_arguments(args))
         if args.command == "credential":
@@ -317,6 +355,9 @@ def main(argv: list[str] | None = None) -> int:
         if args.command == "workspace":
             return workspace_broker.main(_workspace_arguments(args))
         raise RuntimeError(f"Unsupported command: {args.command}")
+    except KeyboardInterrupt:
+        print("\nCancelled.", file=sys.stderr)
+        return 130
     except (ConfigError, RuntimeError, ValueError) as exc:
         print(f"ERROR: {exc}", file=sys.stderr)
         return EXIT_ERROR
