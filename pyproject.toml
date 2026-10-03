@@ -5,13 +5,14 @@ description = "Private local MCP server for OpenAI Secure MCP Tunnel"
 readme = "README.md"
 requires-python = ">=3.14,<3.15"
 dependencies = [
+    "argcomplete==3.7.2",
     "mcp[cli]==2.2.0",
     "openshell==0.1.2",
     "starlette",
 ]
 
 [project.scripts]
-local-mcp-server = "local_mcp_server.cli.main:main"
+local-mcp-server = "local_mcp_server.cli.completion:main"
 secure-mcp = "local_mcp_server.cli.main:main"
 workspace-broker = "local_mcp_server.cli.workspace_broker:main"
 

@@ -6,6 +6,7 @@ PROJECT_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 VENV_DIR="${PROJECT_ROOT}/.venv"
 PYTHON_BIN="${VENV_DIR}/bin/python"
 CLI_BIN="${VENV_DIR}/bin/local-mcp-server"
+ACTIVATE_FILE="${VENV_DIR}/bin/activate"
 
 log() {
     printf '[install-cli] %s\n' "$*"
@@ -63,6 +64,27 @@ log "Installing local-mcp-server"
 if [[ ! -x "${CLI_BIN}" ]]; then
     fail "Installation completed but ${CLI_BIN} was not created."
 fi
+
+if [[ ! -x "${VENV_DIR}/bin/register-python-argcomplete" ]]; then
+    fail "argcomplete was not installed; register-python-argcomplete is missing."
+fi
+
+COMPLETION_MARKER="# local-mcp-server argcomplete completion"
+
+if ! grep -Fq "${COMPLETION_MARKER}" "${ACTIVATE_FILE}"; then
+    cat >>"${ACTIVATE_FILE}" <<'EOF'
+
+# local-mcp-server argcomplete completion
+if [[ -n "${BASH_VERSION:-}" ]]; then
+    if command -v register-python-argcomplete >/dev/null 2>&1; then
+        eval "$(register-python-argcomplete local-mcp-server)"
+    fi
+fi
+EOF
+fi
+
+log "Verifying CLI completion hook"
+"${VENV_DIR}/bin/register-python-argcomplete" local-mcp-server >/dev/null
 
 log "Verifying CLI"
 "${CLI_BIN}" --help >/dev/null
