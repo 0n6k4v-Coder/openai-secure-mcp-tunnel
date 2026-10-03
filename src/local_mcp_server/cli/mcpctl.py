@@ -14,6 +14,7 @@ from ..infrastructure.openshell.tls import (
     repair as repair_openshell_tls,
     setup as setup_openshell_tls,
 )
+from . import lifecycle
 from .main import main as local_mcp_server_main
 from . import workspace_broker
 
@@ -24,8 +25,10 @@ EXIT_ERROR = 2
 def _prompt_choice(title: str, options: list[str]) -> int:
     print(title)
     print()
+
     for index, option in enumerate(options, start=1):
         print(f"{index}. {option}")
+
     print()
 
     value = input("Select [1]: ").strip()
@@ -46,30 +49,58 @@ def _prompt_choice(title: str, options: list[str]) -> int:
 
 def _configure_openai() -> int:
     print()
-    print("OpenAI MCP Client Configuration")
+    print("MCP Client Configuration")
     print()
 
     tunnel_id = input("CONTROL_PLANE_TUNNEL_ID: ").strip()
     api_key = getpass.getpass("CONTROL_PLANE_API_KEY: ")
 
-    configure_openai(tunnel_id, api_key)
+    configure_openai(
+        tunnel_id,
+        api_key,
+    )
 
     print()
-    print("OpenAI MCP client configuration saved.")
+    print("MCP client configuration saved.")
 
     return EXIT_OK
 
 
-def _config_mcp_client() -> int:
-    if _prompt_choice("MCP Clients", ["OpenAI"]) != 1:
-        raise ValueError("Unsupported MCP client selection.")
+def _config_mcp_client(
+    *,
+    allow_skip: bool = False,
+) -> int:
+    options = ["OpenAI"]
 
-    return _configure_openai()
+    if allow_skip:
+        options.append("Skip for now")
+
+    choice = _prompt_choice(
+        "MCP Clients",
+        options,
+    )
+
+    if choice == 1:
+        return _configure_openai()
+
+    if allow_skip and choice == 2:
+        print()
+        print("MCP client configuration skipped.")
+        print("You can configure it later with:")
+        print("  mcpctl config mcp-client")
+        return EXIT_OK
+
+    raise ValueError("Unsupported MCP client selection.")
 
 
 def _config() -> int:
-    if _prompt_choice("Configuration", ["MCP Clients"]) != 1:
-        raise ValueError("Unsupported configuration selection.")
+    if _prompt_choice(
+        "Configuration",
+        ["MCP Clients"],
+    ) != 1:
+        raise ValueError(
+            "Unsupported configuration selection."
+        )
 
     return _config_mcp_client()
 
@@ -77,38 +108,81 @@ def _config() -> int:
 def _print_tls_status(status: TLSStatus) -> None:
     print("OpenShell TLS")
     print()
-    print(f"State: {'✓ READY' if status.complete else '✗ NOT READY'}")
+    print(
+        f"State: {'✓ READY' if status.complete else '✗ NOT READY'}"
+    )
     print(f"Path: {status.root}")
 
     if status.missing:
         print()
         print("Missing:")
+
         for path in status.missing:
-            print(f"  - {path.relative_to(status.root)}")
+            print(
+                f"  - {path.relative_to(status.root)}"
+            )
 
     if status.insecure_paths:
         print()
         print("Permissions:")
+
         for path in status.insecure_paths:
-            print(f"  - {path.relative_to(status.root)}")
+            print(
+                f"  - {path.relative_to(status.root)}"
+            )
 
 
 def _setup() -> int:
-    status = setup_openshell_tls()
-    _print_tls_status(status)
+    lifecycle.prepare_runtime()
+
+    tls_status = setup_openshell_tls()
+
+    lifecycle.validate_compose()
+    lifecycle.start_core_services()
+
+    _config_mcp_client(
+        allow_skip=True,
+    )
+
+    lifecycle.reconcile_tunnel_client()
+
+    final_status = lifecycle.verify(
+        tls_status,
+    )
+
+    lifecycle.print_status(final_status)
+
     return EXIT_OK
 
 
 def _status() -> int:
-    status = get_openshell_tls_status()
-    _print_tls_status(status)
+    tls_status = get_openshell_tls_status()
+    status = lifecycle.get_status(tls_status)
 
-    return EXIT_OK if status.complete else EXIT_ERROR
+    lifecycle.print_status(status)
+
+    return (
+        EXIT_OK
+        if status.ready
+        else EXIT_ERROR
+    )
 
 
 def _repair() -> int:
-    status = repair_openshell_tls()
-    _print_tls_status(status)
+    lifecycle.prepare_runtime()
+
+    tls_status = repair_openshell_tls()
+
+    lifecycle.validate_compose()
+    lifecycle.start_core_services()
+    lifecycle.reconcile_tunnel_client()
+
+    final_status = lifecycle.verify(
+        tls_status,
+    )
+
+    lifecycle.print_status(final_status)
+
     return EXIT_OK
 
 
@@ -125,17 +199,17 @@ def _build_parser() -> argparse.ArgumentParser:
 
     commands.add_parser(
         "setup",
-        help="Initialize OpenShell TLS runtime state.",
+        help="Initialize and start the local MCP application.",
     )
 
     commands.add_parser(
         "status",
-        help="Check OpenShell TLS runtime state.",
+        help="Check local MCP application lifecycle state.",
     )
 
     commands.add_parser(
         "repair",
-        help="Rebuild an unhealthy OpenShell TLS runtime state.",
+        help="Repair OpenShell runtime state and restart core services.",
     )
 
     sandbox = commands.add_parser(
@@ -250,8 +324,6 @@ def _build_parser() -> argparse.ArgumentParser:
         help="Delete a sandbox.",
     )
 
-    sandbox_delete.add_argument("name")
-
     sandbox_delete.add_argument(
         "--json",
         dest="json_output",
@@ -262,8 +334,6 @@ def _build_parser() -> argparse.ArgumentParser:
         "recreate",
         help="Delete and recreate a sandbox with its existing workspace and profile.",
     )
-
-    sandbox_recreate.add_argument("name")
 
     sandbox_recreate.add_argument(
         "--yes",
@@ -435,10 +505,14 @@ def _delegate_local_cli(
     command: str,
     arguments: Sequence[str],
 ) -> int:
-    return local_mcp_server_main([command, *arguments])
+    return local_mcp_server_main(
+        [command, *arguments]
+    )
 
 
-def _sandbox_arguments(args: argparse.Namespace) -> list[str]:
+def _sandbox_arguments(
+    args: argparse.Namespace,
+) -> list[str]:
     if args.sandbox_command == "create":
         arguments = [
             "create",
@@ -504,7 +578,9 @@ def _sandbox_arguments(args: argparse.Namespace) -> list[str]:
     )
 
 
-def _credential_arguments(args: argparse.Namespace) -> list[str]:
+def _credential_arguments(
+    args: argparse.Namespace,
+) -> list[str]:
     command = args.credential_command
 
     if command == "list":
@@ -558,7 +634,9 @@ def _credential_arguments(args: argparse.Namespace) -> list[str]:
     return arguments
 
 
-def _workspace_arguments(args: argparse.Namespace) -> list[str]:
+def _workspace_arguments(
+    args: argparse.Namespace,
+) -> list[str]:
     command = args.workspace_command
 
     if command == "authorize":
@@ -586,7 +664,9 @@ def _workspace_arguments(args: argparse.Namespace) -> list[str]:
     )
 
 
-def main(argv: list[str] | None = None) -> int:
+def main(
+    argv: list[str] | None = None,
+) -> int:
     parser = _build_parser()
     args = parser.parse_args(argv)
 
@@ -603,7 +683,8 @@ def main(argv: list[str] | None = None) -> int:
         if args.command == "config":
             if args.config_command != "mcp-client":
                 raise RuntimeError(
-                    f"Unsupported config command: {args.config_command}"
+                    f"Unsupported config command: "
+                    f"{args.config_command}"
                 )
 
             if args.mcp_client_command is None:
@@ -639,16 +720,23 @@ def main(argv: list[str] | None = None) -> int:
         )
 
     except KeyboardInterrupt:
-        print("\nCancelled.", file=sys.stderr)
+        print(
+            "\nCancelled.",
+            file=sys.stderr,
+        )
         return 130
 
     except (
         ConfigError,
+        lifecycle.LifecycleError,
         OpenShellTLSStatusError,
         RuntimeError,
         ValueError,
     ) as exc:
-        print(f"ERROR: {exc}", file=sys.stderr)
+        print(
+            f"ERROR: {exc}",
+            file=sys.stderr,
+        )
         return EXIT_ERROR
 
 
