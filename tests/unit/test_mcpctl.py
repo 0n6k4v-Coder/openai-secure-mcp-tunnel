@@ -216,6 +216,9 @@ def test_mcpctl_parser_contains_expected_commands() -> None:
     )
 
     assert set(action.choices) == {
+        "setup",
+        "status",
+        "repair",
         "sandbox",
         "credential",
         "workspace",

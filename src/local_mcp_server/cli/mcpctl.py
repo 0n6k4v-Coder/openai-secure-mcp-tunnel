@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import argparse
+from builtins import input
 import getpass
 import sys
 from collections.abc import Sequence
