@@ -158,13 +158,13 @@ def test_service_restart_stops_then_starts(
     calls: list[str] = []
 
     monkeypatch.setattr(
-        sandbox_service,
+        sandbox,
         "stop_sandbox",
         lambda name: calls.append(f"stop:{name}") or "stopped",
     )
 
     monkeypatch.setattr(
-        sandbox_service,
+        sandbox,
         "start_sandbox",
         lambda name: calls.append(f"start:{name}") or "started",
     )
@@ -183,7 +183,7 @@ def test_service_repair_reuses_start(
     calls: list[str] = []
 
     monkeypatch.setattr(
-        sandbox_service,
+        sandbox,
         "start_sandbox",
         lambda name: calls.append(name) or "started",
     )
