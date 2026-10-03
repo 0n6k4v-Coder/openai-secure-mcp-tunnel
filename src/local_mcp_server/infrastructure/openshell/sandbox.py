@@ -9,7 +9,6 @@ from typing import Any
 from .client import active_client
 
 from ...sandbox.policy import (
-    SandboxProfile,
     build_sandbox_spec,
     validate_command,
     validate_name,
