@@ -5,18 +5,29 @@ from ..infrastructure.openshell.sandbox import (
     create_sandbox,
     delete_sandbox,
     execute_sandbox,
+    execute_sandbox_argv,
     list_sandboxes,
     sandbox_status,
+    start_sandbox,
+    stop_sandbox,
 )
-from .policy import validate_command, validate_name
+from .policy import (
+    validate_command,
+    validate_name,
+    validate_profile,
+)
 
 __all__ = [
     "SandboxError",
     "create_sandbox",
     "delete_sandbox",
     "execute_sandbox",
+    "execute_sandbox_argv",
     "list_sandboxes",
     "sandbox_status",
+    "start_sandbox",
+    "stop_sandbox",
     "validate_command",
     "validate_name",
+    "validate_profile",
 ]

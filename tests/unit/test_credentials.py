@@ -34,6 +34,10 @@ def test_validate_credential_key() -> None:
         service._validate_credential_key("1KEY")
 
 
+def test_gateway_endpoint_defaults_to_https() -> None:
+    assert service._gateway_endpoint() == "https://127.0.0.1:8080"
+
+
 def test_gateway_endpoint_adds_http_scheme(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -92,7 +96,7 @@ def test_create_credential_does_not_put_secret_in_argv(
     assert captured["command"] == [
         "openshell",
         "--gateway-endpoint",
-        "http://127.0.0.1:8080",
+        "https://127.0.0.1:8080",
         "provider",
         "create",
         "--name",
@@ -151,7 +155,7 @@ def test_update_credential_uses_environment_not_arguments(
     assert captured["command"] == [
         "openshell",
         "--gateway-endpoint",
-        "http://127.0.0.1:8080",
+        "https://127.0.0.1:8080",
         "provider",
         "update",
         "my-openai",
@@ -192,7 +196,7 @@ def test_grant_credential_uses_provider_attach(
     assert captured["command"] == [
         "openshell",
         "--gateway-endpoint",
-        "http://127.0.0.1:8080",
+        "https://127.0.0.1:8080",
         "sandbox",
         "provider",
         "attach",
@@ -235,7 +239,7 @@ def test_revoke_credential_uses_provider_detach(
     assert captured["command"] == [
         "openshell",
         "--gateway-endpoint",
-        "http://127.0.0.1:8080",
+        "https://127.0.0.1:8080",
         "sandbox",
         "provider",
         "detach",

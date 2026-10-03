@@ -90,10 +90,10 @@ services:
       OPENSHELL_GATEWAY: ${OPENSHELL_GATEWAY:-local}
       XDG_CONFIG_HOME: /config
       SANDBOX_IMAGE: ${SANDBOX_IMAGE:-local-mcp-openshell-sandbox:1.0.0}
+      BROWSER_SANDBOX_IMAGE: ${BROWSER_SANDBOX_IMAGE:-local-mcp-browser-sandbox:1.0.0}
+      BROWSER_ALLOWED_ENDPOINTS: ${BROWSER_ALLOWED_ENDPOINTS:-host.openshell.internal:4173,mtioon.com:443,www.mtioon.com:443}
       SANDBOX_DEFAULT_CPU: ${SANDBOX_DEFAULT_CPU:-1}
       SANDBOX_DEFAULT_MEMORY: ${SANDBOX_DEFAULT_MEMORY:-1Gi}
-      BROWSER_ENDPOINT_HOST: ${BROWSER_ENDPOINT_HOST:-host.openshell.internal}
-      BROWSER_ENDPOINT_PORT: ${BROWSER_RELAY_PORT:-9223}
       WORKSPACE_GRANTS_FILE: /var/lib/local-mcp-server/workspace-grants/workspace-grants.json
       WORKSPACE_GRANTS_READ_ONLY: "true"
       INSTALLATION_STATE_FILE: /var/lib/local-mcp-server/state/installations.json
@@ -114,75 +114,11 @@ services:
     expose:
       - "8000"
 
-  browser-runtime:
-    build:
-      context: ./docker/browser-runtime
-      dockerfile: Dockerfile
-      args:
-        CHROME_VERSION: ${CHROME_FOR_TESTING_VERSION:-154.0.8037.92}
-    restart: unless-stopped
-    network_mode: host
-    user: "1000:1000"
-    read_only: true
-    security_opt:
-      - seccomp:./docker/browser-runtime/seccomp.json
-    cap_drop:
-      - ALL
-    tmpfs:
-      - /tmp:rw,noexec,nosuid,nodev
-      - /dev/shm:rw,nosuid,nodev,size=1g
-    extra_hosts:
-      - "host.openshell.internal:host-gateway"
-    environment:
-      BROWSER_BIND_HOST: ${BROWSER_BIND_HOST:-host.openshell.internal}
-      BROWSER_PORT: ${BROWSER_PORT:-9222}
-      BROWSER_USER_DATA_DIR: /tmp/chrome-profile
-      XDG_CACHE_HOME: /tmp/cache
-    healthcheck:
-      test:
-        [
-          "CMD-SHELL",
-          "curl --fail --silent http://127.0.0.1:${BROWSER_PORT:-9222}/json/version >/dev/null"
-        ]
-      interval: 10s
-      timeout: 5s
-      retries: 10
-      start_period: 10s
-
-  cdp-relay:
-    build:
-      context: ./docker/cdp-relay
-      dockerfile: Dockerfile
-    restart: unless-stopped
-    network_mode: host
-    user: "relay:relay"
-    read_only: true
-    security_opt:
-      - no-new-privileges:true
-    cap_drop:
-      - ALL
-    tmpfs:
-      - /tmp:rw,noexec,nosuid,nodev
-    environment:
-      CDP_LISTEN_HOST: 0.0.0.0
-      CDP_LISTEN_PORT: ${BROWSER_RELAY_PORT:-9223}
-      CDP_UPSTREAM_HOST: ${BROWSER_UPSTREAM_HOST:-127.0.0.1}
-      CDP_UPSTREAM_PORT: ${BROWSER_PORT:-9222}
-      CDP_PUBLIC_HOST: ${BROWSER_ENDPOINT_HOST:-host.openshell.internal}
-      CDP_PUBLIC_PORT: ${BROWSER_RELAY_PORT:-9223}
-    depends_on:
-      browser-runtime:
-        condition: service_healthy
-
   tunnel-client:
     image: ghcr.io/openai/tunnel-client:v0.0.15
     depends_on:
       mcp-server:
         condition: service_healthy
-      browser-runtime:
-        condition: service_healthy
-      cdp-relay:
-        condition: service_started
     networks:
       - mcp-internal
       - tunnel-egress

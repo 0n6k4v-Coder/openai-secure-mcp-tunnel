@@ -16,7 +16,11 @@ from .service import (
     execute_sandbox as execute_sandbox_impl,
     list_sandboxes as list_sandboxes_impl,
     sandbox_status as sandbox_status_impl,
+    start_sandbox as start_sandbox_impl,
+    stop_sandbox as stop_sandbox_impl,
 )
+from .policy import validate_profile
+
 
 class SandboxDeletionApproval(BaseModel):
     approved: bool
@@ -81,16 +85,20 @@ def register_tools(mcp: MCPServer) -> None:
     def create_sandbox(
         name: str,
         host_workspace_id: str,
+        profile: str = "default",
     ) -> str:
         """
         Create an OpenShell sandbox using an authorized host workspace grant.
 
-        host_workspace_id is an opaque host-directory authorization
-        capability. It is not an OpenShell workspace name.
+        profile selects the workload image and policy. Supported profiles are
+        'default' and 'browser'.
         """
+        profile = validate_profile(profile)
+
         return create_sandbox_impl(
             name=name,
             workspace_id=host_workspace_id,
+            profile=profile,
         )
 
     @mcp.tool(
@@ -118,6 +126,34 @@ def register_tools(mcp: MCPServer) -> None:
     ) -> str:
         """Return the status of an OpenShell sandbox."""
         return sandbox_status_impl(name)
+
+    @mcp.tool(
+        annotations=ToolAnnotations(
+            readOnlyHint=False,
+            destructiveHint=False,
+            idempotentHint=True,
+            openWorldHint=False,
+        )
+    )
+    def start_sandbox(
+        name: str,
+    ) -> str:
+        """Start a stopped OpenShell sandbox."""
+        return start_sandbox_impl(name)
+
+    @mcp.tool(
+        annotations=ToolAnnotations(
+            readOnlyHint=False,
+            destructiveHint=True,
+            idempotentHint=True,
+            openWorldHint=False,
+        )
+    )
+    def stop_sandbox(
+        name: str,
+    ) -> str:
+        """Stop an OpenShell sandbox while retaining its state."""
+        return stop_sandbox_impl(name)
 
     @mcp.tool(
         annotations=ToolAnnotations(
@@ -158,9 +194,6 @@ def register_tools(mcp: MCPServer) -> None:
         The approval is implemented through MCP resolver-based elicitation,
         so it works with both legacy elicitation and modern MCP
         multi-round-trip clients.
-
-        Deleting a sandbox does not revoke its associated host workspace
-        grant. Host workspace grants are separate authorization resources.
         """
         if approval.action != "accept" or approval.data is None:
             return "Sandbox deletion was denied or cancelled by the user."

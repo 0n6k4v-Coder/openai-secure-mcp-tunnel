@@ -2,14 +2,18 @@ from __future__ import annotations
 
 import json
 import os
+import shutil
+import subprocess
 from typing import Any
 
 from .client import active_client
 
 from ...sandbox.policy import (
+    SandboxProfile,
     build_sandbox_spec,
     validate_command,
     validate_name,
+    validate_profile,
 )
 from ...workspace.repository import get_workspace_grant
 
@@ -20,6 +24,7 @@ OPENSHELL_WORKSPACE = os.environ.get(
 )
 
 HOST_WORKSPACE_LABEL = "mcp_host_workspace_id"
+SANDBOX_PROFILE_LABEL = "mcp_sandbox_profile"
 
 
 class SandboxError(RuntimeError):
@@ -35,6 +40,53 @@ def _client() -> Any:
             f"Could not connect to the configured OpenShell gateway: "
             f"{type(exc).__name__}: {exc}"
         ) from exc
+
+
+def _openshell_command(*args: str) -> list[str]:
+    executable = shutil.which("openshell")
+
+    if executable is None:
+        raise SandboxError(
+            "The OpenShell CLI is not installed in the MCP server runtime."
+        )
+
+    return [executable, *args]
+
+
+def _run_openshell_control(*args: str) -> None:
+    environment = os.environ.copy()
+    environment["OPENSHELL_WORKSPACE"] = OPENSHELL_WORKSPACE
+
+    try:
+        completed = subprocess.run(
+            _openshell_command(*args),
+            check=False,
+            capture_output=True,
+            text=True,
+            timeout=120,
+            env=environment,
+        )
+    except subprocess.TimeoutExpired as exc:
+        raise SandboxError(
+            f"OpenShell control command timed out: {' '.join(args)}"
+        ) from exc
+    except OSError as exc:
+        raise SandboxError(
+            f"Failed to execute OpenShell control command: "
+            f"{type(exc).__name__}: {exc}"
+        ) from exc
+
+    if completed.returncode != 0:
+        diagnostic = (
+            completed.stderr.strip()
+            or completed.stdout.strip()
+            or "OpenShell returned no diagnostic output."
+        )
+
+        raise SandboxError(
+            f"OpenShell command failed with exit code "
+            f"{completed.returncode}: {diagnostic}"
+        )
 
 
 def _host_workspace_id_from_labels(
@@ -58,6 +110,20 @@ def _host_workspace_id_from_labels(
         return value
 
     return None
+
+
+def _sandbox_profile_from_labels(
+    labels,
+) -> str:
+    if not isinstance(labels, dict):
+        return "default"
+
+    value = labels.get(SANDBOX_PROFILE_LABEL)
+
+    if value in {"default", "browser"}:
+        return value
+
+    return "default"
 
 
 def _host_workspace_metadata(
@@ -128,6 +194,7 @@ def _sandbox_to_dict(
             "phase",
             None,
         ),
+        "profile": _sandbox_profile_from_labels(labels),
         "labels": labels,
     }
 
@@ -145,6 +212,7 @@ def _sandbox_to_dict(
 def create_sandbox(
     name: str,
     workspace_id: str,
+    profile: str = "default",
 ) -> str:
     """
     Create and wait for an OpenShell sandbox.
@@ -155,6 +223,7 @@ def create_sandbox(
     the trusted application layer and are never returned to the MCP client.
     """
     name = validate_name(name)
+    profile = validate_profile(profile)
 
     if (
         not isinstance(
@@ -174,8 +243,12 @@ def create_sandbox(
                 name=name,
                 labels={
                     HOST_WORKSPACE_LABEL: workspace_id,
+                    SANDBOX_PROFILE_LABEL: profile,
                 },
-                spec=build_sandbox_spec(workspace_id),
+                spec=build_sandbox_spec(
+                    workspace_id,
+                    profile=profile,
+                ),
             )
 
             ready = client.wait_ready(
@@ -264,6 +337,83 @@ def sandbox_status(
         ) from exc
 
     raise SandboxError(f"Sandbox '{name}' was not found.")
+
+
+def start_sandbox(
+    name: str,
+) -> str:
+    """Start a stopped OpenShell sandbox."""
+    name = validate_name(name)
+
+    _run_openshell_control(
+        "sandbox",
+        "start",
+        name,
+    )
+
+    return sandbox_status(name)
+
+
+def stop_sandbox(
+    name: str,
+) -> str:
+    """Stop an OpenShell sandbox while retaining its state."""
+    name = validate_name(name)
+
+    _run_openshell_control(
+        "sandbox",
+        "stop",
+        name,
+    )
+
+    return sandbox_status(name)
+
+
+def execute_sandbox_argv(
+    name: str,
+    argv: list[str],
+    *,
+    timeout_seconds: int = 120,
+) -> dict[str, object]:
+    """
+    Execute an argv vector inside an existing sandbox without invoking a
+    shell.
+    """
+    name = validate_name(name)
+
+    if not argv:
+        raise ValueError("argv must not be empty.")
+
+    if any(
+        not isinstance(argument, str) or "\x00" in argument
+        for argument in argv
+    ):
+        raise ValueError("argv contains an invalid argument.")
+
+    try:
+        with _client() as client:
+            result = client.exec(
+                name,
+                argv,
+                workspace=OPENSHELL_WORKSPACE,
+                timeout_seconds=timeout_seconds,
+                no_login_shell=True,
+            )
+
+            return {
+                "stdout": result.stdout,
+                "stderr": result.stderr,
+                "return_code": result.exit_code,
+            }
+
+    except ValueError:
+        raise
+
+    except Exception as exc:
+        raise SandboxError(
+            f"Failed to execute argv in sandbox '{name}': "
+            f"{type(exc).__name__}: {exc}"
+        ) from exc
 
 
 def execute_sandbox(

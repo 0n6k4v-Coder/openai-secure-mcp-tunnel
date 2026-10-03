@@ -303,13 +303,14 @@ def _sandbox_list(json_output: bool) -> int:
             [
                 str(sandbox.get("name", "")),
                 _status_value(sandbox),
+                str(sandbox.get("profile", "default")),
                 str(sandbox.get("host_workspace_id", "")),
                 str(sandbox.get("id", "")),
             ]
         )
 
     _print_table(
-        ["NAME", "STATUS", "HOST WORKSPACE ID", "ID"],
+        ["NAME", "STATUS", "PROFILE", "HOST WORKSPACE ID", "ID"],
         rows,
     )
 
@@ -328,6 +329,7 @@ def _sandbox_status(name: str, json_output: bool) -> int:
 
     print(f"Name:                {data.get('name', name)}")
     print(f"Status:              {_status_value(data)}")
+    print(f"Profile:             {data.get('profile', 'default')}")
     print(f"OpenShell workspace: {data.get('workspace', '')}")
     print(f"ID:                  {data.get('id', '')}")
 
@@ -342,13 +344,21 @@ def _sandbox_create(
     name: str,
     workspace_id: str,
     json_output: bool,
+    profile: str = "default",
 ) -> int:
-    data = _parse_json(
-        create_sandbox(
+    if profile == "default":
+        created = create_sandbox(
             name=name,
             workspace_id=workspace_id,
         )
-    )
+    else:
+        created = create_sandbox(
+            name=name,
+            workspace_id=workspace_id,
+            profile=profile,
+        )
+
+    data = _parse_json(created)
 
     if not isinstance(data, dict):
         raise RuntimeError("OpenShell returned invalid sandbox metadata.")
@@ -360,6 +370,7 @@ def _sandbox_create(
     print("Sandbox created.")
     print(f"Name:                {data.get('name', name)}")
     print(f"Status:              {_status_value(data)}")
+    print(f"Profile:             {data.get('profile', profile)}")
     print(f"Host workspace ID:   {workspace_id}")
     print("Sandbox path:        /workspace/project")
 
@@ -538,6 +549,11 @@ def _build_parser() -> argparse.ArgumentParser:
     )
     create.add_argument("name")
     create.add_argument("--workspace", required=True, dest="workspace_id")
+    create.add_argument(
+        "--profile",
+        choices=["default", "browser"],
+        default="default",
+    )
     create.add_argument("--json", dest="json_output", action="store_true")
     create.set_defaults(handler=_sandbox_create)
 
@@ -673,7 +689,19 @@ def main(argv: Sequence[str] | None = None) -> int:
             return args.handler(args.json_output)
 
         if args.command == "sandbox" and args.sandbox_command == "create":
-            return args.handler(args.name, args.workspace_id, args.json_output)
+            if args.profile == "default":
+                return args.handler(
+                    args.name,
+                    args.workspace_id,
+                    args.json_output,
+                )
+
+            return args.handler(
+                args.name,
+                args.workspace_id,
+                args.json_output,
+                args.profile,
+            )
 
         if args.command == "sandbox" and args.sandbox_command == "list":
             return args.handler(args.json_output)

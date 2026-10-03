@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import os
 import re
+from typing import Literal
 
 from openshell._proto import openshell_pb2
 
@@ -11,6 +12,11 @@ from ..workspace.repository import get_workspace_grant
 SANDBOX_IMAGE = os.environ.get(
     "SANDBOX_IMAGE",
     "local-mcp-openshell-sandbox:1.0.0",
+)
+
+BROWSER_SANDBOX_IMAGE = os.environ.get(
+    "BROWSER_SANDBOX_IMAGE",
+    "local-mcp-browser-sandbox:1.0.0",
 )
 
 DEFAULT_CPU = os.environ.get(
@@ -25,12 +31,18 @@ DEFAULT_MEMORY = os.environ.get(
 
 MAX_COMMAND_BYTES = 32 * 1024
 
+SandboxProfile = Literal["default", "browser"]
+
 _SANDBOX_NAME = re.compile(r"^[a-z0-9][a-z0-9-]{0,62}$")
 
 _CPU_QUANTITY = re.compile(r"^(?:\d+(?:\.\d+)?|\d+m)$")
 
 _MEMORY_QUANTITY = re.compile(
     r"^\d+(?:\.\d+)?(?:Ki|Mi|Gi|Ti|Pi|Ei|K|M|G|T|P|E)$"
+)
+
+_ENDPOINT = re.compile(
+    r"^(?P<host>[A-Za-z0-9*.-]+):(?P<port>[1-9][0-9]{0,4})$"
 )
 
 _NPM_NODE_BINARY = "/usr/local/bin/node"
@@ -41,16 +53,12 @@ _NPM_AUDIT_PATHS = (
     "/-/npm/v1/security/audits/quick",
 )
 
-_BROWSER_NODE_BINARY = "/usr/local/bin/node"
-_BROWSER_HOST = os.environ.get(
-    "BROWSER_ENDPOINT_HOST",
-    "host.openshell.internal",
-)
-_BROWSER_PORT = int(
-    os.environ.get(
-        "BROWSER_ENDPOINT_PORT",
-        "9223",
-    )
+_BROWSER_BINARY = "/opt/chrome/chrome"
+
+_DEFAULT_BROWSER_ENDPOINTS = (
+    "host.openshell.internal:4173",
+    "mtioon.com:443",
+    "www.mtioon.com:443",
 )
 
 
@@ -63,6 +71,15 @@ def validate_name(name: str) -> str:
         )
 
     return name
+
+
+def validate_profile(profile: str) -> SandboxProfile:
+    if profile not in {"default", "browser"}:
+        raise ValueError(
+            "sandbox profile must be either 'default' or 'browser'"
+        )
+
+    return profile  # type: ignore[return-value]
 
 
 def validate_cpu(value: str) -> str:
@@ -93,8 +110,93 @@ def validate_command(command: str) -> str:
     return command
 
 
+def _browser_endpoints() -> tuple[tuple[str, int], ...]:
+    raw = os.environ.get(
+        "BROWSER_ALLOWED_ENDPOINTS",
+        ",".join(_DEFAULT_BROWSER_ENDPOINTS),
+    )
+
+    endpoints: list[tuple[str, int]] = []
+
+    for item in raw.split(","):
+        value = item.strip()
+
+        if not value:
+            continue
+
+        match = _ENDPOINT.fullmatch(value)
+
+        if match is None:
+            raise ValueError(
+                "BROWSER_ALLOWED_ENDPOINTS entries must use host:port format."
+            )
+
+        host = match.group("host")
+        port = int(match.group("port"))
+
+        if port > 65535:
+            raise ValueError(
+                "BROWSER_ALLOWED_ENDPOINTS contains an invalid port."
+            )
+
+        endpoints.append((host, port))
+
+    if not endpoints:
+        raise ValueError(
+            "BROWSER_ALLOWED_ENDPOINTS must contain at least one endpoint."
+        )
+
+    return tuple(dict.fromkeys(endpoints))
+
+
+def _add_npm_policy(
+    spec: openshell_pb2.SandboxSpec,
+) -> None:
+    npm_policy = spec.policy.network_policies["npm_registry"]
+    npm_policy.name = "npm-registry"
+
+    npm_endpoint = npm_policy.endpoints.add()
+    npm_endpoint.host = _NPM_REGISTRY_HOST
+    npm_endpoint.port = _NPM_REGISTRY_PORT
+    npm_endpoint.protocol = "rest"
+    npm_endpoint.enforcement = "NETWORK_ENFORCEMENT_MODE_ENFORCE"
+    npm_endpoint.allow_encoded_slash = True
+
+    for method in ("GET", "HEAD", "OPTIONS"):
+        allow_rule = npm_endpoint.rules.add()
+        allow_rule.allow.method = method
+        allow_rule.allow.path = "/**"
+
+    for path in _NPM_AUDIT_PATHS:
+        allow_rule = npm_endpoint.rules.add()
+        allow_rule.allow.method = "POST"
+        allow_rule.allow.path = path
+
+    npm_binary = npm_policy.binaries.add()
+    npm_binary.path = _NPM_NODE_BINARY
+
+
+def _add_browser_policy(
+    spec: openshell_pb2.SandboxSpec,
+) -> None:
+    browser_policy = spec.policy.network_policies["browser_web"]
+    browser_policy.name = "browser-web"
+
+    for host, port in _browser_endpoints():
+        endpoint = browser_policy.endpoints.add()
+        endpoint.host = host
+        endpoint.port = port
+        # Browser traffic is HTTP(S). Leave protocol unset so OpenShell uses
+        # its explicit-proxy L4 path instead of transparent TCP capture.
+        # Chrome speaks HTTPS itself and does not need native TCP semantics.
+
+    browser_binary = browser_policy.binaries.add()
+    browser_binary.path = _BROWSER_BINARY
+
+
 def build_sandbox_spec(
     workspace_id: str,
+    profile: str = "default",
 ) -> openshell_pb2.SandboxSpec:
     """
     Build the OpenShell sandbox specification.
@@ -104,6 +206,8 @@ def build_sandbox_spec(
     system-managed Docker volume, mount target, and access mode stored in
     the grant database.
     """
+    profile = validate_profile(profile)
+
     cpu = validate_cpu(DEFAULT_CPU)
     memory = validate_memory(DEFAULT_MEMORY)
 
@@ -130,14 +234,23 @@ def build_sandbox_spec(
 
     spec = openshell_pb2.SandboxSpec()
 
-    spec.template.image = SANDBOX_IMAGE
-
-    spec.command.extend(
-        [
-            "sleep",
-            "infinity",
-        ]
-    )
+    if profile == "browser":
+        spec.template.image = BROWSER_SANDBOX_IMAGE
+        spec.command.extend(
+            [
+                "/usr/bin/dumb-init",
+                "--",
+                "/usr/local/bin/browser-runtime",
+            ]
+        )
+    else:
+        spec.template.image = SANDBOX_IMAGE
+        spec.command.extend(
+            [
+                "sleep",
+                "infinity",
+            ]
+        )
 
     spec.template.resources.update(
         {
@@ -164,7 +277,6 @@ def build_sandbox_spec(
     )
 
     spec.policy.version = 1
-
     spec.policy.filesystem.include_workdir = True
 
     spec.policy.filesystem.read_only.extend(
@@ -187,39 +299,12 @@ def build_sandbox_spec(
         ]
     )
 
-    npm_policy = spec.policy.network_policies["npm_registry"]
-    npm_policy.name = "npm-registry"
-
-    npm_endpoint = npm_policy.endpoints.add()
-    npm_endpoint.host = _NPM_REGISTRY_HOST
-    npm_endpoint.port = _NPM_REGISTRY_PORT
-    npm_endpoint.protocol = "rest"
-    npm_endpoint.enforcement = "NETWORK_ENFORCEMENT_MODE_ENFORCE"
-    npm_endpoint.allow_encoded_slash = True
-
-    for method in ("GET", "HEAD", "OPTIONS"):
-        allow_rule = npm_endpoint.rules.add()
-        allow_rule.allow.method = method
-        allow_rule.allow.path = "/**"
-
-    for path in _NPM_AUDIT_PATHS:
-        allow_rule = npm_endpoint.rules.add()
-        allow_rule.allow.method = "POST"
-        allow_rule.allow.path = path
-
-    npm_binary = npm_policy.binaries.add()
-    npm_binary.path = _NPM_NODE_BINARY
-
-    browser_policy = spec.policy.network_policies["browser_cdp"]
-    browser_policy.name = "browser-cdp"
-
-    browser_endpoint = browser_policy.endpoints.add()
-    browser_endpoint.host = _BROWSER_HOST
-    browser_endpoint.port = _BROWSER_PORT
-    browser_endpoint.protocol = "tcp"
-
-    browser_binary = browser_policy.binaries.add()
-    browser_binary.path = _BROWSER_NODE_BINARY
+    if profile == "browser":
+        spec.policy.filesystem.read_only.append("/opt/chrome")
+        spec.policy.filesystem.read_write.append("/home/chrome")
+        _add_browser_policy(spec)
+    else:
+        _add_npm_policy(spec)
 
     spec.policy.landlock.compatibility = "hard_requirement"
 
