@@ -387,3 +387,72 @@ def test_mcpctl_parser_contains_expected_commands() -> None:
         "workspace",
         "config",
     }
+
+def test_setup_configures_mcp_client_before_starting_services(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    events: list[str] = []
+    tls_status = object()
+    final_status = object()
+
+    monkeypatch.setattr(
+        mcpctl.lifecycle,
+        "prepare_runtime",
+        lambda: events.append("prepare_runtime"),
+    )
+    monkeypatch.setattr(
+        mcpctl,
+        "setup_openshell_tls",
+        lambda: events.append("setup_tls") or tls_status,
+    )
+    monkeypatch.setattr(
+        mcpctl,
+        "_config_mcp_client",
+        lambda *, allow_skip: (
+            events.append(f"config_mcp_client:{allow_skip}")
+            or mcpctl.EXIT_OK
+        ),
+    )
+    monkeypatch.setattr(
+        mcpctl.lifecycle,
+        "validate_compose",
+        lambda: events.append("validate_compose"),
+    )
+    monkeypatch.setattr(
+        mcpctl.lifecycle,
+        "start_core_services",
+        lambda: events.append("start_core_services"),
+    )
+    monkeypatch.setattr(
+        mcpctl.lifecycle,
+        "reconcile_tunnel_client",
+        lambda: events.append("reconcile_tunnel_client"),
+    )
+    monkeypatch.setattr(
+        mcpctl.lifecycle,
+        "verify",
+        lambda status: (
+            events.append(f"verify:{status is tls_status}")
+            or final_status
+        ),
+    )
+    monkeypatch.setattr(
+        mcpctl.lifecycle,
+        "print_status",
+        lambda status: events.append(
+            f"print_status:{status is final_status}"
+        ),
+    )
+
+    assert mcpctl._setup() == mcpctl.EXIT_OK
+
+    assert events == [
+        "prepare_runtime",
+        "setup_tls",
+        "config_mcp_client:True",
+        "validate_compose",
+        "start_core_services",
+        "reconcile_tunnel_client",
+        "verify:True",
+        "print_status:True",
+    ]
