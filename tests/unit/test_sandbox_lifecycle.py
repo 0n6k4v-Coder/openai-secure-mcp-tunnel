@@ -1,15 +1,23 @@
 from __future__ import annotations
 
+import asyncio
 import importlib
 import json
 
 import pytest
+
+from mcp.server import MCPServer
+
+from local_mcp_server.sandbox.tools import register_tools
 
 
 cli = importlib.import_module("local_mcp_server.cli.main")
 mcpctl = importlib.import_module("local_mcp_server.cli.mcpctl")
 sandbox = importlib.import_module(
     "local_mcp_server.infrastructure.openshell.sandbox",
+)
+sandbox_service = importlib.import_module(
+    "local_mcp_server.sandbox.service",
 )
 
 
@@ -144,6 +152,47 @@ def test_repair_reuses_open_shell_start(
     assert calls == ["project-api"]
 
 
+def test_service_restart_stops_then_starts(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    calls: list[str] = []
+
+    monkeypatch.setattr(
+        sandbox_service,
+        "stop_sandbox",
+        lambda name: calls.append(f"stop:{name}") or "stopped",
+    )
+
+    monkeypatch.setattr(
+        sandbox_service,
+        "start_sandbox",
+        lambda name: calls.append(f"start:{name}") or "started",
+    )
+
+    assert sandbox_service.restart_sandbox("project-api") == "started"
+
+    assert calls == [
+        "stop:project-api",
+        "start:project-api",
+    ]
+
+
+def test_service_repair_reuses_start(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    calls: list[str] = []
+
+    monkeypatch.setattr(
+        sandbox_service,
+        "start_sandbox",
+        lambda name: calls.append(name) or "started",
+    )
+
+    assert sandbox_service.repair_sandbox("project-api") == "started"
+
+    assert calls == ["project-api"]
+
+
 def test_recreate_preserves_workspace_and_profile(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -262,3 +311,44 @@ def test_recreate_rejects_unsupported_profile(
         match="unsupported profile",
     ):
         sandbox.recreate_sandbox("project-api")
+
+
+def test_mcp_registers_complete_sandbox_lifecycle_surface() -> None:
+    mcp = MCPServer("sandbox-test")
+
+    register_tools(mcp)
+
+    tools = asyncio.run(mcp.list_tools())
+    tool_map = {
+        tool.name: tool
+        for tool in tools
+    }
+
+    expected = {
+        "get_system_info",
+        "create_sandbox",
+        "list_sandboxes",
+        "sandbox_status",
+        "sandbox_logs",
+        "start_sandbox",
+        "stop_sandbox",
+        "restart_sandbox",
+        "repair_sandbox",
+        "recreate_sandbox",
+        "delete_sandbox",
+        "execute_sandbox_command",
+    }
+
+    assert expected <= set(tool_map)
+
+    assert tool_map["sandbox_logs"].annotations.read_only_hint is True
+    assert tool_map["sandbox_logs"].annotations.idempotent_hint is True
+
+    assert tool_map["repair_sandbox"].annotations.destructive_hint is False
+    assert tool_map["repair_sandbox"].annotations.idempotent_hint is True
+
+    assert tool_map["restart_sandbox"].annotations.destructive_hint is True
+    assert tool_map["restart_sandbox"].annotations.idempotent_hint is False
+
+    assert tool_map["recreate_sandbox"].annotations.destructive_hint is True
+    assert tool_map["recreate_sandbox"].annotations.idempotent_hint is False

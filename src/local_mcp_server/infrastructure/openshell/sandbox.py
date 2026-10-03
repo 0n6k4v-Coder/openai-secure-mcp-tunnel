@@ -89,6 +89,47 @@ def _run_openshell_control(*args: str) -> None:
         )
 
 
+def _run_openshell_output(
+    *args: str,
+    timeout_seconds: int = 30,
+) -> str:
+    environment = os.environ.copy()
+    environment["OPENSHELL_WORKSPACE"] = OPENSHELL_WORKSPACE
+
+    try:
+        completed = subprocess.run(
+            _openshell_command(*args),
+            check=False,
+            capture_output=True,
+            text=True,
+            timeout=timeout_seconds,
+            env=environment,
+        )
+    except subprocess.TimeoutExpired as exc:
+        raise SandboxError(
+            f"OpenShell output command timed out: {' '.join(args)}"
+        ) from exc
+    except OSError as exc:
+        raise SandboxError(
+            f"Failed to execute OpenShell output command: "
+            f"{type(exc).__name__}: {exc}"
+        ) from exc
+
+    if completed.returncode != 0:
+        diagnostic = (
+            completed.stderr.strip()
+            or completed.stdout.strip()
+            or "OpenShell returned no diagnostic output."
+        )
+
+        raise SandboxError(
+            f"OpenShell command failed with exit code "
+            f"{completed.returncode}: {diagnostic}"
+        )
+
+    return completed.stdout
+
+
 def _host_workspace_id_from_labels(
     labels,
 ) -> str | None:
@@ -367,6 +408,58 @@ def stop_sandbox(
     )
 
     return sandbox_status(name)
+
+
+def restart_sandbox(
+    name: str,
+) -> str:
+    """Restart an OpenShell sandbox by stopping it and starting it again."""
+    name = validate_name(name)
+
+    stop_sandbox(name)
+
+    return start_sandbox(name)
+
+
+def repair_sandbox(
+    name: str,
+) -> str:
+    """
+    Retry startup of a retained failed OpenShell sandbox.
+
+    Repair intentionally reuses OpenShell start semantics instead of
+    deleting and recreating the sandbox.
+    """
+    name = validate_name(name)
+
+    return start_sandbox(name)
+
+
+def sandbox_logs(
+    name: str,
+    *,
+    since: str = "5m",
+) -> str:
+    """
+    Return a bounded recent OpenShell log window for a sandbox.
+
+    The default five-minute window prevents an MCP tool call from becoming
+    an unbounded live log stream.
+    """
+    name = validate_name(name)
+
+    if (
+        not isinstance(since, str)
+        or not since.strip()
+    ):
+        raise ValueError("since must not be empty.")
+
+    return _run_openshell_output(
+        "logs",
+        name,
+        "--since",
+        since,
+    )
 
 
 def execute_sandbox_argv(

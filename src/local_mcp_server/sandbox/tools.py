@@ -15,6 +15,10 @@ from .service import (
     delete_sandbox as delete_sandbox_impl,
     execute_sandbox as execute_sandbox_impl,
     list_sandboxes as list_sandboxes_impl,
+    recreate_sandbox as recreate_sandbox_impl,
+    repair_sandbox as repair_sandbox_impl,
+    restart_sandbox as restart_sandbox_impl,
+    sandbox_logs as sandbox_logs_impl,
     sandbox_status as sandbox_status_impl,
     start_sandbox as start_sandbox_impl,
     stop_sandbox as stop_sandbox_impl,
@@ -23,6 +27,10 @@ from .policy import validate_profile
 
 
 class SandboxDeletionApproval(BaseModel):
+    approved: bool
+
+
+class SandboxRecreationApproval(BaseModel):
     approved: bool
 
 
@@ -51,6 +59,35 @@ async def _sandbox_deletion_approval(
             sandbox_name=name,
         ),
         SandboxDeletionApproval,
+    )
+
+
+def _sandbox_recreation_approval_message(
+    *,
+    sandbox_name: str,
+) -> str:
+    return (
+        "SANDBOX RECREATION APPROVAL REQUIRED\n\n"
+        f"Sandbox: {sandbox_name}\n\n"
+        "Recreating this sandbox permanently deletes the current "
+        "OpenShell sandbox before creating a new sandbox with the "
+        "same managed host workspace and profile.\n\n"
+        "The current sandbox runtime state and sandbox-specific state "
+        "will not be preserved. Static sandbox controls and other "
+        "instance-specific state may be reset.\n\n"
+        "Approve this sandbox recreation?"
+    )
+
+
+async def _sandbox_recreation_approval(
+    *,
+    name: str,
+) -> Elicit[SandboxRecreationApproval]:
+    return Elicit(
+        _sandbox_recreation_approval_message(
+            sandbox_name=name,
+        ),
+        SandboxRecreationApproval,
     )
 
 
@@ -129,6 +166,28 @@ def register_tools(mcp: MCPServer) -> None:
 
     @mcp.tool(
         annotations=ToolAnnotations(
+            readOnlyHint=True,
+            destructiveHint=False,
+            idempotentHint=True,
+            openWorldHint=False,
+        )
+    )
+    def sandbox_logs(
+        name: str,
+        since: str = "5m",
+    ) -> str:
+        """
+        Return recent OpenShell logs for a sandbox.
+
+        since is an OpenShell duration such as '5m', '1h', or '30s'.
+        """
+        return sandbox_logs_impl(
+            name=name,
+            since=since,
+        )
+
+    @mcp.tool(
+        annotations=ToolAnnotations(
             readOnlyHint=False,
             destructiveHint=False,
             idempotentHint=True,
@@ -138,7 +197,9 @@ def register_tools(mcp: MCPServer) -> None:
     def start_sandbox(
         name: str,
     ) -> str:
-        """Start a stopped OpenShell sandbox."""
+        """
+        Start a stopped or retained failed OpenShell sandbox.
+        """
         return start_sandbox_impl(name)
 
     @mcp.tool(
@@ -163,15 +224,60 @@ def register_tools(mcp: MCPServer) -> None:
             openWorldHint=False,
         )
     )
-    def execute_sandbox_command(
+    def restart_sandbox(
         name: str,
-        command: str,
     ) -> str:
-        """Execute a normal command inside an OpenShell sandbox."""
-        return execute_sandbox_impl(
-            name=name,
-            command=command,
+        """
+        Restart an OpenShell sandbox by stopping it and starting it again.
+        """
+        return restart_sandbox_impl(name)
+
+    @mcp.tool(
+        annotations=ToolAnnotations(
+            readOnlyHint=False,
+            destructiveHint=False,
+            idempotentHint=True,
+            openWorldHint=False,
         )
+    )
+    def repair_sandbox(
+        name: str,
+    ) -> str:
+        """
+        Retry startup of a retained failed OpenShell sandbox.
+
+        Repair does not delete or recreate the sandbox.
+        """
+        return repair_sandbox_impl(name)
+
+    @mcp.tool(
+        annotations=ToolAnnotations(
+            readOnlyHint=False,
+            destructiveHint=True,
+            idempotentHint=False,
+            openWorldHint=False,
+        )
+    )
+    async def recreate_sandbox(
+        name: str,
+        approval: Annotated[
+            ElicitationResult[SandboxRecreationApproval],
+            Resolve(_sandbox_recreation_approval),
+        ],
+    ) -> str:
+        """
+        Delete and recreate a managed sandbox after explicit user approval.
+
+        The recreated sandbox keeps the managed host workspace grant and
+        sandbox profile recorded by this application.
+        """
+        if approval.action != "accept" or approval.data is None:
+            return "Sandbox recreation was denied or cancelled by the user."
+
+        if not approval.data.approved:
+            return "Sandbox recreation was denied or cancelled by the user."
+
+        return recreate_sandbox_impl(name)
 
     @mcp.tool(
         annotations=ToolAnnotations(
@@ -202,3 +308,21 @@ def register_tools(mcp: MCPServer) -> None:
             return "Sandbox deletion was denied or cancelled by the user."
 
         return delete_sandbox_impl(name)
+
+    @mcp.tool(
+        annotations=ToolAnnotations(
+            readOnlyHint=False,
+            destructiveHint=True,
+            idempotentHint=False,
+            openWorldHint=False,
+        )
+    )
+    def execute_sandbox_command(
+        name: str,
+        command: str,
+    ) -> str:
+        """Execute a normal command inside an OpenShell sandbox."""
+        return execute_sandbox_impl(
+            name=name,
+            command=command,
+        )
