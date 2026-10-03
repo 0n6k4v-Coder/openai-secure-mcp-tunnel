@@ -25,38 +25,28 @@ services:
         target: /etc/openshell/gateway.toml
         read_only: true
 
-      # IMPORTANT:
-      # OpenShell Docker driver creates sibling containers through the
-      # host Docker daemon. Therefore guest TLS files must be available
-      # from the host filesystem at the same absolute path used by the
-      # gateway process.
-      #
-      # Keep the user-configurable host path, but mount it at the exact
-      # same absolute path inside the gateway container.
       - type: bind
-        source: ${OPENSHELL_TLS_HOST_DIR:-${XDG_STATE_HOME:-$HOME/.local/state}/local-mcp-server/openshell/tls}
-        target: ${OPENSHELL_TLS_HOST_DIR:-${XDG_STATE_HOME:-$HOME/.local/state}/local-mcp-server/openshell/tls}
+        source: ${XDG_STATE_HOME:-$HOME/.local/state}/local-mcp-server/openshell/tls
+        target: /etc/openshell/tls
         read_only: true
 
     environment:
       OPENSHELL_GATEWAY_CONFIG: /etc/openshell/gateway.toml
-
       OPENSHELL_DB_URL: sqlite:/var/lib/local-mcp-server/config/openshell.db
 
       XDG_DATA_HOME: /var/lib/local-mcp-server/config
       XDG_STATE_HOME: /var/lib/local-mcp-server/config
       HOME: /var/lib/local-mcp-server/config
 
-      OPENSHELL_LOCAL_TLS_DIR: ${OPENSHELL_TLS_HOST_DIR:-${XDG_STATE_HOME:-$HOME/.local/state}/local-mcp-server/openshell/tls}
-
-      OPENSHELL_TLS_CERT: ${OPENSHELL_TLS_HOST_DIR:-${XDG_STATE_HOME:-$HOME/.local/state}/local-mcp-server/openshell/tls}/server/tls.crt
-      OPENSHELL_TLS_KEY: ${OPENSHELL_TLS_HOST_DIR:-${XDG_STATE_HOME:-$HOME/.local/state}/local-mcp-server/openshell/tls}/server/tls.key
-      OPENSHELL_TLS_CLIENT_CA: ${OPENSHELL_TLS_HOST_DIR:-${XDG_STATE_HOME:-$HOME/.local/state}/local-mcp-server/openshell/tls}/ca.crt
+      OPENSHELL_LOCAL_TLS_DIR: /etc/openshell/tls
+      OPENSHELL_TLS_CERT: /etc/openshell/tls/server/tls.crt
+      OPENSHELL_TLS_KEY: /etc/openshell/tls/server/tls.key
+      OPENSHELL_TLS_CLIENT_CA: /etc/openshell/tls/ca.crt
       OPENSHELL_ENABLE_MTLS_AUTH: "true"
 
-      OPENSHELL_DOCKER_TLS_CA: ${OPENSHELL_TLS_HOST_DIR:-${XDG_STATE_HOME:-$HOME/.local/state}/local-mcp-server/openshell/tls}/ca.crt
-      OPENSHELL_DOCKER_TLS_CERT: ${OPENSHELL_TLS_HOST_DIR:-${XDG_STATE_HOME:-$HOME/.local/state}/local-mcp-server/openshell/tls}/client/tls.crt
-      OPENSHELL_DOCKER_TLS_KEY: ${OPENSHELL_TLS_HOST_DIR:-${XDG_STATE_HOME:-$HOME/.local/state}/local-mcp-server/openshell/tls}/client/tls.key
+      OPENSHELL_DOCKER_TLS_CA: /etc/openshell/tls/ca.crt
+      OPENSHELL_DOCKER_TLS_CERT: /etc/openshell/tls/client/tls.crt
+      OPENSHELL_DOCKER_TLS_KEY: /etc/openshell/tls/client/tls.key
 
     extra_hosts:
       - "host.docker.internal:host-gateway"

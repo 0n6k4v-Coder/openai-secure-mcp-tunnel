@@ -232,14 +232,33 @@ The MCP server's SDK registry metadata is in `deploy/openshell/gateway-metadata.
 
 ## Runtime storage
 
-There are three important state categories.
+There are four important storage categories.
+
+### MCP client configuration
+
+User-specific MCP client configuration follows the XDG configuration hierarchy:
+
+```text
+Host: ${XDG_CONFIG_HOME:-$HOME/.config}/local-mcp-server/
+        │
+        └── mcp-clients/
+            └── openai/
+                ├── config.yaml
+                └── credentials
+```
+
+The OpenAI tunnel ID is stored in `config.yaml`. The control-plane API key is stored separately in `credentials`. Both files are created with mode `0600`, and the containing application directories are required to be private to the user.
+
+The tunnel client receives `config.yaml` as a read-only bind mount at `/etc/tunnel-client/openai.yaml`. The API key is provided separately through the Compose secret `CONTROL_PLANE_API_KEY`.
+
+This user-local MCP client configuration is intentionally separate from the OpenShell Gateway's mutable application state.
 
 ### OpenShell Gateway state
 
-The Gateway stores its SQLite state and credential encryption material under the Compose-mounted MCP configuration directory:
+The Gateway stores its SQLite state and credential encryption material under the Compose-mounted state directory:
 
 ```text
-Host: ${MCP_CONFIG_DIR:-/var/lib/local-mcp-server/config}
+Host: ${MCP_CONFIG_DIR:-${XDG_STATE_HOME:-$HOME/.local/state}/local-mcp-server/config}
         │
         ▼
 Gateway: /var/lib/local-mcp-server/config
@@ -247,6 +266,8 @@ Gateway: /var/lib/local-mcp-server/config
         └── credentials/
             └── key-encryption-key.bin
 ```
+
+`MCP_CONFIG_DIR` therefore identifies Gateway/OpenShell state; it is not the storage location for MCP client credentials.
 
 ### MCP installation state
 
@@ -461,8 +482,8 @@ The first is the operator CLI for Compose/OpenShell/credential operations. The s
 | `.env` | Local deployment variables and tunnel ID |
 | `.secrets/openshell-tls/gateway` | Gateway server certificate/key/CA material |
 | `.secrets/openshell-tls/client` | MCP/OpenShell client mTLS material |
-| `.secrets/control-plane-api-key` | Docker Compose secret consumed by `tunnel-client` |
-| `MCP_CONFIG_DIR` | Gateway persistent OpenShell state/config directory |
+| `${XDG_CONFIG_HOME:-$HOME/.config}/local-mcp-server/mcp-clients/openai/config.yaml` | User-local OpenAI MCP tunnel client configuration |\n| `${XDG_CONFIG_HOME:-$HOME/.config}/local-mcp-server/mcp-clients/openai/credentials` | User-local OpenAI control-plane API key consumed as a Docker secret |\n| `.secrets/control-plane-api-key` | Docker Compose secret consumed by `tunnel-client` |
+| `XDG_CONFIG_HOME` | User-local MCP client configuration root; defaults to `$HOME/.config` |\n| `MCP_CONFIG_DIR` | Gateway persistent OpenShell state/config directory |
 | `WORKSPACE_GRANTS_DIR` | Trusted workspace authorization database |
 | `MCP_INSTALLATION_STATE_FILE` | Installation approval/execution state |
 | `SANDBOX_IMAGE` | OpenShell sandbox workload image |

@@ -1,6 +1,6 @@
 {
   "name": "local",
-  "gateway_endpoint": "https://openshell-gateway:8080",
+  "gateway_endpoint": "https://host.openshell.internal:8080",
   "is_remote": false,
   "gateway_port": 0,
   "auth_mode": "mtls"
