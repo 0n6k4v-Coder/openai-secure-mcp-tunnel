@@ -180,3 +180,36 @@ def test_main_delegates_to_existing_cli(
     assert completion.main(["status", "--json"]) == 17
     assert captured["argv"] == ["status", "--json"]
     assert isinstance(captured["parser"], argparse.ArgumentParser)
+
+
+def test_build_mcpctl_completion_parser_contains_nested_commands() -> None:
+    parser = completion._build_mcpctl_completion_parser()
+
+    assert parser.prog == "mcpctl"
+
+    parsers = {
+        current_parser.prog: current_parser
+        for current_parser in completion._iter_parsers(parser)
+    }
+
+    assert "mcpctl sandbox" in parsers
+    assert "mcpctl sandbox create" in parsers
+    assert "mcpctl credential create" in parsers
+    assert "mcpctl workspace authorize" in parsers
+
+    sandbox_create = parsers["mcpctl sandbox create"]
+    workspace_action = next(
+        action
+        for action in sandbox_create._actions
+        if action.dest == "workspace_id"
+    )
+    assert workspace_action.completer is completion._workspace_id_completer
+
+
+def test_mcpctl_shellcode_targets_mcpctl() -> None:
+    shellcode = argcomplete.shellcode(
+        ["mcpctl"],
+        shell="bash",
+    )
+
+    assert "mcpctl" in shellcode

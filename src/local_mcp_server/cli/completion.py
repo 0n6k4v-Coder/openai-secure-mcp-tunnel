@@ -10,7 +10,10 @@ import argcomplete
 from argcomplete.completers import EnvironCompleter
 
 from ..sandbox.service import list_sandboxes
-from .main import _build_parser, main as _main
+from .main import _build_parser as _build_local_parser
+from .main import main as _main
+from .mcpctl import _build_parser as _build_mcpctl_parser
+from .mcpctl import main as _mcpctl_main
 from .workspace_broker import _list_grants
 
 
@@ -95,17 +98,32 @@ def _configure_dynamic_completers(
 
             if action.dest == "name" and "sandbox" in parser_path:
                 action.completer = _sandbox_name_completer
+                continue
+
+            if action.dest == "sandbox_name":
+                action.completer = _sandbox_name_completer
 
 
-def _build_completion_parser() -> argparse.ArgumentParser:
-    parser = _build_parser()
-    _configure_dynamic_completers(parser)
-
+def _configure_environment_completers(
+    parser: argparse.ArgumentParser,
+) -> None:
     for current_parser in _iter_parsers(parser):
         for action in current_parser._actions:
             if "--key" in action.option_strings:
                 action.completer = EnvironCompleter
 
+
+def _build_completion_parser() -> argparse.ArgumentParser:
+    parser = _build_local_parser()
+    _configure_dynamic_completers(parser)
+    _configure_environment_completers(parser)
+    return parser
+
+
+def _build_mcpctl_completion_parser() -> argparse.ArgumentParser:
+    parser = _build_mcpctl_parser()
+    _configure_dynamic_completers(parser)
+    _configure_environment_completers(parser)
     return parser
 
 
@@ -113,6 +131,12 @@ def main(argv: list[str] | None = None) -> int:
     parser = _build_completion_parser()
     argcomplete.autocomplete(parser)
     return _main(argv)
+
+
+def mcpctl_main(argv: list[str] | None = None) -> int:
+    parser = _build_mcpctl_completion_parser()
+    argcomplete.autocomplete(parser)
+    return _mcpctl_main(argv)
 
 
 if __name__ == "__main__":
