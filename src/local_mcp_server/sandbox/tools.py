@@ -2,14 +2,11 @@ from __future__ import annotations
 
 import platform
 import sys
-from typing import Annotated
 
 from mcp.server import MCPServer
-from mcp.server.mcpserver import Elicit, Resolve
-from mcp.server.elicitation import ElicitationResult
 from mcp.types import ToolAnnotations
-from pydantic import BaseModel
 
+from .policy import validate_profile
 from .service import (
     create_sandbox as create_sandbox_impl,
     delete_sandbox as delete_sandbox_impl,
@@ -23,72 +20,6 @@ from .service import (
     start_sandbox as start_sandbox_impl,
     stop_sandbox as stop_sandbox_impl,
 )
-from .policy import validate_profile
-
-
-class SandboxDeletionApproval(BaseModel):
-    approved: bool
-
-
-class SandboxRecreationApproval(BaseModel):
-    approved: bool
-
-
-def _sandbox_deletion_approval_message(
-    *,
-    sandbox_name: str,
-) -> str:
-    return (
-        "SANDBOX DELETION APPROVAL REQUIRED\n\n"
-        f"Sandbox: {sandbox_name}\n\n"
-        "Deleting this sandbox permanently removes the OpenShell "
-        "sandbox and its managed resources.\n\n"
-        "This does not revoke the associated host workspace grant. "
-        "Host workspace grants are separate authorization resources "
-        "managed by the host-side workspace broker.\n\n"
-        "Approve this sandbox deletion?"
-    )
-
-
-async def _sandbox_deletion_approval(
-    *,
-    name: str,
-) -> Elicit[SandboxDeletionApproval]:
-    return Elicit(
-        _sandbox_deletion_approval_message(
-            sandbox_name=name,
-        ),
-        SandboxDeletionApproval,
-    )
-
-
-def _sandbox_recreation_approval_message(
-    *,
-    sandbox_name: str,
-) -> str:
-    return (
-        "SANDBOX RECREATION APPROVAL REQUIRED\n\n"
-        f"Sandbox: {sandbox_name}\n\n"
-        "Recreating this sandbox permanently deletes the current "
-        "OpenShell sandbox before creating a new sandbox with the "
-        "same managed host workspace and profile.\n\n"
-        "The current sandbox runtime state and sandbox-specific state "
-        "will not be preserved. Static sandbox controls and other "
-        "instance-specific state may be reset.\n\n"
-        "Approve this sandbox recreation?"
-    )
-
-
-async def _sandbox_recreation_approval(
-    *,
-    name: str,
-) -> Elicit[SandboxRecreationApproval]:
-    return Elicit(
-        _sandbox_recreation_approval_message(
-            sandbox_name=name,
-        ),
-        SandboxRecreationApproval,
-    )
 
 
 def register_tools(mcp: MCPServer) -> None:
@@ -258,25 +189,16 @@ def register_tools(mcp: MCPServer) -> None:
             openWorldHint=False,
         )
     )
-    async def recreate_sandbox(
+    def recreate_sandbox(
         name: str,
-        approval: Annotated[
-            ElicitationResult[SandboxRecreationApproval],
-            Resolve(_sandbox_recreation_approval),
-        ],
     ) -> str:
         """
-        Delete and recreate a managed sandbox after explicit user approval.
+        Delete and recreate a managed sandbox.
 
-        The recreated sandbox keeps the managed host workspace grant and
-        sandbox profile recorded by this application.
+        ChatGPT treats this as a destructive action and may require user
+        confirmation before invoking the tool. The server remains responsible
+        for authorization and validation of the requested sandbox.
         """
-        if approval.action != "accept" or approval.data is None:
-            return "Sandbox recreation was denied or cancelled by the user."
-
-        if not approval.data.approved:
-            return "Sandbox recreation was denied or cancelled by the user."
-
         return recreate_sandbox_impl(name)
 
     @mcp.tool(
@@ -287,26 +209,16 @@ def register_tools(mcp: MCPServer) -> None:
             openWorldHint=False,
         )
     )
-    async def delete_sandbox(
+    def delete_sandbox(
         name: str,
-        approval: Annotated[
-            ElicitationResult[SandboxDeletionApproval],
-            Resolve(_sandbox_deletion_approval),
-        ],
     ) -> str:
         """
-        Delete an OpenShell sandbox after explicit user approval.
+        Permanently delete an OpenShell sandbox.
 
-        The approval is implemented through MCP resolver-based elicitation,
-        so it works with both legacy elicitation and modern MCP
-        multi-round-trip clients.
+        ChatGPT treats this as a destructive action and may require user
+        confirmation before invoking the tool. The server remains responsible
+        for authorization and validation of the requested sandbox.
         """
-        if approval.action != "accept" or approval.data is None:
-            return "Sandbox deletion was denied or cancelled by the user."
-
-        if not approval.data.approved:
-            return "Sandbox deletion was denied or cancelled by the user."
-
         return delete_sandbox_impl(name)
 
     @mcp.tool(
