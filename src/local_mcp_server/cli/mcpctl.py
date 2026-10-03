@@ -137,12 +137,12 @@ def _setup() -> int:
 
     tls_status = setup_openshell_tls()
 
-    lifecycle.validate_compose()
-    lifecycle.start_core_services()
-
     _config_mcp_client(
         allow_skip=True,
     )
+
+    lifecycle.validate_compose()
+    lifecycle.start_core_services()
 
     lifecycle.reconcile_tunnel_client()
 
