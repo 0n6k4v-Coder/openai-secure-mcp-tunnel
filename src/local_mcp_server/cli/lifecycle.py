@@ -17,7 +17,6 @@ from ..config.paths import (
 )
 from ..infrastructure.openshell.tls import TLSStatus
 from .main import (
-    COMPOSE_FILE,
     _command_exists,
     _compose_command,
     _run_capture,
