@@ -6,20 +6,24 @@ bind_address = "127.0.0.1:8080"
 health_bind_address = "127.0.0.1:8081"
 log_level = "info"
 compute_driver = "docker"
+
 server_sans = [
   "openshell-gateway",
   "host.openshell.internal",
   "localhost",
-  "127.0.0.1"
+  "127.0.0.1",
 ]
+
 disable_tls = false
-guest_tls_ca = "/etc/openshell/tls/ca.crt"
-guest_tls_cert = "/etc/openshell/tls/client/tls.crt"
-guest_tls_key = "/etc/openshell/tls/client/tls.key"
+
+guest_tls_ca = "${OPENSHELL_TLS_HOST_DIR:-${XDG_STATE_HOME:-$HOME/.local/state}/local-mcp-server/openshell/tls}/ca.crt"
+guest_tls_cert = "${OPENSHELL_TLS_HOST_DIR:-${XDG_STATE_HOME:-$HOME/.local/state}/local-mcp-server/openshell/tls}/client/tls.crt"
+guest_tls_key = "${OPENSHELL_TLS_HOST_DIR:-${XDG_STATE_HOME:-$HOME/.local/state}/local-mcp-server/openshell/tls}/client/tls.key"
+
 [openshell.gateway.tls]
-cert_path = "/etc/openshell/tls/server/tls.crt"
-key_path = "/etc/openshell/tls/server/tls.key"
-client_ca_path = "/etc/openshell/tls/ca.crt"
+cert_path = "${OPENSHELL_TLS_HOST_DIR:-${XDG_STATE_HOME:-$HOME/.local/state}/local-mcp-server/openshell/tls}/server/tls.crt"
+key_path = "${OPENSHELL_TLS_HOST_DIR:-${XDG_STATE_HOME:-$HOME/.local/state}/local-mcp-server/openshell/tls}/server/tls.key"
+client_ca_path = "${OPENSHELL_TLS_HOST_DIR:-${XDG_STATE_HOME:-$HOME/.local/state}/local-mcp-server/openshell/tls}/ca.crt"
 
 [openshell.gateway.auth]
 allow_unauthenticated_users = false
@@ -28,10 +32,11 @@ allow_unauthenticated_users = false
 enabled = true
 
 [openshell.gateway.gateway_jwt]
-signing_key_path = "/etc/openshell/tls/jwt/signing.pem"
-public_key_path = "/etc/openshell/tls/jwt/public.pem"
-kid_path = "/etc/openshell/tls/jwt/kid"
+signing_key_path = "${OPENSHELL_TLS_HOST_DIR:-${XDG_STATE_HOME:-$HOME/.local/state}/local-mcp-server/openshell/tls}/jwt/signing.pem"
+public_key_path = "${OPENSHELL_TLS_HOST_DIR:-${XDG_STATE_HOME:-$HOME/.local/state}/local-mcp-server/openshell/tls}/jwt/public.pem"
+kid_path = "${OPENSHELL_TLS_HOST_DIR:-${XDG_STATE_HOME:-$HOME/.local/state}/local-mcp-server/openshell/tls}/jwt/kid"
 gateway_id = "openai-secure-mcp-tunnel"
+
 [openshell.gateway.credential_storage]
 key_encryption_key_path = "/var/lib/local-mcp-server/config/credentials/key-encryption-key.bin"
 
