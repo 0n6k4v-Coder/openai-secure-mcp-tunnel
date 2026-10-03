@@ -505,7 +505,7 @@ def _credential_revoke(
 
 def _build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
-        prog="mcp",
+        prog="local-mcp-server",
         description="Local control CLI for the OpenAI Secure MCP Tunnel.",
     )
 

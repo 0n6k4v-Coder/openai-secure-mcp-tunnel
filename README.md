@@ -119,6 +119,26 @@ It is bind-mounted only to the authorized workspace and removes the sandbox UID 
 
 # Set Up
 
+# Quick Start
+
+Install the CLI:
+
+```bash
+./scripts/install-cli.sh
+```
+
+Activate the virtual environment:
+
+```bash
+source .venv/bin/activate
+```
+
+After activation, the CLI is available as:
+
+```bash
+local-mcp-server --help
+```
+
 ## Step 1 - Clone the repository
 
 ```bash
