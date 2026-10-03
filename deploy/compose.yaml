@@ -39,6 +39,7 @@ services:
       HOME: /var/lib/local-mcp-server/config
 
       OPENSHELL_LOCAL_TLS_DIR: /etc/openshell/tls
+
       OPENSHELL_TLS_CERT: /etc/openshell/tls/server/tls.crt
       OPENSHELL_TLS_KEY: /etc/openshell/tls/server/tls.key
       OPENSHELL_TLS_CLIENT_CA: /etc/openshell/tls/ca.crt
