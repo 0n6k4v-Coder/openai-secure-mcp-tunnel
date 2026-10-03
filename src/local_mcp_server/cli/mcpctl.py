@@ -67,10 +67,6 @@ def _print_tls_status(status: TLSStatus) -> None:
     print()
     print(f"State: {'✓ READY' if status.complete else '✗ NOT READY'}")
     print(f"Path: {status.root}")
-    print(f"Legacy path: {status.legacy_root}")
-
-    if status.legacy_present:
-        print("Legacy bundle: detected")
 
     if status.missing:
         print()
@@ -123,7 +119,10 @@ def _build_parser() -> argparse.ArgumentParser:
         help="Rebuild an unhealthy OpenShell TLS runtime state.",
     )
 
-    sandbox = commands.add_parser("sandbox", help="Manage OpenShell sandboxes.")
+    sandbox = commands.add_parser(
+        "sandbox",
+        help="Manage OpenShell sandboxes.",
+    )
     sandbox_commands = sandbox.add_subparsers(
         dest="sandbox_command",
         required=True,
@@ -134,22 +133,37 @@ def _build_parser() -> argparse.ArgumentParser:
         help="Create a sandbox.",
     )
     sandbox_create.add_argument("name")
-    sandbox_create.add_argument("--workspace", required=True, dest="workspace_id")
+    sandbox_create.add_argument(
+        "--workspace",
+        required=True,
+        dest="workspace_id",
+    )
     sandbox_create.add_argument(
         "--profile",
         choices=["default", "browser"],
         default="default",
     )
-    sandbox_create.add_argument("--json", dest="json_output", action="store_true")
+    sandbox_create.add_argument(
+        "--json",
+        dest="json_output",
+        action="store_true",
+    )
 
-    sandbox_commands.add_parser("list", help="List sandboxes.")
+    sandbox_commands.add_parser(
+        "list",
+        help="List sandboxes.",
+    )
 
     sandbox_status = sandbox_commands.add_parser(
         "status",
         help="Show one sandbox.",
     )
     sandbox_status.add_argument("name")
-    sandbox_status.add_argument("--json", dest="json_output", action="store_true")
+    sandbox_status.add_argument(
+        "--json",
+        dest="json_output",
+        action="store_true",
+    )
 
     sandbox_shell = sandbox_commands.add_parser(
         "shell",
@@ -162,7 +176,10 @@ def _build_parser() -> argparse.ArgumentParser:
         help="Execute a command in a sandbox.",
     )
     sandbox_exec.add_argument("name")
-    sandbox_exec.add_argument("exec_command", nargs=argparse.REMAINDER)
+    sandbox_exec.add_argument(
+        "exec_command",
+        nargs=argparse.REMAINDER,
+    )
 
     sandbox_logs = sandbox_commands.add_parser(
         "logs",
@@ -187,7 +204,11 @@ def _build_parser() -> argparse.ArgumentParser:
         help="Delete a sandbox.",
     )
     sandbox_delete.add_argument("name")
-    sandbox_delete.add_argument("--json", dest="json_output", action="store_true")
+    sandbox_delete.add_argument(
+        "--json",
+        dest="json_output",
+        action="store_true",
+    )
 
     credential = commands.add_parser(
         "credential",
@@ -203,9 +224,21 @@ def _build_parser() -> argparse.ArgumentParser:
         help="Create a persistent credential provider.",
     )
     credential_create.add_argument("name")
-    credential_create.add_argument("--type", required=True, dest="provider_type")
-    credential_create.add_argument("--key", required=True, dest="credential_key")
-    credential_create.add_argument("--yes", action="store_true", dest="confirmed")
+    credential_create.add_argument(
+        "--type",
+        required=True,
+        dest="provider_type",
+    )
+    credential_create.add_argument(
+        "--key",
+        required=True,
+        dest="credential_key",
+    )
+    credential_create.add_argument(
+        "--yes",
+        action="store_true",
+        dest="confirmed",
+    )
 
     credential_commands.add_parser(
         "list",
@@ -223,24 +256,43 @@ def _build_parser() -> argparse.ArgumentParser:
         help="Replace the stored credential value.",
     )
     credential_update.add_argument("name")
-    credential_update.add_argument("--key", required=True, dest="credential_key")
-    credential_update.add_argument("--yes", action="store_true", dest="confirmed")
+    credential_update.add_argument(
+        "--key",
+        required=True,
+        dest="credential_key",
+    )
+    credential_update.add_argument(
+        "--yes",
+        action="store_true",
+        dest="confirmed",
+    )
 
     credential_delete = credential_commands.add_parser(
         "delete",
         help="Delete a credential provider.",
     )
     credential_delete.add_argument("name")
-    credential_delete.add_argument("--yes", action="store_true", dest="confirmed")
+    credential_delete.add_argument(
+        "--yes",
+        action="store_true",
+        dest="confirmed",
+    )
 
     for command, help_text in (
         ("grant", "Grant a credential to one sandbox."),
         ("revoke", "Revoke a credential from one sandbox."),
     ):
-        grant_parser = credential_commands.add_parser(command, help=help_text)
+        grant_parser = credential_commands.add_parser(
+            command,
+            help=help_text,
+        )
         grant_parser.add_argument("sandbox_name")
         grant_parser.add_argument("credential_name")
-        grant_parser.add_argument("--yes", action="store_true", dest="confirmed")
+        grant_parser.add_argument(
+            "--yes",
+            action="store_true",
+            dest="confirmed",
+        )
 
     workspace = commands.add_parser(
         "workspace",
@@ -267,7 +319,11 @@ def _build_parser() -> argparse.ArgumentParser:
         "list",
         help="List workspace grants.",
     )
-    workspace_list.add_argument("--json", dest="json_output", action="store_true")
+    workspace_list.add_argument(
+        "--json",
+        dest="json_output",
+        action="store_true",
+    )
 
     config = commands.add_parser(
         "config",
@@ -293,7 +349,10 @@ def _build_parser() -> argparse.ArgumentParser:
     return parser
 
 
-def _delegate_local_cli(command: str, arguments: Sequence[str]) -> int:
+def _delegate_local_cli(
+    command: str,
+    arguments: Sequence[str],
+) -> int:
     return local_mcp_server_cli.main([command, *arguments])
 
 
@@ -315,18 +374,35 @@ def _sandbox_arguments(args: argparse.Namespace) -> list[str]:
         return ["list"]
 
     if args.sandbox_command in {"status", "delete"}:
-        arguments = [args.sandbox_command, args.name]
+        arguments = [
+            args.sandbox_command,
+            args.name,
+        ]
         if args.json_output:
             arguments.append("--json")
         return arguments
 
-    if args.sandbox_command in {"shell", "logs", "start", "stop"}:
-        return [args.sandbox_command, args.name]
+    if args.sandbox_command in {
+        "shell",
+        "logs",
+        "start",
+        "stop",
+    }:
+        return [
+            args.sandbox_command,
+            args.name,
+        ]
 
     if args.sandbox_command == "exec":
-        return ["exec", args.name, *args.exec_command]
+        return [
+            "exec",
+            args.name,
+            *args.exec_command,
+        ]
 
-    raise RuntimeError(f"Unsupported sandbox command: {args.sandbox_command}")
+    raise RuntimeError(
+        f"Unsupported sandbox command: {args.sandbox_command}"
+    )
 
 
 def _credential_arguments(args: argparse.Namespace) -> list[str]:
@@ -336,7 +412,10 @@ def _credential_arguments(args: argparse.Namespace) -> list[str]:
         return ["list"]
 
     if command == "get":
-        return ["get", args.name]
+        return [
+            "get",
+            args.name,
+        ]
 
     if command == "create":
         arguments = [
@@ -355,7 +434,10 @@ def _credential_arguments(args: argparse.Namespace) -> list[str]:
             args.credential_key,
         ]
     elif command == "delete":
-        arguments = ["delete", args.name]
+        arguments = [
+            "delete",
+            args.name,
+        ]
     elif command in {"grant", "revoke"}:
         arguments = [
             command,
@@ -363,7 +445,9 @@ def _credential_arguments(args: argparse.Namespace) -> list[str]:
             args.credential_name,
         ]
     else:
-        raise RuntimeError(f"Unsupported credential command: {command}")
+        raise RuntimeError(
+            f"Unsupported credential command: {command}"
+        )
 
     if args.confirmed:
         arguments.append("--yes")
@@ -375,10 +459,16 @@ def _workspace_arguments(args: argparse.Namespace) -> list[str]:
     command = args.workspace_command
 
     if command == "authorize":
-        return ["authorize", args.host_path]
+        return [
+            "authorize",
+            args.host_path,
+        ]
 
     if command == "revoke":
-        return ["revoke", args.workspace_id]
+        return [
+            "revoke",
+            args.workspace_id,
+        ]
 
     if command == "list":
         arguments = ["list"]
@@ -386,7 +476,9 @@ def _workspace_arguments(args: argparse.Namespace) -> list[str]:
             arguments.append("--json")
         return arguments
 
-    raise RuntimeError(f"Unsupported workspace command: {command}")
+    raise RuntimeError(
+        f"Unsupported workspace command: {command}"
+    )
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -408,16 +500,23 @@ def main(argv: list[str] | None = None) -> int:
                 raise RuntimeError(
                     f"Unsupported config command: {args.config_command}"
                 )
+
             if args.mcp_client_command is None:
                 return _config_mcp_client()
+
             if args.mcp_client_command == "openai":
                 return _configure_openai()
+
             raise RuntimeError(
-                f"Unsupported MCP client command: {args.mcp_client_command}"
+                "Unsupported MCP client command: "
+                f"{args.mcp_client_command}"
             )
 
         if args.command == "sandbox":
-            return _delegate_local_cli("sandbox", _sandbox_arguments(args))
+            return _delegate_local_cli(
+                "sandbox",
+                _sandbox_arguments(args),
+            )
 
         if args.command == "credential":
             return _delegate_local_cli(
@@ -426,15 +525,24 @@ def main(argv: list[str] | None = None) -> int:
             )
 
         if args.command == "workspace":
-            return workspace_broker.main(_workspace_arguments(args))
+            return workspace_broker.main(
+                _workspace_arguments(args)
+            )
 
-        raise RuntimeError(f"Unsupported command: {args.command}")
+        raise RuntimeError(
+            f"Unsupported command: {args.command}"
+        )
 
     except KeyboardInterrupt:
         print("\nCancelled.", file=sys.stderr)
         return 130
 
-    except (ConfigError, OpenShellTLSStatusError, RuntimeError, ValueError) as exc:
+    except (
+        ConfigError,
+        OpenShellTLSStatusError,
+        RuntimeError,
+        ValueError,
+    ) as exc:
         print(f"ERROR: {exc}", file=sys.stderr)
         return EXIT_ERROR
 
