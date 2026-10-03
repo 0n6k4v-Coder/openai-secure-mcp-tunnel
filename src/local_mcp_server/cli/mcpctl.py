@@ -6,6 +6,13 @@ import sys
 from collections.abc import Sequence
 
 from ..config.service import ConfigError, configure_openai
+from ..infrastructure.openshell.tls import (
+    OpenShellTLSStatusError,
+    TLSStatus,
+    get_status as get_openshell_tls_status,
+    repair as repair_openshell_tls,
+    setup as setup_openshell_tls,
+)
 from . import main as local_mcp_server_cli
 from . import workspace_broker
 
@@ -55,12 +62,66 @@ def _config() -> int:
     return _config_mcp_client()
 
 
+def _print_tls_status(status: TLSStatus) -> None:
+    print("OpenShell TLS")
+    print()
+    print(f"State: {'✓ READY' if status.complete else '✗ NOT READY'}")
+    print(f"Path: {status.root}")
+    print(f"Legacy path: {status.legacy_root}")
+
+    if status.legacy_present:
+        print("Legacy bundle: detected")
+
+    if status.missing:
+        print()
+        print("Missing:")
+        for path in status.missing:
+            print(f"  - {path.relative_to(status.root)}")
+
+    if status.insecure_paths:
+        print()
+        print("Permissions:")
+        for path in status.insecure_paths:
+            print(f"  - {path.relative_to(status.root)}")
+
+
+def _setup() -> int:
+    status = setup_openshell_tls()
+    _print_tls_status(status)
+    return EXIT_OK
+
+
+def _status() -> int:
+    status = get_openshell_tls_status()
+    _print_tls_status(status)
+    return EXIT_OK if status.complete else EXIT_ERROR
+
+
+def _repair() -> int:
+    status = repair_openshell_tls()
+    _print_tls_status(status)
+    return EXIT_OK
+
+
 def _build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         prog="mcpctl",
         description="Control CLI for the local MCP application.",
     )
     commands = parser.add_subparsers(dest="command", required=True)
+
+    commands.add_parser(
+        "setup",
+        help="Initialize OpenShell TLS runtime state.",
+    )
+    commands.add_parser(
+        "status",
+        help="Check OpenShell TLS runtime state.",
+    )
+    commands.add_parser(
+        "repair",
+        help="Rebuild an unhealthy OpenShell TLS runtime state.",
+    )
 
     sandbox = commands.add_parser("sandbox", help="Manage OpenShell sandboxes.")
     sandbox_commands = sandbox.add_subparsers(
@@ -333,6 +394,15 @@ def main(argv: list[str] | None = None) -> int:
     args = parser.parse_args(argv)
 
     try:
+        if args.command == "setup":
+            return _setup()
+
+        if args.command == "status":
+            return _status()
+
+        if args.command == "repair":
+            return _repair()
+
         if args.command == "config":
             if args.config_command != "mcp-client":
                 raise RuntimeError(
@@ -345,20 +415,26 @@ def main(argv: list[str] | None = None) -> int:
             raise RuntimeError(
                 f"Unsupported MCP client command: {args.mcp_client_command}"
             )
+
         if args.command == "sandbox":
             return _delegate_local_cli("sandbox", _sandbox_arguments(args))
+
         if args.command == "credential":
             return _delegate_local_cli(
                 "credential",
                 _credential_arguments(args),
             )
+
         if args.command == "workspace":
             return workspace_broker.main(_workspace_arguments(args))
+
         raise RuntimeError(f"Unsupported command: {args.command}")
+
     except KeyboardInterrupt:
         print("\nCancelled.", file=sys.stderr)
         return 130
-    except (ConfigError, RuntimeError, ValueError) as exc:
+
+    except (ConfigError, OpenShellTLSStatusError, RuntimeError, ValueError) as exc:
         print(f"ERROR: {exc}", file=sys.stderr)
         return EXIT_ERROR
 
