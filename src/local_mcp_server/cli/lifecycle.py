@@ -93,13 +93,23 @@ class LifecycleStatus:
 
 def _ensure_private_directory(path: Path) -> None:
     try:
-        path.mkdir(
-            parents=True,
-            exist_ok=True,
-            mode=0o700,
-        )
-        os.chmod(path, 0o700)
+        if path.exists():
+            if not path.is_dir():
+                raise LifecycleError(
+                    f"Runtime state path is not a directory: {path}"
+                )
+        else:
+            path.mkdir(
+                parents=True,
+                exist_ok=True,
+                mode=0o700,
+            )
+
         mode = stat.S_IMODE(path.stat().st_mode)
+
+    except LifecycleError:
+        raise
+
     except OSError as exc:
         raise LifecycleError(
             f"Unable to prepare runtime directory {path}: {exc}"
@@ -465,11 +475,11 @@ def get_mcp_client_status() -> MCPClientStatus:
                 bool(credential_content)
                 and "\n" not in credential_content
                 and "\r" not in credential_content
-                and 'config_version: 1' in config_content
-                and 'base_url: https://api.openai.com' in config_content
-                and 'api_key: file:/run/secrets/CONTROL_PLANE_API_KEY'
+                and "config_version: 1" in config_content
+                and "base_url: https://api.openai.com" in config_content
+                and "api_key: file:/run/secrets/CONTROL_PLANE_API_KEY"
                 in config_content
-                and 'url: http://mcp-server:8000/mcp' in config_content
+                and "url: http://mcp-server:8000/mcp" in config_content
             )
 
     return MCPClientStatus(

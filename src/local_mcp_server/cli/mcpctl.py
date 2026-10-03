@@ -325,6 +325,10 @@ def _build_parser() -> argparse.ArgumentParser:
     )
 
     sandbox_delete.add_argument(
+        "name",
+    )
+
+    sandbox_delete.add_argument(
         "--json",
         dest="json_output",
         action="store_true",
@@ -333,6 +337,10 @@ def _build_parser() -> argparse.ArgumentParser:
     sandbox_recreate = sandbox_commands.add_parser(
         "recreate",
         help="Delete and recreate a sandbox with its existing workspace and profile.",
+    )
+
+    sandbox_recreate.add_argument(
+        "name",
     )
 
     sandbox_recreate.add_argument(
