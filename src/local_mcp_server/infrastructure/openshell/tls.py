@@ -14,6 +14,8 @@ OPEN_SHELL_GATEWAY_IMAGE = (
     + os.environ.get("OPENSHELL_IMAGE_TAG", "latest")
 )
 
+OPEN_SHELL_CLI_GATEWAY_NAME = "local"
+
 EXPECTED_FILES = (
     Path("ca.crt"),
     Path("server/tls.crt"),
@@ -28,6 +30,8 @@ EXPECTED_FILES = (
 
 DIRECTORY_MODES = 0o700
 FILE_MODE = 0o600
+CLI_CERT_MODE = 0o644
+CLI_KEY_MODE = 0o600
 
 
 class OpenShellTLSStatusError(RuntimeError):
@@ -47,18 +51,49 @@ def _xdg_state_home() -> Path:
 
     if value:
         candidate = Path(value).expanduser()
+
         if candidate.is_absolute():
             return candidate
 
     return Path.home() / ".local" / "state"
 
 
+def _xdg_config_home() -> Path:
+    value = os.environ.get("XDG_CONFIG_HOME")
+
+    if value:
+        candidate = Path(value).expanduser()
+
+        if candidate.is_absolute():
+            return candidate
+
+    return Path.home() / ".config"
+
+
 def tls_root() -> Path:
-    return _xdg_state_home() / "local-mcp-server" / "openshell" / "tls"
+    return (
+        _xdg_state_home()
+        / "local-mcp-server"
+        / "openshell"
+        / "tls"
+    )
+
+
+def _openshell_cli_mtls_root() -> Path:
+    return (
+        _xdg_config_home()
+        / "openshell"
+        / "gateways"
+        / OPEN_SHELL_CLI_GATEWAY_NAME
+        / "mtls"
+    )
 
 
 def _required_paths(root: Path) -> tuple[Path, ...]:
-    return tuple(root / relative_path for relative_path in EXPECTED_FILES)
+    return tuple(
+        root / relative_path
+        for relative_path in EXPECTED_FILES
+    )
 
 
 def _insecure_paths(root: Path) -> tuple[Path, ...]:
@@ -149,20 +184,112 @@ def _prepare_client_ca(root: Path) -> None:
             "OpenShell TLS generation did not produce ca.crt."
         )
 
-    shutil.copy2(ca_path, client_ca_path)
+    shutil.copy2(
+        ca_path,
+        client_ca_path,
+    )
+
+
+def _atomic_write_bytes(
+    path: Path,
+    content: bytes,
+    *,
+    mode: int,
+) -> None:
+    _ensure_directory(path.parent)
+
+    fd, temporary_name = tempfile.mkstemp(
+        prefix=f".{path.name}.",
+        dir=path.parent,
+    )
+
+    temporary_path = Path(temporary_name)
+
+    try:
+        os.chmod(temporary_path, mode)
+
+        with os.fdopen(fd, "wb") as handle:
+            handle.write(content)
+            handle.flush()
+            os.fsync(handle.fileno())
+
+        os.replace(
+            temporary_path,
+            path,
+        )
+
+        os.chmod(path, mode)
+
+    except Exception:
+        try:
+            temporary_path.unlink()
+        except FileNotFoundError:
+            pass
+
+        raise
+
+
+def _sync_openshell_cli_bundle(root: Path) -> None:
+    source_ca = root / "ca.crt"
+    source_cert = root / "client" / "tls.crt"
+    source_key = root / "client" / "tls.key"
+
+    required_sources = (
+        source_ca,
+        source_cert,
+        source_key,
+    )
+
+    missing = [
+        str(path.relative_to(root))
+        for path in required_sources
+        if not path.is_file()
+    ]
+
+    if missing:
+        raise OpenShellTLSStatusError(
+            "Cannot synchronize the OpenShell CLI mTLS bundle because "
+            "required TLS files are missing: "
+            + ", ".join(missing)
+        )
+
+    target_root = _openshell_cli_mtls_root()
+
+    try:
+        _ensure_directory(target_root)
+
+        _atomic_write_bytes(
+            target_root / "ca.crt",
+            source_ca.read_bytes(),
+            mode=CLI_CERT_MODE,
+        )
+
+        _atomic_write_bytes(
+            target_root / "tls.crt",
+            source_cert.read_bytes(),
+            mode=CLI_CERT_MODE,
+        )
+
+        _atomic_write_bytes(
+            target_root / "tls.key",
+            source_key.read_bytes(),
+            mode=CLI_KEY_MODE,
+        )
+
+    except OpenShellTLSStatusError:
+        raise
+
+    except OSError as exc:
+        raise OpenShellTLSStatusError(
+            "Unable to synchronize the OpenShell CLI mTLS bundle: "
+            f"{exc}"
+        ) from exc
 
 
 def _run_generate_certs(root: Path) -> None:
     parent = root.parent
-    config_home = (
-        Path(
-            os.environ.get(
-                "XDG_CONFIG_HOME",
-                Path.home() / ".config",
-            )
-        )
-        .expanduser()
-    )
+
+    config_home = _xdg_config_home()
 
     _ensure_directory(parent)
     _ensure_directory(config_home)
@@ -180,14 +307,20 @@ def _run_generate_certs(root: Path) -> None:
             "--user",
             f"{os.getuid()}:{os.getgid()}",
             "-v",
-            f"{parent}:/home/openshell/.local/state/local-mcp-server/openshell",
+            (
+                f"{parent}:"
+                "/home/openshell/.local/state/local-mcp-server/openshell"
+            ),
             "-v",
             f"{config_home}:/home/openshell/.config",
             OPEN_SHELL_GATEWAY_IMAGE,
             "generate-certs",
             "--output-dir",
-            "/home/openshell/.local/state/local-mcp-server/openshell/"
-            + temporary_root.name,
+            (
+                "/home/openshell/.local/state/"
+                "local-mcp-server/openshell/"
+                + temporary_root.name
+            ),
             "--server-san",
             "host.openshell.internal",
         ]
@@ -200,17 +333,21 @@ def _run_generate_certs(root: Path) -> None:
                 text=True,
                 timeout=300,
             )
+
         except FileNotFoundError as exc:
             raise OpenShellTLSStatusError(
                 "Docker is required to generate OpenShell TLS material."
             ) from exc
+
         except subprocess.TimeoutExpired as exc:
             raise OpenShellTLSStatusError(
                 "OpenShell TLS generation timed out."
             ) from exc
+
         except OSError as exc:
             raise OpenShellTLSStatusError(
-                f"Failed to execute Docker: {type(exc).__name__}: {exc}"
+                "Failed to execute Docker: "
+                f"{type(exc).__name__}: {exc}"
             ) from exc
 
         if completed.returncode != 0:
@@ -219,20 +356,21 @@ def _run_generate_certs(root: Path) -> None:
                 or completed.stdout.strip()
                 or "OpenShell returned no diagnostic output."
             )
+
             raise OpenShellTLSStatusError(
                 "OpenShell TLS generation failed: "
                 f"{diagnostic}"
             )
 
         generated_paths = (
-            temporary_root / Path("ca.crt"),
-            temporary_root / Path("server/tls.crt"),
-            temporary_root / Path("server/tls.key"),
-            temporary_root / Path("client/tls.crt"),
-            temporary_root / Path("client/tls.key"),
-            temporary_root / Path("jwt/signing.pem"),
-            temporary_root / Path("jwt/public.pem"),
-            temporary_root / Path("jwt/kid"),
+            temporary_root / "ca.crt",
+            temporary_root / "server/tls.crt",
+            temporary_root / "server/tls.key",
+            temporary_root / "client/tls.crt",
+            temporary_root / "client/tls.key",
+            temporary_root / "jwt/signing.pem",
+            temporary_root / "jwt/public.pem",
+            temporary_root / "jwt/kid",
         )
 
         missing = [
@@ -252,7 +390,10 @@ def _run_generate_certs(root: Path) -> None:
         if root.exists():
             shutil.rmtree(root)
 
-        shutil.move(str(temporary_root), str(root))
+        shutil.move(
+            str(temporary_root),
+            str(root),
+        )
 
 
 def _rebuild() -> TLSStatus:
@@ -262,9 +403,13 @@ def _rebuild() -> TLSStatus:
         shutil.rmtree(root)
 
     _ensure_parent_directories(root)
+
     _run_generate_certs(root)
+
     _ensure_parent_directories(root)
     _set_private_permissions(root)
+
+    _sync_openshell_cli_bundle(root)
 
     final = get_status()
 
@@ -291,7 +436,11 @@ def _rebuild() -> TLSStatus:
 
         raise OpenShellTLSStatusError(
             "OpenShell TLS setup did not produce a healthy bundle"
-            + (f" ({'; '.join(details)})" if details else ".")
+            + (
+                f" ({'; '.join(details)})"
+                if details
+                else "."
+            )
         )
 
     return final
@@ -301,6 +450,7 @@ def setup() -> TLSStatus:
     current = get_status()
 
     if current.complete:
+        _sync_openshell_cli_bundle(current.root)
         return current
 
     return _rebuild()
@@ -310,6 +460,7 @@ def repair() -> TLSStatus:
     current = get_status()
 
     if current.complete:
+        _sync_openshell_cli_bundle(current.root)
         return current
 
     return _rebuild()
