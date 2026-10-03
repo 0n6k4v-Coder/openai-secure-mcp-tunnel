@@ -45,16 +45,20 @@
                                  │
                          Docker driver
                                  │
-              ┌──────────────────┼──────────────────┐
-              │                  │                  │
-              ▼                  ▼                  ▼
-       ┌─────────────┐    ┌─────────────┐    ┌─────────────┐
-       │  Sandbox A  │    │  Sandbox B  │    │  Sandbox C  │
-       │             │    │             │    │             │
-       │ Python      │    │ Node        │    │ Playwright  │
-       │ Node        │    │ npm         │    │ Chromium    │
-       │ workspace   │    │ workspace   │    │ workspace   │
-       └─────────────┘    └─────────────┘    └─────────────┘
+              ┌──────────────────────┬──────────────────────┐
+              │                      │                      │
+              ▼                      ▼                      │
+       ┌────────────────┐    ┌──────────────────────────┐   │
+       │ Default        │    │ Browser                  │   │
+       │ sandbox        │    │ sandbox                  │   │
+       │                │    │                          │   │
+       │ Python         │    │ Chrome for Testing       │   │
+       │ Node.js / npm  │    │ Chrome DevTools MCP      │   │
+       │ Playwright     │    │ fixed local CDP :9222   │   │
+       │ workspace      │    │ workspace                │   │
+       └────────────────┘    └──────────────────────────┘   │
+              │                      │                      │
+              └──────── OpenShell lifecycle ────────────────┘
 ```
 
 ### Runtime services
@@ -67,7 +71,9 @@ mcp-server
 tunnel-client
 ```
 
-OpenShell creates and manages sandbox containers through its Docker compute driver.
+OpenShell creates and manages sandbox containers through its Docker compute driver. Sandbox containers are created on demand and are not long-running Docker Compose services.
+
+The project supports separate sandbox profiles. The `default` profile is used for normal development and command execution. The `browser` profile provides an isolated Chrome runtime and Chrome DevTools MCP daemon. Browser lifecycle is owned by the OpenShell sandbox lifecycle.
 
 The previous `terminal-executor` service is no longer part of the architecture.
 
@@ -298,6 +304,12 @@ stop
 delete
 ```
 
+The `create` command supports the sandbox profile option:
+
+```text
+--profile default|browser
+```
+
 Examples:
 
 ```bash
@@ -311,6 +323,14 @@ uv run secure-mcp sandbox status <sandbox-name>
 ```bash
 uv run secure-mcp sandbox create <sandbox-name> --workspace <workspace-id>
 ```
+
+Create a browser sandbox:
+
+```bash
+uv run secure-mcp sandbox create <sandbox-name> --workspace <workspace-id> --profile browser
+```
+
+The default profile remains the normal sandbox for development and command execution. The `browser` profile selects the dedicated browser image and Chrome DevTools runtime.
 
 ```bash
 uv run secure-mcp sandbox delete <sandbox-name>
@@ -383,20 +403,43 @@ uv run secure-mcp workspace-broker ...
 
 ---
 
-# Step 5 - Build the Sandbox Image
+# Step 5 - Build the Sandbox Images
 
-The OpenShell Gateway uses:
+The OpenShell Gateway uses two sandbox images:
 
 ```text
 local-mcp-openshell-sandbox:1.0.0
+local-mcp-browser-sandbox:1.0.0
 ```
 
-Build this image before creating OpenShell sandboxes.
+The default image is used by the `default` profile. The browser image is used by the `browser` profile and contains Chrome for Testing and `chrome-devtools-mcp`.
 
-The image must exist locally with the exact tag configured in:
+Build the default sandbox image before creating standard OpenShell sandboxes:
+
+```bash
+docker build \
+  -t local-mcp-openshell-sandbox:1.0.0 \
+  deploy/docker/openshell-sandbox
+```
+
+Build the browser sandbox image before creating browser sandboxes:
+
+```bash
+docker build \
+  -t local-mcp-browser-sandbox:1.0.0 \
+  deploy/docker/browser-sandbox
+```
+
+The default image must exist locally with the exact tag configured in:
 
 ```text
 deploy/openshell/gateway.toml
+```
+
+The browser image is selected by the browser sandbox policy through the configured browser image setting. The current default is:
+
+```text
+local-mcp-browser-sandbox:1.0.0
 ```
 
 The current configuration uses:
@@ -407,7 +450,7 @@ default_image = "local-mcp-openshell-sandbox:1.0.0"
 image_pull_policy = "if_not_present"
 ```
 
-The sandbox image provides:
+The default sandbox image provides:
 
 ```text
 Python
@@ -422,6 +465,16 @@ jq
 ripgrep
 OpenSSH client
 ```
+
+The browser sandbox image provides:
+
+```text
+Chrome for Testing
+chrome-devtools-mcp
+OpenShell Sandbox CA trust configuration
+```
+
+Chrome and the Chrome DevTools MCP daemon run inside the browser sandbox. The browser endpoint is fixed to the sandbox-local Chrome CDP endpoint and is not supplied by the caller for individual commands.
 
 The sandbox container runs as:
 
@@ -481,6 +534,8 @@ openshell-gateway
 mcp-server
 tunnel-client
 ```
+
+Browser and default OpenShell sandboxes are created and managed separately by OpenShell and do not appear as Compose application services.
 
 ---
 
@@ -595,6 +650,7 @@ create_workspace_file
 delete_sandbox
 delete_workspace_directory
 delete_workspace_file
+execute_chrome_devtools_command
 execute_sandbox_command
 get_system_info
 list_authorized_host_workspaces
@@ -604,10 +660,35 @@ read_workspace_text_file
 rename_workspace_path
 request_tool_installation
 sandbox_status
+start_sandbox
+stop_sandbox
 write_workspace_file
 ```
 
-The sandbox-related tools are backed by OpenShell.
+The sandbox-related tools are backed by OpenShell. `start_sandbox` and `stop_sandbox` control the OpenShell sandbox lifecycle; for browser sandboxes this lifecycle includes Chrome and the Chrome DevTools MCP daemon.
+
+For browser automation, create a sandbox with the `browser` profile and use:
+
+```text
+execute_chrome_devtools_command
+```
+
+Example CLI flow:
+
+```bash
+uv run secure-mcp sandbox create clone-web \
+  --workspace <workspace-id> \
+  --profile browser
+```
+
+Then execute Chrome DevTools commands through the browser sandbox:
+
+```bash
+uv run secure-mcp sandbox exec clone-web -- \
+  chrome-devtools list_pages --output-format=json
+```
+
+The browser sandbox owns Chrome and the Chrome DevTools MCP daemon lifecycle. The browser endpoint is fixed to the sandbox-local Chrome CDP endpoint.
 
 The workspace tools operate within the selected OpenShell sandbox's mounted workspace:
 
@@ -657,11 +738,22 @@ uv run secure-mcp sandbox create \
   --workspace <workspace-id>
 ```
 
+For browser automation, create the sandbox with the browser profile:
+
+```bash
+uv run secure-mcp sandbox create \
+  <sandbox-name> \
+  --workspace <workspace-id> \
+  --profile browser
+```
+
 Or use the MCP tool:
 
 ```text
 create_sandbox
 ```
+
+When using a browser sandbox, use `execute_chrome_devtools_command` for Chrome DevTools operations.
 
 ---
 
@@ -680,6 +772,30 @@ sandbox_status
 ```
 
 Confirm that the sandbox reaches the expected ready/running state.
+
+A stopped sandbox can be started again with:
+
+```bash
+uv run secure-mcp sandbox start <sandbox-name>
+```
+
+or the MCP tool:
+
+```text
+start_sandbox
+```
+
+Stop a running sandbox with:
+
+```bash
+uv run secure-mcp sandbox stop <sandbox-name>
+```
+
+or the MCP tool:
+
+```text
+stop_sandbox
+```
 
 ---
 
@@ -738,7 +854,7 @@ or use:
 delete_sandbox
 ```
 
-Confirm that the sandbox is removed.
+Confirm that the sandbox is removed. For a browser sandbox, deleting the OpenShell sandbox also removes its Chrome and Chrome DevTools MCP runtime.
 
 ---
 
@@ -786,7 +902,7 @@ sandbox network policy
 package/tool installation
 ```
 
-For example, a development tool can be installed through the installation request mechanism while remaining inside the sandbox boundary.
+For example, a development tool can be installed through the installation request mechanism while remaining inside the selected sandbox boundary. Browser runtime dependencies are baked into the browser image rather than installed dynamically through this mechanism.
 
 The host filesystem is not used as the installation target.
 
@@ -814,6 +930,17 @@ docker compose \
 
 ## 2. Recreate the MCP server
 
+For MCP server code or tool-definition changes, recreate the MCP server:
+
+```bash
+docker compose \
+  --env-file .env \
+  -f deploy/compose.yaml \
+  up -d --force-recreate --remove-orphans mcp-server
+```
+
+Recreate `openshell-gateway` or `tunnel-client` only when their configuration or image has changed:
+
 ```bash
 docker compose \
   --env-file .env \
@@ -825,28 +952,7 @@ docker compose \
 docker compose \
   --env-file .env \
   -f deploy/compose.yaml \
-  up -d --force-recreate --remove-orphans mcp-server
-```
-
-```bash
-docker compose \
-  --env-file .env \
-  -f deploy/compose.yaml \
   up -d --force-recreate --remove-orphans tunnel-client
-```
-
-```bash
-docker compose \
-  --env-file .env \
-  -f deploy/compose.yaml \
-  up -d --force-recreate --remove-orphans browser-runtime
-```
-
-```bash
-docker compose \
-  --env-file .env \
-  -f deploy/compose.yaml \
-  up -d --force-recreate --remove-orphans cdp-relay
 ```
 
 ## 3. Check the service status
@@ -1021,6 +1127,8 @@ for example:
 
 ```text
 openai-secure-mcp-tunnel-terminal-executor-1
+openai-secure-mcp-tunnel-browser-runtime-1
+openai-secure-mcp-tunnel-cdp-relay-1
 ```
 
 the service exists from an older version of the Compose configuration.
@@ -1064,6 +1172,7 @@ create_workspace_file
 delete_sandbox
 delete_workspace_directory
 delete_workspace_file
+execute_chrome_devtools_command
 execute_sandbox_command
 get_system_info
 list_authorized_host_workspaces
@@ -1073,6 +1182,8 @@ read_workspace_text_file
 rename_workspace_path
 request_tool_installation
 sandbox_status
+start_sandbox
+stop_sandbox
 write_workspace_file
 ```
 
@@ -1106,8 +1217,16 @@ internal Docker networks
 workspace boundary controls
 POSIX ACLs
 OpenShell sandbox isolation
+OpenShell browser policy isolation
+fixed sandbox-local Chrome CDP endpoint
+blocked caller-controlled Chrome connection overrides
+Chrome trust through the OpenShell Sandbox CA
 controlled tool installation
 ```
+
+The browser sandbox does not expose a separate host-side browser runtime or CDP relay. Chrome runs inside the OpenShell browser sandbox, and `execute_chrome_devtools_command` connects only to the fixed sandbox-local Chrome CDP endpoint.
+
+The browser image imports the OpenShell Sandbox CA into Chrome's NSS trust database so HTTPS traffic intercepted by the OpenShell network policy can be validated without disabling certificate verification.
 
 The OpenShell Gateway requires client authentication.
 
@@ -1145,9 +1264,12 @@ openshell-gateway
    ▼
 Docker
    │
-   ├── OpenShell Sandbox A
-   ├── OpenShell Sandbox B
-   └── OpenShell Sandbox C
+   ├── OpenShell default sandboxes
+   │      └── normal development and command execution
+   └── OpenShell browser sandboxes
+          ├── Chrome for Testing
+          ├── Chrome DevTools MCP
+          └── sandbox-local CDP :9222
 ```
 
 Host workspace lifecycle:
