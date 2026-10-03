@@ -276,53 +276,14 @@ def test_configure_openai_rejects_empty_api_key(
         )
 
 
-def test_mcp_client_required_flow_does_not_offer_skip(
+def test_mcp_client_setup_flow_shows_status_table_and_skip(
     monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
 ) -> None:
-    choices: dict[str, list[str]] = {}
-
-    def fake_prompt(
-        title: str,
-        options: list[str],
-    ) -> int:
-        choices["options"] = options
-        return 1
-
     monkeypatch.setattr(
         mcpctl,
         "_prompt_choice",
-        fake_prompt,
-    )
-    monkeypatch.setattr(
-        mcpctl,
-        "_configure_openai",
-        lambda: mcpctl.EXIT_OK,
-    )
-
-    assert (
-        mcpctl._config_mcp_client()
-        == mcpctl.EXIT_OK
-    )
-
-    assert choices["options"] == ["OpenAI"]
-
-
-def test_mcp_client_setup_flow_offers_skip(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    choices: dict[str, list[str]] = {}
-
-    def fake_prompt(
-        title: str,
-        options: list[str],
-    ) -> int:
-        choices["options"] = options
-        return 2
-
-    monkeypatch.setattr(
-        mcpctl,
-        "_prompt_choice",
-        fake_prompt,
+        lambda title, options: 2,
     )
 
     assert (
@@ -332,10 +293,221 @@ def test_mcp_client_setup_flow_offers_skip(
         == mcpctl.EXIT_OK
     )
 
-    assert choices["options"] == [
-        "OpenAI",
-        "Skip for now",
-    ]
+    output = capsys.readouterr().out
+
+    assert "MCP Clients" in output
+    assert "CLIENT" in output
+    assert "CONFIGURATION" in output
+    assert "OpenAI" in output
+    assert "○ NOT CONFIGURED" in output
+    assert "Choose MCP clients to configure" in output
+    assert "1. OpenAI" in output
+    assert "2. Skip for now" in output
+    assert "Configure OpenAI" not in output
+
+
+def test_mcp_client_setup_configures_unconfigured_client(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    called = False
+
+    def fake_configure() -> int:
+        nonlocal called
+        called = True
+        return mcpctl.EXIT_OK
+
+    monkeypatch.setattr(
+        mcpctl,
+        "_prompt_choice",
+        lambda title, options: 1,
+    )
+    monkeypatch.setattr(
+        mcpctl,
+        "_configure_openai",
+        fake_configure,
+    )
+
+    assert (
+        mcpctl._config_mcp_client(
+            allow_skip=True,
+        )
+        == mcpctl.EXIT_OK
+    )
+
+    assert called is True
+
+
+def test_mcp_client_setup_does_not_prompt_when_all_clients_configured(
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    client = lifecycle_status = (
+        mcpctl.lifecycle.get_mcp_client_statuses()[0]
+    )
+
+    configured_client = type(client)(
+        key=client.key,
+        display_name=client.display_name,
+        required=client.required,
+        configured=True,
+        config_present=True,
+        credentials_present=True,
+        permissions_secure=True,
+        config_file=client.config_file,
+        credentials_file=client.credentials_file,
+        insecure_paths=(),
+    )
+
+    monkeypatch.setattr(
+        mcpctl.lifecycle,
+        "get_mcp_client_statuses",
+        lambda: (configured_client,),
+    )
+
+    def fail_prompt(*args, **kwargs) -> int:
+        raise AssertionError(
+            "configured MCP clients should not prompt"
+        )
+
+    monkeypatch.setattr(
+        mcpctl,
+        "_prompt_choice",
+        fail_prompt,
+    )
+
+    assert (
+        mcpctl._config_mcp_client(
+            allow_skip=True,
+        )
+        == mcpctl.EXIT_OK
+    )
+
+    output = capsys.readouterr().out
+
+    assert "All MCP clients are configured." in output
+
+
+def test_mcp_client_management_shows_configured_status(
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    client = mcpctl.lifecycle.get_mcp_client_statuses()[0]
+
+    configured_client = type(client)(
+        key=client.key,
+        display_name=client.display_name,
+        required=client.required,
+        configured=True,
+        config_present=True,
+        credentials_present=True,
+        permissions_secure=True,
+        config_file=client.config_file,
+        credentials_file=client.credentials_file,
+        insecure_paths=(),
+        runtime="✓ ACTIVE",
+    )
+
+    monkeypatch.setattr(
+        mcpctl.lifecycle,
+        "get_mcp_client_statuses",
+        lambda: (configured_client,),
+    )
+
+    calls: list[list[str]] = []
+
+    def fake_prompt(
+        title: str,
+        options: list[str],
+    ) -> int:
+        calls.append(options)
+        if title == "Choose MCP client":
+            return 1
+        return 2
+
+    monkeypatch.setattr(
+        mcpctl,
+        "_prompt_choice",
+        fake_prompt,
+    )
+
+    assert (
+        mcpctl._config_mcp_client()
+        == mcpctl.EXIT_OK
+    )
+
+    output = capsys.readouterr().out
+
+    assert "✓ CONFIGURED" in output
+    assert "✓ PRESENT" in output
+    assert "✓ SECURE" in output
+    assert "✓ ACTIVE" in output
+    assert calls[0] == ["OpenAI"]
+    assert calls[1] == ["Reconfigure", "Back"]
+
+
+def test_mcp_client_management_configures_unconfigured_client(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    calls: list[list[str]] = []
+    configured = False
+
+    def fake_prompt(
+        title: str,
+        options: list[str],
+    ) -> int:
+        calls.append(options)
+        return 1
+
+    def fake_configure() -> int:
+        nonlocal configured
+        configured = True
+        return mcpctl.EXIT_OK
+
+    monkeypatch.setattr(
+        mcpctl,
+        "_prompt_choice",
+        fake_prompt,
+    )
+    monkeypatch.setattr(
+        mcpctl,
+        "_configure_openai",
+        fake_configure,
+    )
+
+    assert (
+        mcpctl._config_mcp_client()
+        == mcpctl.EXIT_OK
+    )
+
+    assert configured is True
+    assert calls[0] == ["OpenAI"]
+    assert calls[1] == ["Configure", "Back"]
+
+
+def test_mcp_client_config_command_supports_direct_openai(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    called = False
+
+    def fake_configure() -> int:
+        nonlocal called
+        called = True
+        return mcpctl.EXIT_OK
+
+    monkeypatch.setattr(
+        mcpctl,
+        "_configure_openai",
+        fake_configure,
+    )
+
+    assert (
+        mcpctl.main(
+            ["config", "mcp-client", "openai"],
+        )
+        == mcpctl.EXIT_OK
+    )
+
+    assert called is True
 
 
 def test_mcp_client_setup_skip_does_not_configure(
@@ -388,6 +560,7 @@ def test_mcpctl_parser_contains_expected_commands() -> None:
         "config",
     }
 
+
 def test_setup_configures_mcp_client_before_starting_services(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -438,6 +611,22 @@ def test_setup_configures_mcp_client_before_starting_services(
     )
     monkeypatch.setattr(
         mcpctl.lifecycle,
+        "get_status",
+        lambda status: type(
+            "Status",
+            (),
+            {
+                "tunnel_client": type(
+                    "Service",
+                    (),
+                    {"running": False},
+                )(),
+                "mcp_clients": (),
+            },
+        )(),
+    )
+    monkeypatch.setattr(
+        mcpctl.lifecycle,
         "print_status",
         lambda status: events.append(
             f"print_status:{status is final_status}"
@@ -453,6 +642,6 @@ def test_setup_configures_mcp_client_before_starting_services(
         "validate_compose",
         "start_core_services",
         "reconcile_tunnel_client",
-        "verify:True",
         "print_status:True",
+        "verify:True",
     ]

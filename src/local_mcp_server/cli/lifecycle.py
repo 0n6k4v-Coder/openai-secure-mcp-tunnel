@@ -6,8 +6,9 @@ import stat
 import time
 import urllib.error
 import urllib.request
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from pathlib import Path
+from typing import Callable
 
 from ..config.paths import (
     app_config_root,
@@ -39,11 +40,33 @@ class LifecycleError(RuntimeError):
 
 
 @dataclass(frozen=True)
+class MCPClientDefinition:
+    key: str
+    display_name: str
+    required: bool
+    config_file: Callable[[], Path]
+    credentials_file: Callable[[], Path]
+    private_paths: Callable[[], tuple[Path, ...]]
+    validator: Callable[[Path, Path], bool]
+
+
+@dataclass(frozen=True)
 class MCPClientStatus:
+    key: str
+    display_name: str
+    required: bool
     configured: bool
+    config_present: bool
+    credentials_present: bool
+    permissions_secure: bool | None
     config_file: Path
     credentials_file: Path
     insecure_paths: tuple[Path, ...]
+    runtime: str = "—"
+
+    @property
+    def available(self) -> bool:
+        return True
 
 
 @dataclass(frozen=True)
@@ -65,10 +88,26 @@ class ServiceStatus:
 @dataclass(frozen=True)
 class LifecycleStatus:
     tls: TLSStatus
-    mcp_client: MCPClientStatus
+    mcp_clients: tuple[MCPClientStatus, ...]
     gateway: ServiceStatus
     mcp_server: ServiceStatus
     tunnel_client: ServiceStatus
+
+    @property
+    def mcp_client(self) -> MCPClientStatus:
+        """Return the first registered MCP client for compatibility."""
+        if not self.mcp_clients:
+            raise LifecycleError("No MCP clients are registered.")
+
+        return self.mcp_clients[0]
+
+    @property
+    def required_mcp_clients_configured(self) -> bool:
+        return all(
+            client.configured
+            for client in self.mcp_clients
+            if client.required
+        )
 
     @property
     def infrastructure_ready(self) -> bool:
@@ -84,10 +123,81 @@ class LifecycleStatus:
     def ready(self) -> bool:
         return (
             self.infrastructure_ready
-            and self.mcp_client.configured
+            and self.required_mcp_clients_configured
             and self.tunnel_client.running
             and self.tunnel_client.health == "running"
         )
+
+
+def _openai_config_file() -> Path:
+    from ..config.paths import openai_config_file
+
+    return openai_config_file()
+
+
+def _openai_credentials_file() -> Path:
+    from ..config.paths import openai_api_key_file
+
+    return openai_api_key_file()
+
+
+def _openai_private_paths() -> tuple[Path, ...]:
+    from ..config.paths import (
+        mcp_clients_root,
+        openai_api_key_file,
+        openai_config_file,
+        openai_root,
+    )
+
+    return (
+        app_config_root(),
+        mcp_clients_root(),
+        openai_root(),
+        openai_config_file(),
+        openai_api_key_file(),
+    )
+
+
+def _validate_openai_configuration(
+    config_file: Path,
+    credentials_file: Path,
+) -> bool:
+    if not config_file.is_file() or not credentials_file.is_file():
+        return False
+
+    try:
+        config_content = config_file.read_text(
+            encoding="utf-8",
+        )
+        credential_content = credentials_file.read_text(
+            encoding="utf-8",
+        ).strip()
+    except OSError:
+        return False
+
+    return (
+        bool(credential_content)
+        and "\n" not in credential_content
+        and "\r" not in credential_content
+        and "config_version: 1" in config_content
+        and "base_url: https://api.openai.com" in config_content
+        and "api_key: file:/run/secrets/CONTROL_PLANE_API_KEY"
+        in config_content
+        and "url: http://mcp-server:8000/mcp" in config_content
+    )
+
+
+MCP_CLIENT_DEFINITIONS = (
+    MCPClientDefinition(
+        key="openai",
+        display_name="OpenAI",
+        required=True,
+        config_file=_openai_config_file,
+        credentials_file=_openai_credentials_file,
+        private_paths=_openai_private_paths,
+        validator=_validate_openai_configuration,
+    ),
+)
 
 
 def _ensure_private_directory(path: Path) -> None:
@@ -409,35 +519,12 @@ def remove_tunnel_client() -> None:
         )
 
 
-def _expected_private_paths() -> tuple[Path, ...]:
-    from ..config.paths import (
-        mcp_clients_root,
-        openai_api_key_file,
-        openai_config_file,
-        openai_root,
-    )
-
-    return (
-        app_config_root(),
-        mcp_clients_root(),
-        openai_root(),
-        openai_config_file(),
-        openai_api_key_file(),
-    )
-
-
-def get_mcp_client_status() -> MCPClientStatus:
-    from ..config.paths import (
-        openai_api_key_file,
-        openai_config_file,
-    )
-
-    config_file = openai_config_file()
-    credentials_file = openai_api_key_file()
-
+def _client_permissions(
+    definition: MCPClientDefinition,
+) -> tuple[Path, ...]:
     insecure: list[Path] = []
 
-    for path in _expected_private_paths():
+    for path in definition.private_paths():
         if not path.exists():
             continue
 
@@ -453,40 +540,67 @@ def get_mcp_client_status() -> MCPClientStatus:
         elif mode & 0o077:
             insecure.append(path)
 
-    configured = False
+    return tuple(insecure)
 
-    if (
-        config_file.is_file()
-        and credentials_file.is_file()
-        and not insecure
-    ):
-        try:
-            config_content = config_file.read_text(
-                encoding="utf-8",
-            )
-            credential_content = credentials_file.read_text(
-                encoding="utf-8",
-            ).strip()
-        except OSError:
-            configured = False
-        else:
-            configured = (
-                bool(credential_content)
-                and "\n" not in credential_content
-                and "\r" not in credential_content
-                and "config_version: 1" in config_content
-                and "base_url: https://api.openai.com" in config_content
-                and "api_key: file:/run/secrets/CONTROL_PLANE_API_KEY"
-                in config_content
-                and "url: http://mcp-server:8000/mcp" in config_content
-            )
+
+def _client_status(
+    definition: MCPClientDefinition,
+    *,
+    runtime: str = "—",
+) -> MCPClientStatus:
+    config_file = definition.config_file()
+    credentials_file = definition.credentials_file()
+
+    insecure_paths = _client_permissions(definition)
+
+    config_present = config_file.is_file()
+    credentials_present = credentials_file.is_file()
+
+    if not config_present and not credentials_present:
+        permissions_secure: bool | None = None
+    else:
+        permissions_secure = not insecure_paths
+
+    configured = (
+        config_present
+        and credentials_present
+        and not insecure_paths
+        and definition.validator(
+            config_file,
+            credentials_file,
+        )
+    )
 
     return MCPClientStatus(
+        key=definition.key,
+        display_name=definition.display_name,
+        required=definition.required,
         configured=configured,
+        config_present=config_present,
+        credentials_present=credentials_present,
+        permissions_secure=permissions_secure,
         config_file=config_file,
         credentials_file=credentials_file,
-        insecure_paths=tuple(insecure),
+        insecure_paths=insecure_paths,
+        runtime=runtime,
     )
+
+
+def get_mcp_client_statuses() -> tuple[MCPClientStatus, ...]:
+    return tuple(
+        _client_status(definition)
+        for definition in MCP_CLIENT_DEFINITIONS
+    )
+
+
+def get_mcp_client_status() -> MCPClientStatus:
+    """Return the first registered MCP client for compatibility."""
+    statuses = get_mcp_client_statuses()
+
+    if not statuses:
+        raise LifecycleError("No MCP clients are registered.")
+
+    return statuses[0]
 
 
 def reconcile_tunnel_client() -> None:
@@ -504,84 +618,161 @@ def get_status(
 ) -> LifecycleStatus:
     statuses = _service_statuses()
 
+    gateway = _service_status(
+        statuses,
+        "openshell-gateway",
+    )
+    mcp_server = _service_status(
+        statuses,
+        "mcp-server",
+    )
+    tunnel_client = _service_status(
+        statuses,
+        "tunnel-client",
+    )
+
+    client_statuses: list[MCPClientStatus] = []
+
+    for client in get_mcp_client_statuses():
+        runtime = "—"
+
+        if client.key == "openai":
+            if not client.configured:
+                runtime = "—"
+            elif tunnel_client.running and tunnel_client.health == "running":
+                runtime = "✓ ACTIVE"
+            else:
+                runtime = "○ NOT RUNNING"
+
+        client_statuses.append(
+            replace(
+                client,
+                runtime=runtime,
+            )
+        )
+
     return LifecycleStatus(
         tls=tls,
-        mcp_client=get_mcp_client_status(),
-        gateway=_service_status(
-            statuses,
-            "openshell-gateway",
-        ),
-        mcp_server=_service_status(
-            statuses,
-            "mcp-server",
-        ),
-        tunnel_client=_service_status(
-            statuses,
-            "tunnel-client",
-        ),
+        mcp_clients=tuple(client_statuses),
+        gateway=gateway,
+        mcp_server=mcp_server,
+        tunnel_client=tunnel_client,
     )
 
 
 def print_status(status: LifecycleStatus) -> None:
+    from .main import _print_table
+
     print("Local MCP Lifecycle")
     print()
 
-    print(
-        "OpenShell TLS:        "
-        + ("READY" if status.tls.complete else "NOT READY")
-    )
-
-    print(
-        "OpenShell Gateway:    "
-        + (
-            "READY"
-            if status.gateway.running
-            and status.gateway.health == "healthy"
-            else "NOT READY"
-        )
-    )
-
-    print(
-        "MCP Server:            "
-        + (
-            "READY"
-            if status.mcp_server.running
-            and status.mcp_server.health == "healthy"
-            else "NOT READY"
-        )
-    )
-
-    if status.mcp_client.configured:
-        print("MCP Client Configuration: READY")
-    else:
-        print("MCP Client Configuration: NOT CONFIGURED")
-        print("  Action: mcpctl config mcp-client")
-
-    if status.mcp_client.insecure_paths:
-        print("  Permissions: NOT SECURE")
-        for path in status.mcp_client.insecure_paths:
-            print(f"    - {path}")
-
-    if status.mcp_client.configured:
-        print(
-            "Tunnel Client:         "
-            + (
-                "READY"
-                if status.tunnel_client.running
-                else "NOT RUNNING"
-            )
-        )
-    else:
-        print("Tunnel Client:         NOT CONFIGURED")
-
+    print("Infrastructure")
     print()
 
+    _print_table(
+        ["COMPONENT", "STATUS"],
+        [
+            [
+                "Runtime",
+                "✓ READY",
+            ],
+            [
+                "OpenShell TLS",
+                "✓ READY"
+                if status.tls.complete
+                else "✗ NOT READY",
+            ],
+            [
+                "OpenShell Gateway",
+                "✓ READY"
+                if (
+                    status.gateway.running
+                    and status.gateway.health == "healthy"
+                )
+                else "✗ NOT READY",
+            ],
+            [
+                "MCP Server",
+                "✓ READY"
+                if (
+                    status.mcp_server.running
+                    and status.mcp_server.health == "healthy"
+                )
+                else "✗ NOT READY",
+            ],
+        ],
+    )
+
+    print()
+    print("MCP Clients")
+    print()
+
+    client_rows: list[list[str]] = []
+
+    for index, client in enumerate(
+        status.mcp_clients,
+        start=1,
+    ):
+        client_rows.append(
+            [
+                str(index),
+                client.display_name,
+                (
+                    "✓ CONFIGURED"
+                    if client.configured
+                    else "○ NOT CONFIGURED"
+                ),
+                client.runtime,
+            ]
+        )
+
+    _print_table(
+        ["#", "CLIENT", "CONFIGURATION", "RUNTIME"],
+        client_rows,
+    )
+
+    insecure_paths = [
+        path
+        for client in status.mcp_clients
+        for path in client.insecure_paths
+    ]
+
+    if insecure_paths:
+        print()
+        print("Permissions")
+        print()
+
+        for path in insecure_paths:
+            print(f"  ✗ INSECURE  {path}")
+
+    print()
+    print("Overall")
+
     if status.ready:
-        print("Overall: READY")
-    elif status.infrastructure_ready and not status.mcp_client.configured:
-        print("Overall: PARTIALLY READY")
-    else:
-        print("Overall: NOT READY")
+        print("✓ READY")
+        print()
+        print("Next step:")
+        print("  None. Local MCP Server is ready.")
+        return
+
+    if status.infrastructure_ready:
+        print("⚠ PARTIALLY READY")
+
+        if not status.required_mcp_clients_configured:
+            print()
+            print("Next step:")
+            print("  mcpctl config mcp-client")
+        else:
+            print()
+            print("Next step:")
+            print("  mcpctl repair")
+
+        return
+
+    print("✗ NOT READY")
+    print()
+    print("Next step:")
+    print("  mcpctl repair")
 
 
 def verify(

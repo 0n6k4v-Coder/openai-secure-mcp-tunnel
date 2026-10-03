@@ -15,11 +15,14 @@ from ..infrastructure.openshell.tls import (
     setup as setup_openshell_tls,
 )
 from . import lifecycle
+from .main import _print_table
 from .main import main as local_mcp_server_main
 from . import workspace_broker
 
 EXIT_OK = 0
 EXIT_ERROR = 2
+
+SETUP_STEP_COUNT = 6
 
 
 def _prompt_choice(title: str, options: list[str]) -> int:
@@ -47,9 +50,104 @@ def _prompt_choice(title: str, options: list[str]) -> int:
     return choice
 
 
+def _print_setup_step(
+    number: int,
+    title: str,
+) -> None:
+    print()
+    print(f"[{number}/{SETUP_STEP_COUNT}] {title}")
+
+
+def _print_setup_result(
+    status: str,
+) -> None:
+    print(f"      {status}")
+
+
+def _print_mcp_clients(
+    statuses: tuple[lifecycle.MCPClientStatus, ...],
+    *,
+    include_runtime: bool,
+) -> None:
+    headers = ["#", "CLIENT", "CONFIGURATION"]
+
+    if include_runtime:
+        headers.append("RUNTIME")
+
+    rows: list[list[str]] = []
+
+    for index, client in enumerate(statuses, start=1):
+        row = [
+            str(index),
+            client.display_name,
+            (
+                "✓ CONFIGURED"
+                if client.configured
+                else "○ NOT CONFIGURED"
+            ),
+        ]
+
+        if include_runtime:
+            row.append(client.runtime)
+
+        rows.append(row)
+
+    _print_table(
+        headers,
+        rows,
+    )
+
+
+def _print_mcp_client_details(
+    client: lifecycle.MCPClientStatus,
+) -> None:
+    print()
+    print(f"{client.display_name} MCP Client")
+    print()
+    print(
+        "Configuration:      "
+        + (
+            "✓ CONFIGURED"
+            if client.configured
+            else "○ NOT CONFIGURED"
+        )
+    )
+    print(
+        "Config file:        "
+        + (
+            "✓ PRESENT"
+            if client.config_present
+            else "○ NOT FOUND"
+        )
+    )
+    print(
+        "Credentials:        "
+        + (
+            "✓ PRESENT"
+            if client.credentials_present
+            else "○ NOT FOUND"
+        )
+    )
+
+    if client.permissions_secure is True:
+        print("Permissions:        ✓ SECURE")
+    elif client.permissions_secure is False:
+        print("Permissions:        ✗ INSECURE")
+    else:
+        print("Permissions:        —")
+
+    print(
+        "Runtime:            "
+        + client.runtime
+    )
+
+
 def _configure_openai() -> int:
     print()
-    print("MCP Client Configuration")
+    print("OpenAI MCP Client")
+    print()
+    print("Configuration")
+    print("  Enter the OpenAI tunnel credentials.")
     print()
 
     tunnel_id = input("CONTROL_PLANE_TUNNEL_ID: ").strip()
@@ -60,37 +158,159 @@ def _configure_openai() -> int:
         api_key,
     )
 
+    client = next(
+        client
+        for client in lifecycle.get_mcp_client_statuses()
+        if client.key == "openai"
+    )
+
+    print()
+    print("OpenAI MCP Client")
+    print("  Configuration      ✓ CONFIGURED")
+    print(
+        "  Credentials        "
+        + (
+            "✓ PRESENT"
+            if client.credentials_present
+            else "✗ MISSING"
+        )
+    )
+    print(
+        "  Permissions        "
+        + (
+            "✓ SECURE"
+            if client.permissions_secure
+            else "✗ INSECURE"
+        )
+    )
+
     print()
     print("MCP client configuration saved.")
 
     return EXIT_OK
 
 
-def _config_mcp_client(
+def _select_mcp_client(
+    statuses: tuple[lifecycle.MCPClientStatus, ...],
     *,
-    allow_skip: bool = False,
-) -> int:
-    options = ["OpenAI"]
+    unconfigured_only: bool,
+    allow_skip: bool,
+) -> lifecycle.MCPClientStatus | None:
+    candidates = tuple(
+        client
+        for client in statuses
+        if not unconfigured_only or not client.configured
+    )
+
+    if not candidates:
+        return None
+
+    options = [
+        client.display_name
+        for client in candidates
+    ]
 
     if allow_skip:
         options.append("Skip for now")
 
     choice = _prompt_choice(
-        "MCP Clients",
+        (
+            "Choose MCP clients to configure"
+            if unconfigured_only
+            else "Choose MCP client"
+        ),
         options,
     )
 
-    if choice == 1:
+    if allow_skip and choice == len(options):
+        return None
+
+    return candidates[choice - 1]
+
+
+def _configure_selected_client(
+    client: lifecycle.MCPClientStatus,
+) -> int:
+    if client.key == "openai":
         return _configure_openai()
 
-    if allow_skip and choice == 2:
+    raise ValueError(
+        f"Unsupported MCP client: {client.display_name}"
+    )
+
+
+def _config_mcp_client(
+    *,
+    allow_skip: bool = False,
+) -> int:
+    statuses = lifecycle.get_mcp_client_statuses()
+
+    print()
+    print("MCP Clients")
+    print()
+
+    _print_mcp_clients(
+        statuses,
+        include_runtime=False,
+    )
+
+    if allow_skip:
+        unconfigured = tuple(
+            client
+            for client in statuses
+            if not client.configured
+        )
+
+        if not unconfigured:
+            print()
+            print("All MCP clients are configured.")
+            return EXIT_OK
+
         print()
-        print("MCP client configuration skipped.")
-        print("You can configure it later with:")
-        print("  mcpctl config mcp-client")
+
+        selected = _select_mcp_client(
+            statuses,
+            unconfigured_only=True,
+            allow_skip=True,
+        )
+
+        if selected is None:
+            print()
+            print("MCP client configuration skipped.")
+            print("You can configure it later with:")
+            print("  mcpctl config mcp-client")
+            return EXIT_OK
+
+        return _configure_selected_client(selected)
+
+    selected = _select_mcp_client(
+        statuses,
+        unconfigured_only=False,
+        allow_skip=False,
+    )
+
+    if selected is None:
+        raise ValueError("No MCP clients are available.")
+
+    _print_mcp_client_details(selected)
+
+    action_options = (
+        ["Configure", "Back"]
+        if not selected.configured
+        else ["Reconfigure", "Back"]
+    )
+
+    print()
+
+    action = _prompt_choice(
+        "Choose an action",
+        action_options,
+    )
+
+    if action == 2:
         return EXIT_OK
 
-    raise ValueError("Unsupported MCP client selection.")
+    return _configure_selected_client(selected)
 
 
 def _config() -> int:
@@ -133,23 +353,95 @@ def _print_tls_status(status: TLSStatus) -> None:
 
 
 def _setup() -> int:
+    print("Local MCP Server Setup")
+
+    _print_setup_step(
+        1,
+        "Runtime",
+    )
+
     lifecycle.prepare_runtime()
 
+    _print_setup_result(
+        "✓ READY",
+    )
+
+    _print_setup_step(
+        2,
+        "OpenShell TLS",
+    )
+
     tls_status = setup_openshell_tls()
+
+    _print_setup_result(
+        "✓ READY"
+        if tls_status.complete
+        else "✗ NOT READY",
+    )
+
+    _print_setup_step(
+        3,
+        "MCP Clients",
+    )
 
     _config_mcp_client(
         allow_skip=True,
     )
 
+    _print_setup_step(
+        4,
+        "Docker Compose",
+    )
+
     lifecycle.validate_compose()
+
+    _print_setup_result(
+        "✓ VALID",
+    )
+
+    _print_setup_step(
+        5,
+        "Core Services",
+    )
+
+    print("      OpenShell Gateway    … STARTING")
+    print("      MCP Server           … STARTING")
+
     lifecycle.start_core_services()
 
+    print("      OpenShell Gateway    ✓ READY")
+    print("      MCP Server           ✓ READY")
+
+    _print_setup_step(
+        6,
+        "Tunnel Client",
+    )
+
     lifecycle.reconcile_tunnel_client()
+
+    current_status = lifecycle.get_status(
+        tls_status,
+    )
+
+    if current_status.tunnel_client.running:
+        print("      OpenAI               ✓ ACTIVE")
+    else:
+        configured_clients = [
+            client
+            for client in current_status.mcp_clients
+            if client.configured
+        ]
+
+        if configured_clients:
+            print("      OpenAI               ○ NOT RUNNING")
+        else:
+            print("      OpenAI               — SKIPPED")
 
     final_status = lifecycle.verify(
         tls_status,
     )
 
+    print()
     lifecycle.print_status(final_status)
 
     return EXIT_OK
@@ -169,18 +461,62 @@ def _status() -> int:
 
 
 def _repair() -> int:
+    print("Local MCP Server Repair")
+
+    print()
+    print("[1/5] Runtime")
     lifecycle.prepare_runtime()
+    print("      ✓ READY")
 
+    print()
+    print("[2/5] OpenShell TLS")
     tls_status = repair_openshell_tls()
+    print(
+        "      "
+        + (
+            "✓ READY"
+            if tls_status.complete
+            else "✗ NOT READY"
+        )
+    )
 
+    print()
+    print("[3/5] Docker Compose")
     lifecycle.validate_compose()
+    print("      ✓ VALID")
+
+    print()
+    print("[4/5] Core Services")
+    print("      OpenShell Gateway    … STARTING")
+    print("      MCP Server           … STARTING")
+
     lifecycle.start_core_services()
+
+    print("      OpenShell Gateway    ✓ READY")
+    print("      MCP Server           ✓ READY")
+
+    print()
+    print("[5/5] Tunnel Client")
     lifecycle.reconcile_tunnel_client()
+
+    status = lifecycle.get_status(
+        tls_status,
+    )
+
+    print(
+        "      "
+        + (
+            "✓ ACTIVE"
+            if status.tunnel_client.running
+            else "○ NOT RUNNING"
+        )
+    )
 
     final_status = lifecycle.verify(
         tls_status,
     )
 
+    print()
     lifecycle.print_status(final_status)
 
     return EXIT_OK
@@ -396,6 +732,12 @@ def _build_parser() -> argparse.ArgumentParser:
     )
 
     credential_get.add_argument("name")
+
+    credential_get.add_argument(
+        "--key",
+        required=True,
+        dest="credential_key",
+    )
 
     credential_update = credential_commands.add_parser(
         "update",
