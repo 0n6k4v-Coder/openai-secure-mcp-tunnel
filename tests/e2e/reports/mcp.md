@@ -125,26 +125,26 @@ Tests involving actual sandbox creation, deletion, restart, or command execution
 
 | ID | Test | Expected Result | Status |
 |---|---|---|---|
-| MCP-SBX-001 | Create a sandbox with a valid name and default profile | Sandbox creation succeeds and returns the service result | ⚪ Not implemented |
-| MCP-SBX-002 | Create a sandbox using the `default` profile | Default profile is selected | ⚪ Not implemented |
-| MCP-SBX-003 | Create a sandbox using the `browser` profile | Browser profile is selected | ⚪ Not implemented |
-| MCP-SBX-004 | Create a standalone sandbox by omitting `host_workspace_id` | Sandbox uses sandbox-local workspace storage | ⚪ Not implemented |
-| MCP-SBX-005 | Create a sandbox using a valid authorized host workspace ID | Sandbox uses the authorized workspace binding | ⚪ Not implemented |
-| MCP-SBX-006 | Create a sandbox with an unknown workspace ID | Request fails without creating an unintended sandbox | ⚪ Not implemented |
-| MCP-SBX-007 | Create a sandbox with an unsupported profile | Profile validation rejects the request | ⚪ Not implemented |
-| MCP-SBX-008 | Create a sandbox with a missing or invalid name | Request fails clearly without creating a resource | ⚪ Not implemented |
-| MCP-SBX-009 | Create a sandbox with an existing name | Duplicate-name behavior is handled without corrupting the existing sandbox | ⚪ Not implemented |
-| MCP-SBX-010 | List sandboxes | Returns the sandbox service's list result | ⚪ Not implemented |
-| MCP-SBX-011 | List sandboxes in an empty test environment | Returns a valid empty result | ⚪ Not implemented |
-| MCP-SBX-012 | Create then list a sandbox | Newly created sandbox appears in the list | ⚪ Not implemented |
-| MCP-SBX-013 | Validate create/list result handling | Successful results are returned without false success on service errors | ⚪ Not implemented |
+| MCP-SBX-001 | Create a sandbox with a valid name and default profile | Sandbox creation succeeds and returns the service result | 🟢 Pass |
+| MCP-SBX-002 | Create a sandbox using the `default` profile | Default profile is selected | 🟢 Pass |
+| MCP-SBX-003 | Create a sandbox using the `browser` profile | Browser profile is selected | 🟠 Blocked |
+| MCP-SBX-004 | Create a standalone sandbox by omitting `host_workspace_id` | Sandbox uses sandbox-local workspace storage | 🟢 Pass |
+| MCP-SBX-005 | Create a sandbox using a valid authorized host workspace ID | Sandbox uses the authorized workspace binding | 🟠 Blocked |
+| MCP-SBX-006 | Create a sandbox with an unknown workspace ID | Request fails without creating an unintended sandbox | 🟢 Pass |
+| MCP-SBX-007 | Create a sandbox with an unsupported profile | Profile validation rejects the request | 🟢 Pass |
+| MCP-SBX-008 | Create a sandbox with a missing or invalid name | Request fails clearly without creating a resource | 🟢 Pass |
+| MCP-SBX-009 | Create a sandbox with an existing name | Duplicate-name behavior is handled without corrupting the existing sandbox | 🟢 Pass |
+| MCP-SBX-010 | List sandboxes | Returns the sandbox service's list result | 🟢 Pass |
+| MCP-SBX-011 | List sandboxes in an empty test environment | Returns a valid empty result | 🟠 Blocked |
+| MCP-SBX-012 | Create then list a sandbox | Newly created sandbox appears in the list | 🟢 Pass |
+| MCP-SBX-013 | Validate create/list result handling | Successful results are returned without false success on service errors | 🟢 Pass |
 
 ### 7.2 Status and Logs
 
 | ID | Test | Expected Result | Status |
 |---|---|---|---|
 | MCP-SBX-020 | Query status for an existing sandbox | Returns the current sandbox status | ⚪ Not implemented |
-| MCP-SBX-021 | Query status for a missing sandbox | Returns a clear error | ⚪ Not implemented |
+| MCP-SBX-021 | Query status for a missing sandbox | Returns a clear error | 🟠 Blocked |
 | MCP-SBX-022 | Validate status response content | Response accurately reflects the service result | ⚪ Not implemented |
 | MCP-SBX-023 | Get logs with the default `since` value | Uses the default duration of `5m` | ⚪ Not implemented |
 | MCP-SBX-024 | Get logs with a supported duration such as `1h` or `30s` | Requested duration reaches the service unchanged | ⚪ Not implemented |
@@ -169,23 +169,23 @@ Tests involving actual sandbox creation, deletion, restart, or command execution
 | MCP-SBX-040 | Recreate a missing sandbox | Returns a clear failure | ⚪ Not implemented |
 | MCP-SBX-041 | Delete an existing test sandbox | Sandbox is deleted | ⚪ Not implemented |
 | MCP-SBX-042 | Delete a missing sandbox | Returns a clear failure | ⚪ Not implemented |
-| MCP-SBX-043 | Verify deletion after delete succeeds | Sandbox no longer appears as an existing resource | ⚪ Not implemented |
+| MCP-SBX-043 | Verify deletion after delete succeeds | Sandbox no longer appears as an existing resource | 🟠 Blocked |
 | MCP-SBX-044 | Interrupt or fail a lifecycle operation | Reports the actual outcome and permits safe recovery | ⚪ Not implemented |
 | MCP-SBX-045 | Verify lifecycle isolation | Operations affect only the named test sandbox | ⚪ Not implemented |
-| MCP-SBX-046 | Verify cleanup after a failed lifecycle test | Test-created sandboxes are removed or their retained state is explicitly reported | ⚪ Not implemented |
+| MCP-SBX-046 | Verify cleanup after a failed lifecycle test | Test-created sandboxes are removed or their retained state is explicitly reported | 🟠 Blocked |
 
 ### 7.4 Execute Commands
 
 | ID | Test | Expected Result | Status |
 |---|---|---|---|
-| MCP-SBX-050 | Execute a harmless command in an existing sandbox | Command runs inside the specified sandbox | ⚪ Not implemented |
-| MCP-SBX-051 | Execute a command that returns output | Output is returned accurately | ⚪ Not implemented |
-| MCP-SBX-052 | Execute a command that exits non-zero | Failure is accurately reported and not represented as success | ⚪ Not implemented |
-| MCP-SBX-053 | Execute a command with spaces and shell-special characters in its command string | Input is handled according to the underlying command execution contract without accidental host execution | ⚪ Not implemented |
-| MCP-SBX-054 | Execute a command in a missing sandbox | Returns a clear failure | ⚪ Not implemented |
-| MCP-SBX-055 | Omit required `name` or `command` | Input validation rejects the call | ⚪ Not implemented |
-| MCP-SBX-056 | Verify command execution boundary | Command executes in the requested sandbox, not on the MCP server host | ⚪ Not implemented |
-| MCP-SBX-057 | Verify output/error handling for a command failure | Diagnostic information is preserved without leaking unrelated secrets | ⚪ Not implemented |
+| MCP-SBX-050 | Execute a harmless command in an existing sandbox | Command runs inside the specified sandbox | 🟢 Pass |
+| MCP-SBX-051 | Execute a command that returns output | Output is returned accurately | 🟢 Pass |
+| MCP-SBX-052 | Execute a command that exits non-zero | Failure is accurately reported and not represented as success | 🟢 Pass |
+| MCP-SBX-053 | Execute a command with spaces and shell-special characters in its command string | Input is handled according to the underlying command execution contract without accidental host execution | 🟢 Pass |
+| MCP-SBX-054 | Execute a command in a missing sandbox | Returns a clear failure | 🟢 Pass |
+| MCP-SBX-055 | Omit required `name` or `command` | Input validation rejects the call | 🟢 Pass |
+| MCP-SBX-056 | Verify command execution boundary | Command executes in the requested sandbox, not on the MCP server host | 🟢 Pass |
+| MCP-SBX-057 | Verify output/error handling for a command failure | Diagnostic information is preserved without leaking unrelated secrets | 🟢 Pass |
 
 ## 8. Workspace File Tools
 
