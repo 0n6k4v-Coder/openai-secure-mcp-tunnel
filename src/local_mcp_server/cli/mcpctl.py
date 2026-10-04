@@ -80,11 +80,7 @@ def _print_mcp_clients(
         row = [
             str(index),
             client.display_name,
-            (
-                "✓ CONFIGURED"
-                if client.configured
-                else "○ NOT CONFIGURED"
-            ),
+            ("✓ CONFIGURED" if client.configured else "○ NOT CONFIGURED"),
         ]
 
         if include_runtime:
@@ -106,27 +102,15 @@ def _print_mcp_client_details(
     print()
     print(
         "Configuration:      "
-        + (
-            "✓ CONFIGURED"
-            if client.configured
-            else "○ NOT CONFIGURED"
-        )
+        + ("✓ CONFIGURED" if client.configured else "○ NOT CONFIGURED")
     )
     print(
         "Config file:        "
-        + (
-            "✓ PRESENT"
-            if client.config_present
-            else "○ NOT FOUND"
-        )
+        + ("✓ PRESENT" if client.config_present else "○ NOT FOUND")
     )
     print(
         "Credentials:        "
-        + (
-            "✓ PRESENT"
-            if client.credentials_present
-            else "○ NOT FOUND"
-        )
+        + ("✓ PRESENT" if client.credentials_present else "○ NOT FOUND")
     )
 
     if client.permissions_secure is True:
@@ -136,10 +120,7 @@ def _print_mcp_client_details(
     else:
         print("Permissions:        —")
 
-    print(
-        "Runtime:            "
-        + client.runtime
-    )
+    print("Runtime:            " + client.runtime)
 
 
 def _configure_openai() -> int:
@@ -169,19 +150,11 @@ def _configure_openai() -> int:
     print("  Configuration      ✓ CONFIGURED")
     print(
         "  Credentials        "
-        + (
-            "✓ PRESENT"
-            if client.credentials_present
-            else "✗ MISSING"
-        )
+        + ("✓ PRESENT" if client.credentials_present else "✗ MISSING")
     )
     print(
         "  Permissions        "
-        + (
-            "✓ SECURE"
-            if client.permissions_secure
-            else "✗ INSECURE"
-        )
+        + ("✓ SECURE" if client.permissions_secure else "✗ INSECURE")
     )
 
     print()
@@ -197,18 +170,13 @@ def _select_mcp_client(
     allow_skip: bool,
 ) -> lifecycle.MCPClientStatus | None:
     candidates = tuple(
-        client
-        for client in statuses
-        if not unconfigured_only or not client.configured
+        client for client in statuses if not unconfigured_only or not client.configured
     )
 
     if not candidates:
         return None
 
-    options = [
-        client.display_name
-        for client in candidates
-    ]
+    options = [client.display_name for client in candidates]
 
     if allow_skip:
         options.append("Skip for now")
@@ -234,9 +202,7 @@ def _configure_selected_client(
     if client.key == "openai":
         return _configure_openai()
 
-    raise ValueError(
-        f"Unsupported MCP client: {client.display_name}"
-    )
+    raise ValueError(f"Unsupported MCP client: {client.display_name}")
 
 
 def _config_mcp_client(
@@ -255,11 +221,7 @@ def _config_mcp_client(
     )
 
     if allow_skip:
-        unconfigured = tuple(
-            client
-            for client in statuses
-            if not client.configured
-        )
+        unconfigured = tuple(client for client in statuses if not client.configured)
 
         if not unconfigured:
             print()
@@ -295,9 +257,7 @@ def _config_mcp_client(
     _print_mcp_client_details(selected)
 
     action_options = (
-        ["Configure", "Back"]
-        if not selected.configured
-        else ["Reconfigure", "Back"]
+        ["Configure", "Back"] if not selected.configured else ["Reconfigure", "Back"]
     )
 
     print()
@@ -314,13 +274,14 @@ def _config_mcp_client(
 
 
 def _config() -> int:
-    if _prompt_choice(
-        "Configuration",
-        ["MCP Clients"],
-    ) != 1:
-        raise ValueError(
-            "Unsupported configuration selection."
+    if (
+        _prompt_choice(
+            "Configuration",
+            ["MCP Clients"],
         )
+        != 1
+    ):
+        raise ValueError("Unsupported configuration selection.")
 
     return _config_mcp_client()
 
@@ -328,9 +289,7 @@ def _config() -> int:
 def _print_tls_status(status: TLSStatus) -> None:
     print("OpenShell TLS")
     print()
-    print(
-        f"State: {'✓ READY' if status.complete else '✗ NOT READY'}"
-    )
+    print(f"State: {'✓ READY' if status.complete else '✗ NOT READY'}")
     print(f"Path: {status.root}")
 
     if status.missing:
@@ -338,18 +297,14 @@ def _print_tls_status(status: TLSStatus) -> None:
         print("Missing:")
 
         for path in status.missing:
-            print(
-                f"  - {path.relative_to(status.root)}"
-            )
+            print(f"  - {path.relative_to(status.root)}")
 
     if status.insecure_paths:
         print()
         print("Permissions:")
 
         for path in status.insecure_paths:
-            print(
-                f"  - {path.relative_to(status.root)}"
-            )
+            print(f"  - {path.relative_to(status.root)}")
 
 
 def _setup() -> int:
@@ -374,9 +329,7 @@ def _setup() -> int:
     tls_status = setup_openshell_tls()
 
     _print_setup_result(
-        "✓ READY"
-        if tls_status.complete
-        else "✗ NOT READY",
+        "✓ READY" if tls_status.complete else "✗ NOT READY",
     )
 
     _print_setup_step(
@@ -427,9 +380,7 @@ def _setup() -> int:
         print("      OpenAI               ✓ ACTIVE")
     else:
         configured_clients = [
-            client
-            for client in current_status.mcp_clients
-            if client.configured
+            client for client in current_status.mcp_clients if client.configured
         ]
 
         if configured_clients:
@@ -453,11 +404,7 @@ def _status() -> int:
 
     lifecycle.print_status(status)
 
-    return (
-        EXIT_OK
-        if status.ready
-        else EXIT_ERROR
-    )
+    return EXIT_OK if status.ready else EXIT_ERROR
 
 
 def _repair() -> int:
@@ -471,14 +418,7 @@ def _repair() -> int:
     print()
     print("[2/5] OpenShell TLS")
     tls_status = repair_openshell_tls()
-    print(
-        "      "
-        + (
-            "✓ READY"
-            if tls_status.complete
-            else "✗ NOT READY"
-        )
-    )
+    print("      " + ("✓ READY" if tls_status.complete else "✗ NOT READY"))
 
     print()
     print("[3/5] Docker Compose")
@@ -503,14 +443,7 @@ def _repair() -> int:
         tls_status,
     )
 
-    print(
-        "      "
-        + (
-            "✓ ACTIVE"
-            if status.tunnel_client.running
-            else "○ NOT RUNNING"
-        )
-    )
+    print("      " + ("✓ ACTIVE" if status.tunnel_client.running else "○ NOT RUNNING"))
 
     final_status = lifecycle.verify(
         tls_status,
@@ -565,10 +498,16 @@ def _build_parser() -> argparse.ArgumentParser:
 
     sandbox_create.add_argument("name")
 
-    sandbox_create.add_argument(
+    workspace_source = sandbox_create.add_mutually_exclusive_group(required=True)
+    workspace_source.add_argument(
         "--workspace",
-        required=True,
         dest="workspace_id",
+        help="Use an authorized host workspace.",
+    )
+    workspace_source.add_argument(
+        "--standalone",
+        action="store_true",
+        help="Create without a host workspace; use sandbox-local storage.",
     )
 
     sandbox_create.add_argument(
@@ -855,9 +794,7 @@ def _delegate_local_cli(
     command: str,
     arguments: Sequence[str],
 ) -> int:
-    return local_mcp_server_main(
-        [command, *arguments]
-    )
+    return local_mcp_server_main([command, *arguments])
 
 
 def _sandbox_arguments(
@@ -867,11 +804,14 @@ def _sandbox_arguments(
         arguments = [
             "create",
             args.name,
-            "--workspace",
-            args.workspace_id,
-            "--profile",
-            args.profile,
         ]
+
+        if args.standalone:
+            arguments.append("--standalone")
+        else:
+            arguments.extend(["--workspace", args.workspace_id])
+
+        arguments.extend(["--profile", args.profile])
 
         if args.json_output:
             arguments.append("--json")
@@ -923,9 +863,7 @@ def _sandbox_arguments(
             *args.exec_command,
         ]
 
-    raise RuntimeError(
-        f"Unsupported sandbox command: {args.sandbox_command}"
-    )
+    raise RuntimeError(f"Unsupported sandbox command: {args.sandbox_command}")
 
 
 def _credential_arguments(
@@ -974,9 +912,7 @@ def _credential_arguments(
         ]
 
     else:
-        raise RuntimeError(
-            f"Unsupported credential command: {command}"
-        )
+        raise RuntimeError(f"Unsupported credential command: {command}")
 
     if args.confirmed:
         arguments.append("--yes")
@@ -1009,9 +945,7 @@ def _workspace_arguments(
 
         return arguments
 
-    raise RuntimeError(
-        f"Unsupported workspace command: {command}"
-    )
+    raise RuntimeError(f"Unsupported workspace command: {command}")
 
 
 def main(
@@ -1032,10 +966,7 @@ def main(
 
         if args.command == "config":
             if args.config_command != "mcp-client":
-                raise RuntimeError(
-                    f"Unsupported config command: "
-                    f"{args.config_command}"
-                )
+                raise RuntimeError(f"Unsupported config command: {args.config_command}")
 
             if args.mcp_client_command is None:
                 return _config_mcp_client()
@@ -1044,8 +975,7 @@ def main(
                 return _configure_openai()
 
             raise RuntimeError(
-                "Unsupported MCP client command: "
-                f"{args.mcp_client_command}"
+                f"Unsupported MCP client command: {args.mcp_client_command}"
             )
 
         if args.command == "sandbox":
@@ -1061,13 +991,9 @@ def main(
             )
 
         if args.command == "workspace":
-            return workspace_broker.main(
-                _workspace_arguments(args)
-            )
+            return workspace_broker.main(_workspace_arguments(args))
 
-        raise RuntimeError(
-            f"Unsupported command: {args.command}"
-        )
+        raise RuntimeError(f"Unsupported command: {args.command}")
 
     except KeyboardInterrupt:
         print(

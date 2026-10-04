@@ -343,10 +343,19 @@ def _sandbox_status(name: str, json_output: bool) -> int:
 
 def _sandbox_create(
     name: str,
-    workspace_id: str,
+    workspace_id: str | None,
+    standalone: bool,
     json_output: bool,
     profile: str = "default",
 ) -> int:
+    if standalone and workspace_id is not None:
+        raise ValueError("sandbox create cannot use --workspace with --standalone.")
+
+    if not standalone and workspace_id is None:
+        raise ValueError(
+            "sandbox create requires either --workspace WORKSPACE_ID or --standalone."
+        )
+
     if profile == "default":
         created = create_sandbox(
             name=name,
@@ -372,7 +381,12 @@ def _sandbox_create(
     print(f"Name:                {data.get('name', name)}")
     print(f"Status:              {_status_value(data)}")
     print(f"Profile:             {data.get('profile', profile)}")
-    print(f"Host workspace ID:   {workspace_id}")
+
+    if standalone:
+        print("Application workspace: sandbox-local")
+    else:
+        print(f"Host workspace ID:   {workspace_id}")
+
     print("Sandbox path:        /workspace/project")
 
     return EXIT_OK
@@ -592,10 +606,22 @@ def _build_parser() -> argparse.ArgumentParser:
 
     create = sandbox_commands.add_parser(
         "create",
-        help="Create a sandbox using an authorized host workspace.",
+        help="Create a host-backed or standalone sandbox.",
     )
     create.add_argument("name")
-    create.add_argument("--workspace", required=True, dest="workspace_id")
+
+    workspace_source = create.add_mutually_exclusive_group(required=True)
+    workspace_source.add_argument(
+        "--workspace",
+        dest="workspace_id",
+        help="Use an authorized host workspace.",
+    )
+    workspace_source.add_argument(
+        "--standalone",
+        action="store_true",
+        help="Create without a host workspace; use sandbox-local storage.",
+    )
+
     create.add_argument(
         "--profile",
         choices=["default", "browser"],
@@ -770,12 +796,14 @@ def main(argv: Sequence[str] | None = None) -> int:
                 return args.handler(
                     args.name,
                     args.workspace_id,
+                    args.standalone,
                     args.json_output,
                 )
 
             return args.handler(
                 args.name,
                 args.workspace_id,
+                args.standalone,
                 args.json_output,
                 args.profile,
             )

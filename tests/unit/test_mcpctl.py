@@ -7,15 +7,9 @@ from types import SimpleNamespace
 import pytest
 
 
-mcpctl = importlib.import_module(
-    "local_mcp_server.cli.mcpctl"
-)
-config_service = importlib.import_module(
-    "local_mcp_server.config.service"
-)
-paths = importlib.import_module(
-    "local_mcp_server.config.paths"
-)
+mcpctl = importlib.import_module("local_mcp_server.cli.mcpctl")
+config_service = importlib.import_module("local_mcp_server.config.service")
+paths = importlib.import_module("local_mcp_server.config.paths")
 
 
 def _patch_config_paths(
@@ -61,9 +55,7 @@ def test_xdg_config_home_defaults_to_user_config_directory(
         raising=False,
     )
 
-    assert paths.xdg_config_home() == (
-        Path.home() / ".config"
-    )
+    assert paths.xdg_config_home() == (Path.home() / ".config")
 
 
 def test_xdg_config_home_uses_absolute_override(
@@ -88,9 +80,7 @@ def test_xdg_config_home_ignores_relative_override(
         "relative-config",
     )
 
-    assert paths.xdg_config_home() == (
-        Path.home() / ".config"
-    )
+    assert paths.xdg_config_home() == (Path.home() / ".config")
 
 
 def test_configure_openai_writes_expected_files(
@@ -114,7 +104,7 @@ def test_configure_openai_writes_expected_files(
         "control_plane:\n"
         "  base_url: https://api.openai.com\n"
         "  tunnel_id: "
-        "\"tunnel_0123456789abcdef0123456789abcdef\"\n"
+        '"tunnel_0123456789abcdef0123456789abcdef"\n'
         "  api_key: file:/run/secrets/CONTROL_PLANE_API_KEY\n"
         "mcp:\n"
         "  server_urls:\n"
@@ -122,39 +112,22 @@ def test_configure_openai_writes_expected_files(
         "      url: http://mcp-server:8000/mcp\n"
     )
 
-    assert config_service.OPENAI_API_KEY_FILE.read_text(
-        encoding="utf-8",
-    ) == "sk-test-value\n"
-
     assert (
-        config_service.OPENAI_CONFIG_FILE.stat().st_mode
-        & 0o777
-        == 0o600
+        config_service.OPENAI_API_KEY_FILE.read_text(
+            encoding="utf-8",
+        )
+        == "sk-test-value\n"
     )
 
-    assert (
-        config_service.OPENAI_API_KEY_FILE.stat().st_mode
-        & 0o777
-        == 0o600
-    )
+    assert config_service.OPENAI_CONFIG_FILE.stat().st_mode & 0o777 == 0o600
 
-    assert (
-        config_service.OPENAI_CONFIG_FILE.parent.stat().st_mode
-        & 0o777
-        == 0o700
-    )
+    assert config_service.OPENAI_API_KEY_FILE.stat().st_mode & 0o777 == 0o600
 
-    assert (
-        config_service.CONFIG_ROOT.stat().st_mode
-        & 0o777
-        == 0o700
-    )
+    assert config_service.OPENAI_CONFIG_FILE.parent.stat().st_mode & 0o777 == 0o700
 
-    assert (
-        config_service.MCP_CLIENTS_ROOT.stat().st_mode
-        & 0o777
-        == 0o700
-    )
+    assert config_service.CONFIG_ROOT.stat().st_mode & 0o777 == 0o700
+
+    assert config_service.MCP_CLIENTS_ROOT.stat().st_mode & 0o777 == 0o700
 
 
 def test_configure_openai_rejects_insecure_existing_directory(
@@ -171,9 +144,7 @@ def test_configure_openai_rejects_insecure_existing_directory(
         mode=0o700,
     )
 
-    config_service.CONFIG_ROOT.chmod(
-        0o755
-    )
+    config_service.CONFIG_ROOT.chmod(0o755)
 
     with pytest.raises(
         config_service.ConfigError,
@@ -194,9 +165,7 @@ def test_configure_openai_hides_api_key_input(
     def fake_input(prompt: str) -> str:
         captured["tunnel_prompt"] = prompt
 
-        return (
-            "tunnel_0123456789abcdef0123456789abcdef"
-        )
+        return "tunnel_0123456789abcdef0123456789abcdef"
 
     def fake_getpass(prompt: str) -> str:
         captured["api_key_prompt"] = prompt
@@ -224,19 +193,13 @@ def test_configure_openai_hides_api_key_input(
         ),
     )
 
-    assert (
-        mcpctl._configure_openai()
-        == mcpctl.EXIT_OK
-    )
+    assert mcpctl._configure_openai() == mcpctl.EXIT_OK
 
     output = capsys.readouterr().out
 
     assert "sk-secret-value" not in output
 
-    assert (
-        captured["api_key_prompt"]
-        == "CONTROL_PLANE_API_KEY: "
-    )
+    assert captured["api_key_prompt"] == "CONTROL_PLANE_API_KEY: "
 
 
 def test_configure_openai_rejects_invalid_tunnel_id(
@@ -384,9 +347,7 @@ def test_mcp_client_setup_does_not_prompt_when_all_clients_configured(
     monkeypatch: pytest.MonkeyPatch,
     capsys: pytest.CaptureFixture[str],
 ) -> None:
-    client = (
-        mcpctl.lifecycle.get_mcp_client_statuses()[0]
-    )
+    client = mcpctl.lifecycle.get_mcp_client_statuses()[0]
 
     configured_client = type(client)(
         key=client.key,
@@ -408,9 +369,7 @@ def test_mcp_client_setup_does_not_prompt_when_all_clients_configured(
     )
 
     def fail_prompt(*args, **kwargs) -> int:
-        raise AssertionError(
-            "configured MCP clients should not prompt"
-        )
+        raise AssertionError("configured MCP clients should not prompt")
 
     monkeypatch.setattr(
         mcpctl,
@@ -473,10 +432,7 @@ def test_mcp_client_management_shows_configured_status(
         fake_prompt,
     )
 
-    assert (
-        mcpctl._config_mcp_client()
-        == mcpctl.EXIT_OK
-    )
+    assert mcpctl._config_mcp_client() == mcpctl.EXIT_OK
 
     output = capsys.readouterr().out
 
@@ -491,9 +447,7 @@ def test_mcp_client_management_shows_configured_status(
 def test_mcp_client_management_configures_unconfigured_client(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    client = (
-        mcpctl.lifecycle.get_mcp_client_statuses()[0]
-    )
+    client = mcpctl.lifecycle.get_mcp_client_statuses()[0]
 
     unconfigured_client = type(client)(
         key=client.key,
@@ -540,10 +494,7 @@ def test_mcp_client_management_configures_unconfigured_client(
         fake_configure,
     )
 
-    assert (
-        mcpctl._config_mcp_client()
-        == mcpctl.EXIT_OK
-    )
+    assert mcpctl._config_mcp_client() == mcpctl.EXIT_OK
 
     assert configured is True
     assert calls[0] == ["OpenAI"]
@@ -607,14 +558,75 @@ def test_mcp_client_setup_skip_does_not_configure(
     assert called is False
 
 
+def test_mcpctl_sandbox_create_parser_supports_standalone() -> None:
+    parser = mcpctl._build_parser()
+
+    args = parser.parse_args(
+        [
+            "sandbox",
+            "create",
+            "std-test",
+            "--standalone",
+        ]
+    )
+
+    assert args.workspace_id is None
+    assert args.standalone is True
+    assert args.profile == "default"
+
+    assert mcpctl._sandbox_arguments(args) == [
+        "create",
+        "std-test",
+        "--standalone",
+        "--profile",
+        "default",
+    ]
+
+
+def test_mcpctl_sandbox_create_parser_requires_workspace_source() -> None:
+    parser = mcpctl._build_parser()
+
+    with pytest.raises(SystemExit):
+        parser.parse_args(
+            [
+                "sandbox",
+                "create",
+                "std-test",
+            ]
+        )
+
+
+def test_mcpctl_sandbox_create_parser_preserves_host_workspace() -> None:
+    parser = mcpctl._build_parser()
+
+    args = parser.parse_args(
+        [
+            "sandbox",
+            "create",
+            "project-api",
+            "--workspace",
+            "ws_project",
+            "--profile",
+            "browser",
+        ]
+    )
+
+    assert args.workspace_id == "ws_project"
+    assert args.standalone is False
+    assert mcpctl._sandbox_arguments(args) == [
+        "create",
+        "project-api",
+        "--workspace",
+        "ws_project",
+        "--profile",
+        "browser",
+    ]
+
+
 def test_mcpctl_parser_contains_expected_commands() -> None:
     parser = mcpctl._build_parser()
 
-    action = next(
-        action
-        for action in parser._actions
-        if action.dest == "command"
-    )
+    action = next(action for action in parser._actions if action.dest == "command")
 
     assert set(action.choices) == {
         "setup",
@@ -648,10 +660,7 @@ def test_setup_configures_mcp_client_before_starting_services(
         mcpctl,
         "_config_mcp_client",
         lambda *, allow_skip: (
-            events.append(
-                f"config_mcp_client:{allow_skip}"
-            )
-            or mcpctl.EXIT_OK
+            events.append(f"config_mcp_client:{allow_skip}") or mcpctl.EXIT_OK
         ),
     )
     monkeypatch.setattr(
@@ -667,18 +676,13 @@ def test_setup_configures_mcp_client_before_starting_services(
     monkeypatch.setattr(
         mcpctl.lifecycle,
         "reconcile_tunnel_client",
-        lambda: events.append(
-            "reconcile_tunnel_client"
-        ),
+        lambda: events.append("reconcile_tunnel_client"),
     )
     monkeypatch.setattr(
         mcpctl.lifecycle,
         "verify",
         lambda status: (
-            events.append(
-                f"verify:{status is tls_status}"
-            )
-            or final_status
+            events.append(f"verify:{status is tls_status}") or final_status
         ),
     )
     monkeypatch.setattr(
@@ -700,9 +704,7 @@ def test_setup_configures_mcp_client_before_starting_services(
     monkeypatch.setattr(
         mcpctl.lifecycle,
         "print_status",
-        lambda status: events.append(
-            f"print_status:{status is final_status}"
-        ),
+        lambda status: events.append(f"print_status:{status is final_status}"),
     )
 
     assert mcpctl._setup() == mcpctl.EXIT_OK

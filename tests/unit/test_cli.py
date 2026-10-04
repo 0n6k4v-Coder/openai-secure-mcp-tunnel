@@ -115,6 +115,7 @@ def test_sandbox_create_uses_workspace(
             "project-api",
             "ws_project",
             False,
+            False,
         )
         == cli.EXIT_OK
     )
@@ -130,6 +131,87 @@ def test_sandbox_create_uses_workspace(
     assert "project-api" in output
     assert "ws_project" in output
     assert "/workspace/project" in output
+
+
+def test_sandbox_create_standalone(
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    captured: dict[str, object] = {}
+
+    def fake_create_sandbox(
+        *,
+        name: str,
+        workspace_id: str | None,
+    ) -> str:
+        captured["name"] = name
+        captured["workspace_id"] = workspace_id
+
+        return json.dumps(
+            {
+                "name": name,
+                "status": "Ready",
+                "profile": "default",
+                "workspace": {
+                    "type": "sandbox",
+                    "id": name,
+                    "root": "/workspace/project",
+                    "read_only": False,
+                },
+                "id": "sandbox-id",
+            }
+        )
+
+    monkeypatch.setattr(cli, "create_sandbox", fake_create_sandbox)
+
+    assert (
+        cli._sandbox_create(
+            "standalone-api",
+            None,
+            True,
+            False,
+        )
+        == cli.EXIT_OK
+    )
+
+    assert captured == {
+        "name": "standalone-api",
+        "workspace_id": None,
+    }
+
+    output = capsys.readouterr().out
+
+    assert "Sandbox created." in output
+    assert "standalone-api" in output
+    assert "Application workspace: sandbox-local" in output
+    assert "Host workspace ID:" not in output
+    assert "/workspace/project" in output
+
+
+def test_sandbox_create_rejects_missing_workspace_source() -> None:
+    with pytest.raises(
+        ValueError,
+        match="requires either --workspace WORKSPACE_ID or --standalone",
+    ):
+        cli._sandbox_create(
+            "project-api",
+            None,
+            False,
+            False,
+        )
+
+
+def test_sandbox_create_rejects_conflicting_workspace_source() -> None:
+    with pytest.raises(
+        ValueError,
+        match="cannot use --workspace with --standalone",
+    ):
+        cli._sandbox_create(
+            "project-api",
+            "ws_project",
+            True,
+            False,
+        )
 
 
 def test_sandbox_create_json(
@@ -152,6 +234,7 @@ def test_sandbox_create_json(
         cli._sandbox_create(
             "project-api",
             "ws_project",
+            False,
             True,
         )
         == cli.EXIT_OK
@@ -422,6 +505,11 @@ def test_sandbox_lifecycle_commands(
             "sandbox",
             "create",
         ),
+        (
+            ["sandbox", "create", "standalone-api", "--standalone"],
+            "sandbox",
+            "create",
+        ),
         (["sandbox", "shell", "project-api"], "sandbox", "shell"),
         (
             ["sandbox", "exec", "project-api", "--", "echo", "hello"],
@@ -445,6 +533,35 @@ def test_sandbox_parser_commands(
     assert args.command == command
     assert args.sandbox_command == sandbox_command
     assert callable(args.handler)
+
+
+def test_sandbox_parser_requires_workspace_source() -> None:
+    parser = cli._build_parser()
+
+    with pytest.raises(SystemExit):
+        parser.parse_args(
+            [
+                "sandbox",
+                "create",
+                "project-api",
+            ]
+        )
+
+
+def test_sandbox_parser_rejects_conflicting_workspace_sources() -> None:
+    parser = cli._build_parser()
+
+    with pytest.raises(SystemExit):
+        parser.parse_args(
+            [
+                "sandbox",
+                "create",
+                "project-api",
+                "--workspace",
+                "ws_project",
+                "--standalone",
+            ]
+        )
 
 
 @pytest.mark.parametrize(
@@ -716,13 +833,15 @@ def test_main_dispatches_sandbox_create(
 
     def fake_create(
         name: str,
-        workspace_id: str,
+        workspace_id: str | None,
+        standalone: bool,
         json_output: bool,
     ) -> int:
         captured.update(
             {
                 "name": name,
                 "workspace_id": workspace_id,
+                "standalone": standalone,
                 "json_output": json_output,
             }
         )
@@ -735,9 +854,8 @@ def test_main_dispatches_sandbox_create(
             [
                 "sandbox",
                 "create",
-                "project-api",
-                "--workspace",
-                "ws_project",
+                "standalone-api",
+                "--standalone",
                 "--json",
             ]
         )
@@ -745,8 +863,9 @@ def test_main_dispatches_sandbox_create(
     )
 
     assert captured == {
-        "name": "project-api",
-        "workspace_id": "ws_project",
+        "name": "standalone-api",
+        "workspace_id": None,
+        "standalone": True,
         "json_output": True,
     }
 
