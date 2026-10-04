@@ -240,22 +240,22 @@ Workspace operations are delegated by `mcpctl` to the workspace service.
 
 | ID | Test | Expected Result | Status |
 |---|---|---|---|
-| CLI-WS-001 | `mcpctl workspace authorize <host_path>` | Authorizes the specified isolated host directory and returns workspace details | ⚪ Not implemented |
-| CLI-WS-002 | Omit `host_path` | Parser rejects the command | ⚪ Not implemented |
-| CLI-WS-003 | Authorize a nonexistent path | Fails clearly without creating an invalid grant | ⚪ Not implemented |
-| CLI-WS-004 | Authorize a protected or disallowed path | Enforces workspace security policy | ⚪ Not implemented |
-| CLI-WS-005 | `mcpctl workspace authorize --help` | Displays authorize usage | ⚪ Not implemented |
-| CLI-WS-006 | `mcpctl workspace list` | Returns authorized workspace grants | ⚪ Not implemented |
-| CLI-WS-007 | `mcpctl workspace list --json` | Forwards `--json` to the broker and returns valid JSON | ⚪ Not implemented |
-| CLI-WS-008 | `mcpctl workspace list --help` | Displays list usage and JSON option | ⚪ Not implemented |
-| CLI-WS-009 | `mcpctl workspace revoke <workspace_id>` | Revokes the requested workspace grant | ⚪ Not implemented |
-| CLI-WS-010 | Omit `workspace_id` | Parser rejects the command | ⚪ Not implemented |
-| CLI-WS-011 | Revoke a nonexistent workspace ID | Returns an accurate failure result | ⚪ Not implemented |
-| CLI-WS-012 | `mcpctl workspace revoke --help` | Displays revoke usage | ⚪ Not implemented |
-| CLI-WS-013 | Authorize, list, revoke, list | The grant appears after authorization and disappears after revocation | ⚪ Not implemented |
-| CLI-WS-014 | `mcpctl workspace --help` | Displays workspace subcommands | ⚪ Not implemented |
-| CLI-WS-015 | Unknown workspace subcommand | Returns a non-zero argument error | ⚪ Not implemented |
-| CLI-WS-016 | Workspace JSON output | Output is valid JSON and contains no unrelated data | ⚪ Not implemented |
+| CLI-WS-001 | `mcpctl workspace authorize <host_path>` | Authorizes the specified isolated host directory and returns workspace details | 🟢 Pass |
+| CLI-WS-002 | Omit `host_path` | Parser rejects the command | 🟢 Pass |
+| CLI-WS-003 | Authorize a nonexistent path | Fails clearly without creating an invalid grant | 🟢 Pass |
+| CLI-WS-004 | Authorize a protected or disallowed path | Enforces workspace security policy | 🟢 Pass |
+| CLI-WS-005 | `mcpctl workspace authorize --help` | Displays authorize usage | 🟢 Pass |
+| CLI-WS-006 | `mcpctl workspace list` | Returns authorized workspace grants | 🟢 Pass |
+| CLI-WS-007 | `mcpctl workspace list --json` | Forwards `--json` to the broker and returns valid JSON | 🟢 Pass |
+| CLI-WS-008 | `mcpctl workspace list --help` | Displays list usage and JSON option | 🟢 Pass |
+| CLI-WS-009 | `mcpctl workspace revoke <workspace_id>` | Revokes the requested workspace grant | 🟢 Pass |
+| CLI-WS-010 | Omit `workspace_id` | Parser rejects the command | 🟢 Pass |
+| CLI-WS-011 | Revoke a nonexistent workspace ID | Returns an accurate failure result | 🟢 Pass |
+| CLI-WS-012 | `mcpctl workspace revoke --help` | Displays revoke usage | 🟢 Pass |
+| CLI-WS-013 | Authorize, list, revoke, list | The grant appears after authorization and disappears after revocation | 🟢 Pass |
+| CLI-WS-014 | `mcpctl workspace --help` | Displays workspace subcommands | 🟢 Pass |
+| CLI-WS-015 | Unknown workspace subcommand | Returns a non-zero argument error | 🟢 Pass |
+| CLI-WS-016 | Workspace JSON output | Output is valid JSON and contains no unrelated data | 🟢 Pass |
 
 ## 9. `mcpctl config`
 

@@ -23,6 +23,7 @@ CLI_SBX_LOGS_LIFECYCLE_TEST_IDS = tuple(
 CLI_SBX_DELETE_RECREATE_TEST_IDS = tuple(
     f"CLI-SBX-{number:03d}" for number in range(60, 71)
 )
+CLI_WS_TEST_IDS = tuple(f"CLI-WS-{number:03d}" for number in range(1, 17))
 CLI_E2E_TEST_IDS = (
     CLI_MCP_TEST_IDS
     + CLI_SBX_CREATE_TEST_IDS
@@ -30,6 +31,7 @@ CLI_E2E_TEST_IDS = (
     + CLI_SBX_SHELL_EXEC_TEST_IDS
     + CLI_SBX_LOGS_LIFECYCLE_TEST_IDS
     + CLI_SBX_DELETE_RECREATE_TEST_IDS
+    + CLI_WS_TEST_IDS
 )
 
 VALID_STATUSES = {"Not implemented", "Blocked", "Pass", "Fail", "Skipped"}
@@ -41,7 +43,7 @@ STATUS_ICONS = {
     "Skipped": "🟡",
 }
 TEST_ID_PATTERN = re.compile(
-    r"CLI[-_](MCP|SBX)[-_](\d{3})",
+    r"CLI[-_](MCP|SBX|WS)[-_](\d{3})",
     re.IGNORECASE,
 )
 
