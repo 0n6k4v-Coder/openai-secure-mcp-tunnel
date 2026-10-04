@@ -44,6 +44,35 @@ def test_default_sandbox_does_not_depend_on_external_browser_relay(
         "npm_registry",
     }
 
+    npm_policy = spec.policy.network_policies["npm_registry"]
+
+    assert npm_policy.name == "npm-registry"
+
+    npm_endpoint = npm_policy.endpoints[0]
+    assert (
+        npm_endpoint.host,
+        npm_endpoint.port,
+        npm_endpoint.protocol,
+        npm_endpoint.enforcement,
+    ) == (
+        "registry.npmjs.org",
+        443,
+        "rest",
+        "enforce",
+    )
+    assert npm_endpoint.allow_encoded_slash is True
+    assert {
+        (rule.allow.method, rule.allow.path)
+        for rule in npm_endpoint.rules
+    } == {
+        ("GET", "/**"),
+        ("HEAD", "/**"),
+        ("OPTIONS", "/**"),
+        ("POST", "/-/npm/v1/security/advisories/bulk"),
+        ("POST", "/-/npm/v1/security/audits/quick"),
+    }
+    assert npm_policy.binaries[0].path == policy._NPM_NODE_BINARY
+
 
 def test_default_sandbox_uses_default_image_and_command(
     monkeypatch: pytest.MonkeyPatch,
