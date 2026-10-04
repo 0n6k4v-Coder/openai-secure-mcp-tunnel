@@ -100,6 +100,49 @@ def _validate_browser_sandbox(sandbox_name: str) -> None:
         )
 
 
+def _devtools_not_ready_error(
+    sandbox_name: str,
+    result: dict[str, object],
+) -> ChromeDevToolsError | None:
+    output = "\n".join(
+        value.strip()
+        for value in (
+            result.get("stderr"),
+            result.get("stdout"),
+        )
+        if isinstance(value, str) and value.strip()
+    )
+
+    if int(result.get("return_code", 1)) == 0:
+        return None
+
+    try:
+        status = json.loads(sandbox_status(sandbox_name))
+    except (json.JSONDecodeError, SandboxError, TypeError):
+        return None
+
+    if status.get("profile") != "browser":
+        return None
+
+    browser = status.get("browser")
+    if not isinstance(browser, dict):
+        return None
+
+    devtools = browser.get("devtools")
+    if not isinstance(devtools, dict):
+        return None
+
+    if devtools.get("state") != "not_ready":
+        return None
+
+    return ChromeDevToolsError(
+        f"Chrome DevTools daemon is not ready in sandbox {sandbox_name}. "
+        "The OpenShell sandbox may already be READY while the Chrome DevTools "
+        "daemon is still starting. Retry this command shortly."
+        + (f" Daemon output: {output}" if output else "")
+    )
+
+
 def _bounded_result(
     result: dict[str, object],
 ) -> dict[str, object]:
@@ -149,6 +192,14 @@ def execute_chrome_devtools(
         bounded = _bounded_result(result)
 
         if int(bounded["return_code"]) != 0:
+            readiness_error = _devtools_not_ready_error(
+                sandbox_name,
+                bounded,
+            )
+
+            if readiness_error is not None:
+                raise readiness_error
+
             raise ChromeDevToolsError(
                 "chrome-devtools failed with exit code "
                 f"{bounded['return_code']}: "

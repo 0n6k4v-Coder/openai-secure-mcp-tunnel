@@ -117,6 +117,29 @@ def test_execute_rejects_non_browser_sandbox(
         )
 
 
+def test_execute_reports_devtools_startup_race(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(
+        service, "sandbox_status",
+        lambda name: json.dumps({
+            "name": name, "profile": "browser",
+            "browser": {"devtools": {"state": "not_ready"}},
+        }),
+    )
+    monkeypatch.setattr(
+        service, "execute_sandbox_argv",
+        lambda name, argv, *, timeout_seconds: {
+            "return_code": 1, "stdout": "",
+            "stderr": "chrome-devtools-mcp daemon is not running.",
+        },
+    )
+    with pytest.raises(service.ChromeDevToolsError, match="daemon is not ready"):
+        service.execute_chrome_devtools(
+            sandbox_name="browser-1", command="list_pages",
+        )
+
+
 def test_mcp_tool_exposes_validation_errors() -> None:
     mcp = MCPServer("chrome-devtools-test")
     chrome_devtools_tools.register_tools(mcp)

@@ -123,6 +123,43 @@ def _sandbox_profile_from_labels(
     return "default"
 
 
+def _browser_devtools_readiness(
+    sandbox_name: str,
+) -> dict[str, object]:
+    """Inspect browser sandbox DevTools daemon readiness without starting it."""
+    try:
+        result = execute_sandbox_argv(
+            sandbox_name,
+            ["chrome-devtools", "status"],
+            timeout_seconds=10,
+        )
+    except SandboxError as exc:
+        return {
+            "state": "unavailable",
+            "detail": str(exc),
+        }
+
+    output = "\n".join(
+        value.strip()
+        for value in (
+            result.get("stdout"),
+            result.get("stderr"),
+        )
+        if isinstance(value, str) and value.strip()
+    )
+
+    if int(result.get("return_code", 1)) == 0:
+        if "daemon is running" in output.lower():
+            return {"state": "ready", "detail": output}
+        if "daemon is not running" in output.lower():
+            return {"state": "not_ready", "detail": output}
+
+    return {
+        "state": "unavailable",
+        "detail": output or "Chrome DevTools daemon status is unavailable.",
+    }
+
+
 def _host_workspace_metadata(
     host_workspace_id: str | None,
 ) -> dict[str, object] | None:
@@ -161,6 +198,8 @@ def _sandbox_workspace_metadata(
 
 def _sandbox_to_dict(
     sandbox,
+    *,
+    include_browser_readiness: bool = False,
 ) -> dict[str, object]:
     status = getattr(
         sandbox,
@@ -213,6 +252,11 @@ def _sandbox_to_dict(
         "workspace": workspace,
         "labels": labels,
     }
+
+    if include_browser_readiness and profile == "browser" and name:
+        result["browser"] = {
+            "devtools": _browser_devtools_readiness(name),
+        }
 
     if host_workspace_id:
         result["host_workspace_id"] = host_workspace_id
@@ -339,7 +383,10 @@ def sandbox_status(
             for sandbox in sandboxes:
                 if sandbox.name == name:
                     return json.dumps(
-                        _sandbox_to_dict(sandbox),
+                        _sandbox_to_dict(
+                            sandbox,
+                            include_browser_readiness=True,
+                        ),
                         ensure_ascii=False,
                         indent=2,
                     )

@@ -334,6 +334,12 @@ def _sandbox_status(name: str, json_output: bool) -> int:
     print(f"OpenShell workspace: {data.get('workspace', '')}")
     print(f"ID:                  {data.get('id', '')}")
 
+    browser = data.get("browser")
+    if isinstance(browser, dict):
+        devtools = browser.get("devtools")
+        if isinstance(devtools, dict):
+            print(f"Chrome DevTools:     {devtools.get('state', 'unknown')}")
+
     host_workspace_id = data.get("host_workspace_id")
     if host_workspace_id:
         print(f"Host workspace ID:   {host_workspace_id}")
