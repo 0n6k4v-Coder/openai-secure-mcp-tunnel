@@ -159,7 +159,7 @@ def _add_npm_policy(
     npm_endpoint.host = _NPM_REGISTRY_HOST
     npm_endpoint.port = _NPM_REGISTRY_PORT
     npm_endpoint.protocol = "rest"
-    npm_endpoint.enforcement = "enforce"
+    npm_endpoint.enforcement = "NETWORK_ENFORCEMENT_MODE_ENFORCE"
     npm_endpoint.allow_encoded_slash = True
 
     for method in ("GET", "HEAD", "OPTIONS"):
