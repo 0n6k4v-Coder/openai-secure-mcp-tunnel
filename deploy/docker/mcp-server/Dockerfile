@@ -33,6 +33,15 @@ ENV PATH="/app/.venv/bin:$PATH" \
     PYTHONUNBUFFERED=1 \
     LOG_LEVEL=INFO
 
+ADD --checksum=sha256:1f5416ea08f32fdc621f20a2cc0324298e60aba8bbe996459d9e3b44195f23df \
+    https://github.com/NVIDIA/OpenShell/releases/download/v0.1.2/openshell_0.1.2-1_amd64.deb \
+    /tmp/openshell.deb
+
+RUN apt-get update \
+    && apt-get install -y --no-install-recommends /tmp/openshell.deb \
+    && rm -f /tmp/openshell.deb \
+    && rm -rf /var/lib/apt/lists/*
+
 RUN groupadd \
         --gid 10001 \
         appgroup \
