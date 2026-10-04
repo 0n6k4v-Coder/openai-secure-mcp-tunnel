@@ -20,12 +20,16 @@ CLI_SBX_SHELL_EXEC_TEST_IDS = tuple(
 CLI_SBX_LOGS_LIFECYCLE_TEST_IDS = tuple(
     f"CLI-SBX-{number:03d}" for number in range(40, 55)
 )
+CLI_SBX_DELETE_RECREATE_TEST_IDS = tuple(
+    f"CLI-SBX-{number:03d}" for number in range(60, 71)
+)
 CLI_E2E_TEST_IDS = (
     CLI_MCP_TEST_IDS
     + CLI_SBX_CREATE_TEST_IDS
     + CLI_SBX_LIST_STATUS_TEST_IDS
     + CLI_SBX_SHELL_EXEC_TEST_IDS
     + CLI_SBX_LOGS_LIFECYCLE_TEST_IDS
+    + CLI_SBX_DELETE_RECREATE_TEST_IDS
 )
 
 VALID_STATUSES = {"Not implemented", "Blocked", "Pass", "Fail", "Skipped"}

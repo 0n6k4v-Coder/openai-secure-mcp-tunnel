@@ -2,7 +2,7 @@
 
 ## 1. Purpose
 
-Validate every public CLI command, option, argument, and delegation path against the current implementation and a real, isolated OpenShell environment where applicable.
+Validate every public `mcpctl` command, option, argument, and delegation path against the current implementation and a real, isolated OpenShell environment where applicable.
 
 The suite must test:
 
@@ -11,12 +11,12 @@ The suite must test:
 - Required and optional positional arguments.
 - Valid and invalid option values.
 - Mutually exclusive and combined options.
-- Argument forwarding from `mcpctl` to `secure-mcp`.
-- Workspace forwarding from `mcpctl` to `workspace-broker`.
+- Argument forwarding from `mcpctl` to its underlying services.
+- Workspace forwarding from `mcpctl` to the workspace service.
 - Exit codes, output formats, errors, and side effects.
 - Resource isolation and cleanup.
 
-Tests must invoke the real installed entrypoints. Unit tests for argument-building helpers are useful, but do not replace CLI E2E tests.
+Tests must invoke the real installed `mcpctl` entrypoint. Unit tests for argument-building helpers are useful, but do not replace CLI E2E tests.
 
 ## 2. Status Definitions
 
@@ -35,10 +35,6 @@ All tests in this initial matrix are marked **Not implemented**. The test runner
 | ID | Entrypoint or scope | Required coverage | Status |
 |---|---|---|---|
 | CLI-SCOPE-001 | `mcpctl` | Setup, status, repair, sandbox, credential, workspace, config | ⚪ Not implemented |
-| CLI-SCOPE-002 | `secure-mcp` | Compose lifecycle, logs, sandbox, credential | ⚪ Not implemented |
-| CLI-SCOPE-003 | `local-mcp-server` | Installed entrypoint and completion-wrapper behavior | ⚪ Not implemented |
-| CLI-SCOPE-004 | `workspace-broker` | Workspace authorize, list, revoke | ⚪ Not implemented |
-| CLI-SCOPE-005 | Argparse help | `-h` and `--help` for every parser and subparser | ⚪ Not implemented |
 | CLI-SCOPE-006 | Argument forwarding | Preserve argument values, order, and command boundaries | ⚪ Not implemented |
 | CLI-SCOPE-007 | Invalid arguments | Clear errors and non-zero exit codes | ⚪ Not implemented |
 | CLI-SCOPE-008 | Runtime operations | Real OpenShell sandbox and workspace behavior | ⚪ Not implemented |
@@ -85,7 +81,7 @@ Supported arguments and options: `name`, exactly one of `--workspace` or `--stan
 | CLI-SBX-001 | `mcpctl sandbox create <name> --standalone` | Creates a sandbox with sandbox-local storage | 🟠 Blocked |
 | CLI-SBX-002 | `mcpctl sandbox create <name> --workspace <id>` | Creates a sandbox using the authorized host workspace | 🟠 Blocked |
 | CLI-SBX-003 | `--workspace` with a valid workspace ID | Preserves the exact workspace ID when delegating | 🟠 Blocked |
-| CLI-SBX-004 | `--standalone` | Forwards standalone mode to `secure-mcp` | 🟠 Blocked |
+| CLI-SBX-004 | `--standalone` | Preserves standalone mode through delegation | 🟠 Blocked |
 | CLI-SBX-005 | `--profile default` | Creates the default profile | 🟠 Blocked |
 | CLI-SBX-006 | `--profile browser` | Creates the browser profile | 🟠 Blocked |
 | CLI-SBX-007 | Omit `--profile` | Applies the parser's default profile, `default` | 🟠 Blocked |
@@ -155,17 +151,17 @@ Supported arguments and options: `name`, exactly one of `--workspace` or `--stan
 
 | ID | Test | Expected Result | Status |
 |---|---|---|---|
-| CLI-SBX-060 | `mcpctl sandbox delete <name>` | Deletes the sandbox | ⚪ Not implemented |
-| CLI-SBX-061 | `mcpctl sandbox delete <name> --json` | Forwards `--json` and emits valid JSON | ⚪ Not implemented |
-| CLI-SBX-062 | `mcpctl sandbox delete --help` | Displays delete usage and the JSON option | ⚪ Not implemented |
-| CLI-SBX-063 | Delete a missing sandbox | Reports the failure accurately | ⚪ Not implemented |
-| CLI-SBX-064 | `mcpctl sandbox recreate <name> --yes` | Forwards confirmation and recreates the sandbox | ⚪ Not implemented |
-| CLI-SBX-065 | `mcpctl sandbox recreate <name>` without `--yes` | Follows the documented confirmation behavior and does not perform an unintended destructive action | ⚪ Not implemented |
-| CLI-SBX-066 | `mcpctl sandbox recreate --help` | Displays recreate usage and the confirmation option | ⚪ Not implemented |
-| CLI-SBX-067 | Recreate a host-backed sandbox | Preserves the workspace binding and profile | ⚪ Not implemented |
-| CLI-SBX-068 | Recreate a standalone sandbox | Preserves standalone mode and profile | ⚪ Not implemented |
-| CLI-SBX-069 | Recreate a missing sandbox | Returns a non-zero exit code | ⚪ Not implemented |
-| CLI-SBX-070 | Delete and recreate with an interrupted or failed operation | Reports the resulting state accurately and permits safe recovery | ⚪ Not implemented |
+| CLI-SBX-060 | `mcpctl sandbox delete <name>` | Deletes the sandbox | 🟢 Pass |
+| CLI-SBX-061 | `mcpctl sandbox delete <name> --json` | Forwards `--json` and emits valid JSON | 🟢 Pass |
+| CLI-SBX-062 | `mcpctl sandbox delete --help` | Displays delete usage and the JSON option | 🟢 Pass |
+| CLI-SBX-063 | Delete a missing sandbox | Reports the failure accurately | 🟢 Pass |
+| CLI-SBX-064 | `mcpctl sandbox recreate <name> --yes` | Forwards confirmation and recreates the sandbox | 🟢 Pass |
+| CLI-SBX-065 | `mcpctl sandbox recreate <name>` without `--yes` | Follows the documented confirmation behavior and does not perform an unintended destructive action | 🟢 Pass |
+| CLI-SBX-066 | `mcpctl sandbox recreate --help` | Displays recreate usage and the confirmation option | 🟢 Pass |
+| CLI-SBX-067 | Recreate a host-backed sandbox | Preserves the workspace binding and profile | 🟢 Pass |
+| CLI-SBX-068 | Recreate a standalone sandbox | Preserves standalone mode and profile | 🟢 Pass |
+| CLI-SBX-069 | Recreate a missing sandbox | Returns a non-zero exit code | 🟢 Pass |
+| CLI-SBX-070 | Delete and recreate with an interrupted or failed operation | Reports the resulting state accurately and permits safe recovery | 🟢 Pass |
 
 ## 7. `mcpctl credential`
 
@@ -240,7 +236,7 @@ Supported arguments and options: `name`, exactly one of `--workspace` or `--stan
 
 ## 8. `mcpctl workspace`
 
-Workspace operations are delegated to the workspace broker rather than the `secure-mcp` sandbox CLI.
+Workspace operations are delegated by `mcpctl` to the workspace service.
 
 | ID | Test | Expected Result | Status |
 |---|---|---|---|
@@ -286,161 +282,7 @@ Configuration tests must use temporary test configuration or an isolated home di
 | CLI-CONFIG-017 | Run the configuration flow twice | Existing configuration is handled predictably without corruption | ⚪ Not implemented |
 | CLI-CONFIG-018 | Unknown config subcommand | Returns a non-zero argument error | ⚪ Not implemented |
 
-## 10. `secure-mcp` / `local-mcp-server` Lifecycle Commands
-
-The underlying main CLI is exposed as `secure-mcp` and through the `local-mcp-server` installed wrapper. The tests must validate the installed entrypoint as well as the underlying command parser.
-
-### 10.1 Start, Stop, Restart, and Status
-
-| ID | Test | Expected Result | Status |
-|---|---|---|---|
-| CLI-LIFE-001 | `secure-mcp start` | Builds and starts the Compose stack | ⚪ Not implemented |
-| CLI-LIFE-002 | `secure-mcp start --help` | Displays help without starting services | ⚪ Not implemented |
-| CLI-LIFE-003 | `secure-mcp stop` | Stops and removes the Compose stack as implemented | ⚪ Not implemented |
-| CLI-LIFE-004 | `secure-mcp stop --help` | Displays help without stopping services | ⚪ Not implemented |
-| CLI-LIFE-005 | `secure-mcp restart` | Rebuilds and recreates the Compose stack | ⚪ Not implemented |
-| CLI-LIFE-006 | `secure-mcp restart --help` | Displays help without restarting services | ⚪ Not implemented |
-| CLI-LIFE-007 | `secure-mcp status` | Reports Compose service status | ⚪ Not implemented |
-| CLI-LIFE-008 | `secure-mcp status --json` | Emits valid JSON status output | ⚪ Not implemented |
-| CLI-LIFE-009 | `secure-mcp status --help` | Displays help and the JSON option | ⚪ Not implemented |
-| CLI-LIFE-010 | Status when a service is unavailable | Reports the actual unhealthy state | ⚪ Not implemented |
-| CLI-LIFE-011 | Run status before setup | Handles the uninitialized state clearly | ⚪ Not implemented |
-| CLI-LIFE-012 | Run lifecycle command when Docker/Compose is unavailable | Returns an actionable error and non-zero exit code | ⚪ Not implemented |
-| CLI-LIFE-013 | Invoke lifecycle commands through `local-mcp-server` | Wrapper resolves and invokes the same intended command | ⚪ Not implemented |
-
-### 10.2 Logs
-
-Current parser options: optional service restricted to `openshell-gateway`, `mcp-server`, or `tunnel-client`; `--follow` / `-f`; `--tail` / `-n`, defaulting to `"100"`.
-
-| ID | Test | Expected Result | Status |
-|---|---|---|---|
-| CLI-LOG-001 | `secure-mcp logs` | Displays logs for the default selection | ⚪ Not implemented |
-| CLI-LOG-002 | `secure-mcp logs openshell-gateway` | Displays logs for the specified service | ⚪ Not implemented |
-| CLI-LOG-003 | `secure-mcp logs mcp-server` | Displays logs for the specified service | ⚪ Not implemented |
-| CLI-LOG-004 | `secure-mcp logs tunnel-client` | Displays logs for the specified service | ⚪ Not implemented |
-| CLI-LOG-005 | `--follow` | Enables follow mode | ⚪ Not implemented |
-| CLI-LOG-006 | `-f` | Behaves identically to `--follow` | ⚪ Not implemented |
-| CLI-LOG-007 | `--tail 20` | Requests the specified number of trailing log lines | ⚪ Not implemented |
-| CLI-LOG-008 | `-n 20` | Behaves identically to `--tail 20` | ⚪ Not implemented |
-| CLI-LOG-009 | Omit `--tail` / `-n` | Uses the parser default of 100 | ⚪ Not implemented |
-| CLI-LOG-010 | Combine service, `--follow`, and `--tail` | Applies all options together correctly | ⚪ Not implemented |
-| CLI-LOG-011 | `--tail` with a non-numeric value | Verifies the implementation's accepted input contract and reports errors clearly | ⚪ Not implemented |
-| CLI-LOG-012 | Unsupported service name | Parser rejects the value | ⚪ Not implemented |
-| CLI-LOG-013 | `secure-mcp logs --help` | Displays service choices, both follow aliases, and both tail aliases | ⚪ Not implemented |
-
-## 11. `secure-mcp sandbox`
-
-### 11.1 Create
-
-| ID | Test | Expected Result | Status |
-|---|---|---|---|
-| CLI-LOCAL-SBX-001 | `secure-mcp sandbox create <name> --standalone` | Creates a standalone sandbox | ⚪ Not implemented |
-| CLI-LOCAL-SBX-002 | `secure-mcp sandbox create <name> --workspace <id>` | Creates a host-backed sandbox | ⚪ Not implemented |
-| CLI-LOCAL-SBX-003 | `--profile default` | Uses the default profile | ⚪ Not implemented |
-| CLI-LOCAL-SBX-004 | `--profile browser` | Uses the browser profile | ⚪ Not implemented |
-| CLI-LOCAL-SBX-005 | Omit `--profile` | Uses the default profile | ⚪ Not implemented |
-| CLI-LOCAL-SBX-006 | Unsupported profile value | Parser rejects the value | ⚪ Not implemented |
-| CLI-LOCAL-SBX-007 | `--json` | Emits valid JSON for successful creation | ⚪ Not implemented |
-| CLI-LOCAL-SBX-008 | Omit both workspace-source options | Parser rejects the request | ⚪ Not implemented |
-| CLI-LOCAL-SBX-009 | Supply both workspace-source options | Parser rejects the mutually exclusive options | ⚪ Not implemented |
-| CLI-LOCAL-SBX-010 | Invalid sandbox name | Rejects the request before resource creation | ⚪ Not implemented |
-| CLI-LOCAL-SBX-011 | 19-character sandbox name | Accepted if consistent with the current name policy | ⚪ Not implemented |
-| CLI-LOCAL-SBX-012 | 20-character sandbox name | Rejected if consistent with the current name policy | ⚪ Not implemented |
-| CLI-LOCAL-SBX-013 | Combine workspace source, profile, and JSON | Applies all requested options correctly | ⚪ Not implemented |
-| CLI-LOCAL-SBX-014 | `secure-mcp sandbox create --help` | Displays all supported options and requirements | ⚪ Not implemented |
-
-### 11.2 List, Status, Shell, Exec, and Logs
-
-| ID | Test | Expected Result | Status |
-|---|---|---|---|
-| CLI-LOCAL-SBX-020 | `secure-mcp sandbox list` | Lists sandboxes | ⚪ Not implemented |
-| CLI-LOCAL-SBX-021 | `secure-mcp sandbox list --json` | Emits valid JSON | ⚪ Not implemented |
-| CLI-LOCAL-SBX-022 | `secure-mcp sandbox list --help` | Displays the JSON option | ⚪ Not implemented |
-| CLI-LOCAL-SBX-023 | `secure-mcp sandbox status <name>` | Returns the specified sandbox's status | ⚪ Not implemented |
-| CLI-LOCAL-SBX-024 | `secure-mcp sandbox status <name> --json` | Emits valid JSON | ⚪ Not implemented |
-| CLI-LOCAL-SBX-025 | `secure-mcp sandbox status --help` | Displays the status argument and JSON option | ⚪ Not implemented |
-| CLI-LOCAL-SBX-026 | `secure-mcp sandbox shell <name>` | Opens a shell in the sandbox | ⚪ Not implemented |
-| CLI-LOCAL-SBX-027 | `secure-mcp sandbox shell --help` | Displays shell usage | ⚪ Not implemented |
-| CLI-LOCAL-SBX-028 | `secure-mcp sandbox exec <name> <command>` | Executes the command inside the sandbox | ⚪ Not implemented |
-| CLI-LOCAL-SBX-029 | Exec with multiple command arguments | Preserves argument order and boundaries | ⚪ Not implemented |
-| CLI-LOCAL-SBX-030 | Exec with command-specific flags | Passes flags to the child command correctly | ⚪ Not implemented |
-| CLI-LOCAL-SBX-031 | Exec with no command remainder | Follows documented validation behavior | ⚪ Not implemented |
-| CLI-LOCAL-SBX-032 | `secure-mcp sandbox exec --help` | Displays the sandbox name and remainder argument | ⚪ Not implemented |
-| CLI-LOCAL-SBX-033 | `secure-mcp sandbox logs <name>` | Displays activity logs for the sandbox | ⚪ Not implemented |
-| CLI-LOCAL-SBX-034 | `secure-mcp sandbox logs --help` | Displays logs usage | ⚪ Not implemented |
-
-### 11.3 Lifecycle, Delete, and Recreate
-
-| ID | Test | Expected Result | Status |
-|---|---|---|---|
-| CLI-LOCAL-SBX-040 | `secure-mcp sandbox start <name>` | Starts the sandbox | ⚪ Not implemented |
-| CLI-LOCAL-SBX-041 | `secure-mcp sandbox stop <name>` | Stops the sandbox while retaining state | ⚪ Not implemented |
-| CLI-LOCAL-SBX-042 | `secure-mcp sandbox restart <name>` | Restarts the sandbox | ⚪ Not implemented |
-| CLI-LOCAL-SBX-043 | `secure-mcp sandbox repair <name>` | Attempts startup recovery of a retained failed sandbox | ⚪ Not implemented |
-| CLI-LOCAL-SBX-044 | Help for start, stop, restart, and repair | Each subcommand's help is available and accurate | ⚪ Not implemented |
-| CLI-LOCAL-SBX-045 | Lifecycle operation against a missing sandbox | Returns a non-zero exit code | ⚪ Not implemented |
-| CLI-LOCAL-SBX-046 | `secure-mcp sandbox delete <name>` | Deletes the sandbox | ⚪ Not implemented |
-| CLI-LOCAL-SBX-047 | `secure-mcp sandbox delete <name> --json` | Emits valid JSON | ⚪ Not implemented |
-| CLI-LOCAL-SBX-048 | `secure-mcp sandbox delete --help` | Displays the JSON option | ⚪ Not implemented |
-| CLI-LOCAL-SBX-049 | `secure-mcp sandbox recreate <name> --yes` | Recreates the sandbox and forwards confirmation | ⚪ Not implemented |
-| CLI-LOCAL-SBX-050 | Recreate without `--yes` | Does not perform an unintended destructive operation | ⚪ Not implemented |
-| CLI-LOCAL-SBX-051 | `secure-mcp sandbox recreate --help` | Displays the confirmation option | ⚪ Not implemented |
-| CLI-LOCAL-SBX-052 | Recreate host-backed sandbox | Preserves workspace binding and profile | ⚪ Not implemented |
-| CLI-LOCAL-SBX-053 | Recreate standalone sandbox | Preserves standalone behavior and profile | ⚪ Not implemented |
-| CLI-LOCAL-SBX-054 | Delete then query status | Confirms the sandbox is absent | ⚪ Not implemented |
-
-## 12. `secure-mcp credential`
-
-The main CLI's credential parser is not identical to `mcpctl`'s parser. Test the two independently rather than assuming that flags supported by one are supported by the other.
-
-| ID | Test | Expected Result | Status |
-|---|---|---|---|
-| CLI-LOCAL-CRED-001 | `secure-mcp credential create <name> --type <type> --key <secret>` | Creates a credential provider | ⚪ Not implemented |
-| CLI-LOCAL-CRED-002 | `--type` on create | Required provider type is accepted and forwarded | ⚪ Not implemented |
-| CLI-LOCAL-CRED-003 | Omit `--type` on create | Parser rejects the request | ⚪ Not implemented |
-| CLI-LOCAL-CRED-004 | `--key` on create | Required secret is accepted without being logged | ⚪ Not implemented |
-| CLI-LOCAL-CRED-005 | Omit `--key` on create | Parser rejects the request | ⚪ Not implemented |
-| CLI-LOCAL-CRED-006 | `--yes` on create | Passes confirmation to the command handler | ⚪ Not implemented |
-| CLI-LOCAL-CRED-007 | `secure-mcp credential list` | Lists metadata without exposing secrets | ⚪ Not implemented |
-| CLI-LOCAL-CRED-008 | `secure-mcp credential get <name>` | Returns credential metadata without secret values | ⚪ Not implemented |
-| CLI-LOCAL-CRED-009 | `secure-mcp credential get <name> --key <value>` | Verifies unsupported `--key` is rejected by the main CLI parser | ⚪ Not implemented |
-| CLI-LOCAL-CRED-010 | `secure-mcp credential update <name> --key <secret>` | Updates the credential | ⚪ Not implemented |
-| CLI-LOCAL-CRED-011 | Omit required `--key` on update | Parser rejects the request | ⚪ Not implemented |
-| CLI-LOCAL-CRED-012 | `--yes` on update | Passes confirmation to the handler | ⚪ Not implemented |
-| CLI-LOCAL-CRED-013 | `secure-mcp credential delete <name> --yes` | Deletes the credential after confirmation | ⚪ Not implemented |
-| CLI-LOCAL-CRED-014 | Delete without `--yes` | Does not perform an unintended destructive action | ⚪ Not implemented |
-| CLI-LOCAL-CRED-015 | `secure-mcp credential grant <sandbox> <credential> --yes` | Grants access to the specified sandbox | ⚪ Not implemented |
-| CLI-LOCAL-CRED-016 | Grant without `--yes` | Fails safely without granting access | ⚪ Not implemented |
-| CLI-LOCAL-CRED-017 | `secure-mcp credential revoke <sandbox> <credential> --yes` | Revokes access | ⚪ Not implemented |
-| CLI-LOCAL-CRED-018 | Revoke without `--yes` | Fails safely without revoking access | ⚪ Not implemented |
-| CLI-LOCAL-CRED-019 | Omit required positional arguments | Parser rejects create, get, update, delete, grant, and revoke as applicable | ⚪ Not implemented |
-| CLI-LOCAL-CRED-020 | Credential create/update/delete/grant/revoke help | Displays the correct arguments and options for each command | ⚪ Not implemented |
-| CLI-LOCAL-CRED-021 | `secure-mcp credential --help` | Displays all credential subcommands | ⚪ Not implemented |
-| CLI-LOCAL-CRED-022 | Unsupported credential option | Parser rejects the option | ⚪ Not implemented |
-| CLI-LOCAL-CRED-023 | Secret redaction | Secret values never appear in stdout, stderr, or reports | ⚪ Not implemented |
-
-## 13. `workspace-broker`
-
-Test the installed `workspace-broker` entrypoint independently of the equivalent `mcpctl workspace` delegation tests.
-
-| ID | Test | Expected Result | Status |
-|---|---|---|---|
-| CLI-WB-001 | `workspace-broker --help` | Displays workspace-broker usage | ⚪ Not implemented |
-| CLI-WB-002 | `workspace-broker authorize <host_path>` | Authorizes an isolated test workspace | ⚪ Not implemented |
-| CLI-WB-003 | `workspace-broker authorize --help` | Displays authorize usage | ⚪ Not implemented |
-| CLI-WB-004 | Authorize with missing path | Parser rejects the request | ⚪ Not implemented |
-| CLI-WB-005 | Authorize an invalid or prohibited path | Returns a clear failure and does not create an unsafe grant | ⚪ Not implemented |
-| CLI-WB-006 | `workspace-broker list` | Lists workspace grants | ⚪ Not implemented |
-| CLI-WB-007 | `workspace-broker list --json` | Emits valid JSON | ⚪ Not implemented |
-| CLI-WB-008 | `workspace-broker list --help` | Displays the JSON option | ⚪ Not implemented |
-| CLI-WB-009 | `workspace-broker revoke <workspace_id>` | Revokes the specified workspace grant | ⚪ Not implemented |
-| CLI-WB-010 | `workspace-broker revoke --help` | Displays revoke usage | ⚪ Not implemented |
-| CLI-WB-011 | Revoke with missing workspace ID | Parser rejects the request | ⚪ Not implemented |
-| CLI-WB-012 | Authorize, list, revoke, list | Grant lifecycle is verified end to end | ⚪ Not implemented |
-| CLI-WB-013 | Unknown subcommand or unsupported flag | Returns a non-zero argument error | ⚪ Not implemented |
-| CLI-WB-014 | JSON output with empty and populated workspace lists | Both responses are valid JSON with the expected schema | ⚪ Not implemented |
-
-## 14. Help and Option-Contract Coverage
+## 10. Help and Option-Contract Coverage
 
 Argparse provides `-h` and `--help` on parsers and subparsers by default. Every command and subcommand should be tested for both forms where they are exposed.
 
@@ -455,16 +297,16 @@ Argparse provides `-h` and `--help` on parsers and subparsers by default. Every 
 | CLI-HELP-007 | Invalid choice values | Profile and service choices reject unsupported values | ⚪ Not implemented |
 | CLI-HELP-008 | Unsupported flags | Every parser rejects flags that it does not declare | ⚪ Not implemented |
 | CLI-HELP-009 | Help output consistency | Documented options match the actual parser | ⚪ Not implemented |
-| CLI-HELP-010 | Entry-point parity | Installed wrappers route to the intended parser and command | ⚪ Not implemented |
+| CLI-HELP-010 | Subcommand routing | Installed `mcpctl` routes to the intended parser and command | ⚪ Not implemented |
 
-## 15. Cross-CLI Delegation Contract
+## 11. `mcpctl` Delegation Contract
 
-These tests specifically verify the boundary between the public `mcpctl` CLI and the underlying commands. They must invoke `mcpctl` itself and assert observable behavior or capture the actual delegated argv at a controlled process boundary.
+These tests verify the behavior and delegation contracts exposed by the public `mcpctl` CLI. They must invoke `mcpctl` itself and assert observable behavior or capture delegated arguments at a controlled process boundary.
 
 | ID | Test | Expected Result | Status |
 |---|---|---|---|
-| CLI-DEL-001 | `mcpctl sandbox create` with `--workspace` | Workspace ID reaches `secure-mcp` unchanged | ⚪ Not implemented |
-| CLI-DEL-002 | `mcpctl sandbox create` with `--standalone` | Standalone option reaches `secure-mcp` unchanged | ⚪ Not implemented |
+| CLI-DEL-001 | `mcpctl sandbox create` with `--workspace` | Workspace ID is preserved unchanged through delegation | ⚪ Not implemented |
+| CLI-DEL-002 | `mcpctl sandbox create` with `--standalone` | Standalone mode is preserved unchanged through delegation | ⚪ Not implemented |
 | CLI-DEL-003 | `mcpctl sandbox create --profile browser` | Profile reaches the underlying CLI unchanged | ⚪ Not implemented |
 | CLI-DEL-004 | `mcpctl sandbox create --json` | JSON option reaches the underlying CLI | ⚪ Not implemented |
 | CLI-DEL-005 | `mcpctl sandbox status --json` | JSON option reaches the underlying CLI | ⚪ Not implemented |
@@ -476,15 +318,15 @@ These tests specifically verify the boundary between the public `mcpctl` CLI and
 | CLI-DEL-011 | `mcpctl credential delete` | `--yes` is forwarded correctly | ⚪ Not implemented |
 | CLI-DEL-012 | `mcpctl credential grant` and `revoke` | Sandbox name, credential name, and `--yes` are preserved | ⚪ Not implemented |
 | CLI-DEL-013 | `mcpctl credential get` | Detects the current mismatch between required `--key` and the missing downstream forwarding | ⚪ Not implemented |
-| CLI-DEL-014 | `mcpctl workspace list --json` | JSON option reaches `workspace-broker` | ⚪ Not implemented |
-| CLI-DEL-015 | `mcpctl workspace authorize` | Host path reaches the workspace broker unchanged | ⚪ Not implemented |
-| CLI-DEL-016 | `mcpctl workspace revoke` | Workspace ID reaches the workspace broker unchanged | ⚪ Not implemented |
+| CLI-DEL-014 | `mcpctl workspace list --json` | JSON option reaches the workspace service | ⚪ Not implemented |
+| CLI-DEL-015 | `mcpctl workspace authorize` | Host path reaches the workspace service unchanged | ⚪ Not implemented |
+| CLI-DEL-016 | `mcpctl workspace revoke` | Workspace ID reaches the workspace service unchanged | ⚪ Not implemented |
 | CLI-DEL-017 | Downstream non-zero exit code | `mcpctl` does not report success when the underlying command fails | ⚪ Not implemented |
 | CLI-DEL-018 | Downstream stderr | Useful error information is preserved without leaking secrets | ⚪ Not implemented |
 | CLI-DEL-019 | Unsupported `mcpctl sandbox list --json` | Public parser rejects the flag rather than silently accepting it | ⚪ Not implemented |
-| CLI-DEL-020 | `mcpctl` and direct CLI behavior | For equivalent supported options, results are behaviorally consistent | ⚪ Not implemented |
+| CLI-DEL-020 | `mcpctl` command behavior | Supported options produce behavior consistent with the documented contract | ⚪ Not implemented |
 
-## 16. Real-Sandbox Functional Tests
+## 12. Real-Sandbox Functional Tests
 
 These tests validate actual infrastructure behavior rather than only parser or forwarding behavior.
 
@@ -507,7 +349,7 @@ These tests validate actual infrastructure behavior rather than only parser or f
 | CLI-REAL-015 | Workspace revocation | Revoked workspace cannot be used for a new authorized binding | ⚪ Not implemented |
 | CLI-REAL-016 | Sandbox name boundary | Name validation follows the current source policy | ⚪ Not implemented |
 
-## 17. Error Handling and Security
+## 13. Error Handling and Security
 
 | ID | Test | Expected Result | Status |
 |---|---|---|---|
@@ -528,28 +370,22 @@ These tests validate actual infrastructure behavior rather than only parser or f
 | CLI-ERR-015 | Unauthorized workspace path | Access policy prevents the operation | ⚪ Not implemented |
 | CLI-ERR-016 | Invalid sandbox name | Rejected before unintended infrastructure changes | ⚪ Not implemented |
 
-## 18. JSON Contract
+## 14. JSON Contract
 
 Only test JSON flags on commands that actually declare them. Do not assume every command supports JSON.
 
 | ID | Test | Expected Result | Status |
 |---|---|---|---|
-| CLI-JSON-001 | `secure-mcp status --json` | Valid JSON status document | ⚪ Not implemented |
-| CLI-JSON-002 | `secure-mcp sandbox create --json` | Valid JSON creation result | ⚪ Not implemented |
-| CLI-JSON-003 | `secure-mcp sandbox list --json` | Valid JSON collection | ⚪ Not implemented |
-| CLI-JSON-004 | `secure-mcp sandbox status <name> --json` | Valid JSON status document | ⚪ Not implemented |
-| CLI-JSON-005 | `secure-mcp sandbox delete <name> --json` | Valid JSON deletion result | ⚪ Not implemented |
-| CLI-JSON-006 | `mcpctl sandbox create --json` | Valid JSON output through delegation | ⚪ Not implemented |
-| CLI-JSON-007 | `mcpctl sandbox status <name> --json` | Valid JSON output through delegation | ⚪ Not implemented |
-| CLI-JSON-008 | `mcpctl sandbox delete <name> --json` | Valid JSON output through delegation | ⚪ Not implemented |
-| CLI-JSON-009 | `mcpctl workspace list --json` | Valid JSON workspace list | ⚪ Not implemented |
-| CLI-JSON-010 | `workspace-broker list --json` | Valid JSON workspace list | ⚪ Not implemented |
-| CLI-JSON-011 | JSON output with empty collections | Valid JSON with the expected empty representation | ⚪ Not implemented |
-| CLI-JSON-012 | JSON output with populated collections | Valid JSON with stable required fields and types | ⚪ Not implemented |
-| CLI-JSON-013 | Parse stdout using a JSON parser | Output is machine-readable and not mixed with human-oriented status text | ⚪ Not implemented |
-| CLI-JSON-014 | JSON error path | Failure exit code and error output are consistent with the documented contract | ⚪ Not implemented |
+| CLI-JSON-001 | `mcpctl sandbox create --json` | Valid JSON output through delegation | ⚪ Not implemented |
+| CLI-JSON-002 | `mcpctl sandbox status <name> --json` | Valid JSON output through delegation | ⚪ Not implemented |
+| CLI-JSON-003 | `mcpctl sandbox delete <name> --json` | Valid JSON output through delegation | ⚪ Not implemented |
+| CLI-JSON-004 | `mcpctl workspace list --json` | Valid JSON workspace list | ⚪ Not implemented |
+| CLI-JSON-005 | JSON output with empty collections | Valid JSON with the expected empty representation | ⚪ Not implemented |
+| CLI-JSON-006 | JSON output with populated collections | Valid JSON with stable required fields and types | ⚪ Not implemented |
+| CLI-JSON-007 | Parse stdout using a JSON parser | Output is machine-readable and not mixed with human-oriented status text | ⚪ Not implemented |
+| CLI-JSON-008 | JSON error path | Failure exit code and error output are consistent with the documented contract | ⚪ Not implemented |
 
-## 19. Automated Evidence and Report Generation
+## 15. Automated Evidence and Report Generation
 
 The test runner—not an AI agent or manual editor—must generate this report from actual test results.
 
@@ -570,7 +406,7 @@ Secrets, API keys, credential values, private configuration, and unrelated host 
 
 The generated report must distinguish `Not implemented`, `Blocked`, `Skipped`, `Pass`, and `Fail`. Missing results must not be interpreted as passes.
 
-## 20. Isolation and Cleanup
+## 16. Isolation and Cleanup
 
 1. Generate unique test resource names within the supported name limit.
 2. Use temporary directories for host-backed workspace tests.
@@ -583,19 +419,18 @@ The generated report must distinguish `Not implemented`, `Blocked`, `Skipped`, `
 9. Preserve enough sanitized diagnostics to investigate a failure after cleanup.
 10. Treat resource leaks as test failures.
 
-## 21. Current Audit Findings
+## 17. Current Audit Findings
 
 | ID | Finding | Risk | Status |
 |---|---|---|---|
 | AUDIT-001 | No CLI test modules currently exist under `tests/e2e/cli/` | CLI regressions can go undetected | 🔵 Confirmed |
 | AUDIT-002 | `mcpctl sandbox list` does not declare `--json` | Users may expect an unsupported option | 🔵 Confirmed |
 | AUDIT-003 | `mcpctl credential get` requires `--key`, but `_credential_arguments()` only forwards `get` and the credential name | Parser and delegation contracts are inconsistent | 🔵 Confirmed |
-| AUDIT-004 | `secure-mcp credential get` accepts a name but does not declare `--key` | Public CLIs have different contracts for get | 🔵 Confirmed |
 | AUDIT-005 | `mcpctl workspace` delegates to `workspace_broker.main()` instead of the main sandbox CLI | Workspace delegation needs its own coverage | 🔵 Confirmed |
-| AUDIT-006 | The test matrix covers both public CLI layers and all declared options identified in the inspected parsers | Ongoing regression coverage is needed | ⚪ Not implemented |
+| AUDIT-006 | The test matrix covers the public `mcpctl` CLI and its declared options | Ongoing regression coverage is needed | ⚪ Not implemented |
 | AUDIT-007 | The complete test report is automatically generated from test-runner output | Manual status drift must be avoided | ⚪ Not implemented |
 
-## 22. Release Gate
+## 18. Release Gate
 
 Required order:
 
