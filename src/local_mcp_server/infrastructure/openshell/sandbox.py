@@ -1,10 +1,11 @@
 from __future__ import annotations
 
 import json
-import os
 import shutil
 import subprocess
 from typing import Any
+
+from openshell import SandboxClient
 
 from .client import active_client
 
@@ -17,10 +18,7 @@ from ...sandbox.policy import (
 from ...workspace.repository import get_workspace_grant
 
 
-OPENSHELL_WORKSPACE = os.environ.get(
-    "OPENSHELL_WORKSPACE",
-    "default",
-)
+OPENSHELL_WORKSPACE = "default"
 
 HOST_WORKSPACE_LABEL = "mcp_host_workspace_id"
 SANDBOX_PROFILE_LABEL = "mcp_sandbox_profile"
@@ -30,7 +28,7 @@ class SandboxError(RuntimeError):
     """Raised when an OpenShell sandbox operation fails."""
 
 
-def _client() -> Any:
+def _client() -> SandboxClient:
     try:
         return active_client()
 
@@ -42,6 +40,12 @@ def _client() -> Any:
 
 
 def _openshell_command(*args: str) -> list[str]:
+    """
+    Build an OpenShell CLI command.
+
+    The CLI is intentionally used only for sandbox log retrieval because
+    the Python SDK does not expose a public logs API.
+    """
     executable = shutil.which("openshell")
 
     if executable is None:
@@ -52,48 +56,21 @@ def _openshell_command(*args: str) -> list[str]:
     return [executable, *args]
 
 
-def _run_openshell_control(*args: str) -> None:
-    environment = os.environ.copy()
-    environment["OPENSHELL_WORKSPACE"] = OPENSHELL_WORKSPACE
-
-    try:
-        completed = subprocess.run(
-            _openshell_command(*args),
-            check=False,
-            capture_output=True,
-            text=True,
-            timeout=120,
-            env=environment,
-        )
-    except subprocess.TimeoutExpired as exc:
-        raise SandboxError(
-            f"OpenShell control command timed out: {' '.join(args)}"
-        ) from exc
-    except OSError as exc:
-        raise SandboxError(
-            f"Failed to execute OpenShell control command: "
-            f"{type(exc).__name__}: {exc}"
-        ) from exc
-
-    if completed.returncode != 0:
-        diagnostic = (
-            completed.stderr.strip()
-            or completed.stdout.strip()
-            or "OpenShell returned no diagnostic output."
-        )
-
-        raise SandboxError(
-            f"OpenShell command failed with exit code "
-            f"{completed.returncode}: {diagnostic}"
-        )
-
-
 def _run_openshell_output(
     *args: str,
     timeout_seconds: int = 30,
 ) -> str:
-    environment = os.environ.copy()
-    environment["OPENSHELL_WORKSPACE"] = OPENSHELL_WORKSPACE
+    """
+    Run an OpenShell CLI command and return stdout.
+
+    This helper is intentionally limited to read-only output operations such
+    as sandbox log retrieval. Sandbox lifecycle operations continue to use
+    the Python SDK.
+    """
+    environment = {
+        **__import__("os").environ,
+        "OPENSHELL_WORKSPACE": OPENSHELL_WORKSPACE,
+    }
 
     try:
         completed = subprocess.run(
@@ -104,10 +81,12 @@ def _run_openshell_output(
             timeout=timeout_seconds,
             env=environment,
         )
+
     except subprocess.TimeoutExpired as exc:
         raise SandboxError(
             f"OpenShell output command timed out: {' '.join(args)}"
         ) from exc
+
     except OSError as exc:
         raise SandboxError(
             f"Failed to execute OpenShell output command: "
@@ -324,7 +303,8 @@ def create_sandbox(
 
     except Exception as exc:
         raise SandboxError(
-            f"Failed to create sandbox '{name}': {type(exc).__name__}: {exc}"
+            f"Failed to create sandbox '{name}': "
+            f"{type(exc).__name__}: {exc}"
         ) from exc
 
 
@@ -344,7 +324,8 @@ def list_sandboxes() -> str:
 
     except Exception as exc:
         raise SandboxError(
-            f"Failed to list OpenShell sandboxes: {type(exc).__name__}: {exc}"
+            f"Failed to list OpenShell sandboxes: "
+            f"{type(exc).__name__}: {exc}"
         ) from exc
 
 
@@ -373,10 +354,13 @@ def sandbox_status(
 
     except Exception as exc:
         raise SandboxError(
-            f"Failed to inspect sandbox '{name}': {type(exc).__name__}: {exc}"
+            f"Failed to inspect sandbox '{name}': "
+            f"{type(exc).__name__}: {exc}"
         ) from exc
 
-    raise SandboxError(f"Sandbox '{name}' was not found.")
+    raise SandboxError(
+        f"Sandbox '{name}' was not found."
+    )
 
 
 def start_sandbox(
@@ -385,13 +369,27 @@ def start_sandbox(
     """Start a stopped or retained failed OpenShell sandbox."""
     name = validate_name(name)
 
-    _run_openshell_control(
-        "sandbox",
-        "start",
-        name,
-    )
+    try:
+        with _client() as client:
+            started = client.start(
+                name,
+                workspace=OPENSHELL_WORKSPACE,
+            )
 
-    return sandbox_status(name)
+            return json.dumps(
+                _sandbox_to_dict(started),
+                ensure_ascii=False,
+                indent=2,
+            )
+
+    except ValueError:
+        raise
+
+    except Exception as exc:
+        raise SandboxError(
+            f"Failed to start sandbox '{name}': "
+            f"{type(exc).__name__}: {exc}"
+        ) from exc
 
 
 def stop_sandbox(
@@ -400,13 +398,27 @@ def stop_sandbox(
     """Stop an OpenShell sandbox while retaining its state."""
     name = validate_name(name)
 
-    _run_openshell_control(
-        "sandbox",
-        "stop",
-        name,
-    )
+    try:
+        with _client() as client:
+            stopped = client.stop(
+                name,
+                workspace=OPENSHELL_WORKSPACE,
+            )
 
-    return sandbox_status(name)
+            return json.dumps(
+                _sandbox_to_dict(stopped),
+                ensure_ascii=False,
+                indent=2,
+            )
+
+    except ValueError:
+        raise
+
+    except Exception as exc:
+        raise SandboxError(
+            f"Failed to stop sandbox '{name}': "
+            f"{type(exc).__name__}: {exc}"
+        ) from exc
 
 
 def restart_sandbox(
@@ -442,8 +454,9 @@ def sandbox_logs(
     """
     Return a bounded recent OpenShell log window for a sandbox.
 
-    The default five-minute window prevents an MCP tool call from becoming
-    an unbounded live log stream.
+    Uses the OpenShell CLI because the installed Python SDK does not expose
+    a public sandbox logs API and its internal GetSandboxLogs request
+    construction is incompatible with the installed protobuf schema.
     """
     name = validate_name(name)
 
@@ -526,8 +539,10 @@ def execute_sandbox(
     command = validate_command(command)
 
     stdin_bytes: bytes | None = None
+
     if isinstance(stdin, str):
         stdin_bytes = stdin.encode("utf-8")
+
     elif isinstance(stdin, (bytes, bytearray)):
         stdin_bytes = bytes(stdin)
 
@@ -598,7 +613,8 @@ def delete_sandbox(
 
     except Exception as exc:
         raise SandboxError(
-            f"Failed to delete sandbox '{name}': {type(exc).__name__}: {exc}"
+            f"Failed to delete sandbox '{name}': "
+            f"{type(exc).__name__}: {exc}"
         ) from exc
 
 
@@ -624,14 +640,17 @@ def recreate_sandbox(
                 f"Sandbox '{name}' returned invalid metadata."
             )
 
-        workspace_id = current.get("host_workspace_id")
+        workspace_id = current.get(
+            "host_workspace_id",
+        )
 
         if (
             not isinstance(workspace_id, str)
             or not workspace_id
         ):
             raise SandboxError(
-                f"Sandbox '{name}' does not contain a managed host workspace ID."
+                f"Sandbox '{name}' does not contain "
+                "a managed host workspace ID."
             )
 
         profile = current.get(
@@ -641,7 +660,8 @@ def recreate_sandbox(
 
         if profile not in {"default", "browser"}:
             raise SandboxError(
-                f"Sandbox '{name}' has unsupported profile '{profile}'."
+                f"Sandbox '{name}' has unsupported profile "
+                f"'{profile}'."
             )
 
         delete_sandbox(name)
