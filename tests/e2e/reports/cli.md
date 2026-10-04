@@ -120,16 +120,16 @@ Supported arguments and options: `name`, exactly one of `--workspace` or `--stan
 
 | ID | Test | Expected Result | Status |
 |---|---|---|---|
-| CLI-SBX-030 | `mcpctl sandbox shell <name>` | Opens the sandbox shell through the underlying CLI | ⚪ Not implemented |
-| CLI-SBX-031 | `mcpctl sandbox shell --help` | Displays shell usage | ⚪ Not implemented |
-| CLI-SBX-032 | `mcpctl sandbox exec <name> <command>` | Executes the requested command inside the selected sandbox | ⚪ Not implemented |
-| CLI-SBX-033 | Exec with multiple positional command arguments | Preserves argument order and values | ⚪ Not implemented |
-| CLI-SBX-034 | Exec with spaces and quoted arguments | Preserves argument boundaries correctly | ⚪ Not implemented |
-| CLI-SBX-035 | Exec with command options such as `--version` | Passes command options to the sandbox process rather than consuming them as `mcpctl` options | ⚪ Not implemented |
-| CLI-SBX-036 | Exec with a non-zero child exit code | Propagates or accurately reports command failure | ⚪ Not implemented |
-| CLI-SBX-037 | Exec with no command remainder | Returns the intended validation error or documented behavior | ⚪ Not implemented |
-| CLI-SBX-038 | Exec against a missing sandbox | Returns a clear error and non-zero exit code | ⚪ Not implemented |
-| CLI-SBX-039 | `mcpctl sandbox exec --help` | Displays exec usage and remainder behavior | ⚪ Not implemented |
+| CLI-SBX-030 | `mcpctl sandbox shell <name>` | Opens the sandbox shell through the underlying CLI | 🟢 Pass |
+| CLI-SBX-031 | `mcpctl sandbox shell --help` | Displays shell usage | 🟢 Pass |
+| CLI-SBX-032 | `mcpctl sandbox exec <name> <command>` | Executes the requested command inside the selected sandbox | 🟢 Pass |
+| CLI-SBX-033 | Exec with multiple positional command arguments | Preserves argument order and values | 🟢 Pass |
+| CLI-SBX-034 | Exec with spaces and quoted arguments | Preserves argument boundaries correctly | 🟢 Pass |
+| CLI-SBX-035 | Exec with command options such as `--version` | Passes command options to the sandbox process rather than consuming them as `mcpctl` options | 🟢 Pass |
+| CLI-SBX-036 | Exec with a non-zero child exit code | Propagates or accurately reports command failure | 🟢 Pass |
+| CLI-SBX-037 | Exec with no command remainder | Returns the intended validation error or documented behavior | 🟢 Pass |
+| CLI-SBX-038 | Exec against a missing sandbox | Returns a clear error and non-zero exit code | 🟢 Pass |
+| CLI-SBX-039 | `mcpctl sandbox exec --help` | Displays exec usage and remainder behavior | 🟢 Pass |
 
 ### 6.4 Logs and Lifecycle
 
