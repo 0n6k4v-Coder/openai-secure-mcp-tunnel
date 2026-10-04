@@ -41,7 +41,7 @@ COMPOSE_PROJECT_NAME=ci-openai-secure-mcp-tunnel \
 MCP_PORT=18000 \
 OPENSHELL_PORT=18080 \
 OPENSHELL_HEALTH_PORT=18081 \
-    docker compose --env-file .env.example -f deploy/compose.yaml config >/tmp/openai-secure-mcp-tunnel-compose.yaml
+    docker compose --env-file deploy/.env.example -f deploy/compose.yaml config >/tmp/openai-secure-mcp-tunnel-compose.yaml
 
 if grep -q 'CONTROL_PLANE_TUNNEL_ID' /tmp/openai-secure-mcp-tunnel-compose.yaml; then
     echo "ERROR: CONTROL_PLANE_TUNNEL_ID must not be configured as a Compose environment variable." >&2
