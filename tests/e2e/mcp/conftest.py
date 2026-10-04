@@ -22,10 +22,12 @@ from mcp.client.streamable_http import streamable_http_client
 MCP_TRANSPORT_TEST_IDS = tuple(f"MCP-TRANSPORT-{number:03d}" for number in range(1, 21))
 MCP_HEALTH_TEST_IDS = tuple(f"MCP-HEALTH-{number:03d}" for number in range(1, 9))
 MCP_REG_TEST_IDS = tuple(f"MCP-REG-{number:03d}" for number in range(1, 13))
+MCP_SYS_TEST_IDS = tuple(f"MCP-SYS-{number:03d}" for number in range(1, 7))
 MCP_TEST_ID_GROUPS = {
     "TRANSPORT": MCP_TRANSPORT_TEST_IDS,
     "HEALTH": MCP_HEALTH_TEST_IDS,
     "REG": MCP_REG_TEST_IDS,
+    "SYS": MCP_SYS_TEST_IDS,
 }
 MCP_E2E_TEST_IDS = tuple(
     test_id for group in MCP_TEST_ID_GROUPS.values() for test_id in group
@@ -38,7 +40,7 @@ STATUS_ICONS = {
     "Fail": "🔴",
     "Skipped": "🟡",
 }
-TEST_ID_PATTERN = re.compile(r"MCP[-_](TRANSPORT|HEALTH|REG)[-_](\d{3})")
+TEST_ID_PATTERN = re.compile(r"MCP[-_](TRANSPORT|HEALTH|REG|SYS)[-_](\d{3})")
 
 
 def _test_id(node_id: str) -> str | None:

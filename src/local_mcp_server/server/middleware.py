@@ -6,6 +6,8 @@ import logging
 import os
 from collections.abc import Mapping
 
+from mcp.types import CallToolResult, TextContent
+
 logger = logging.getLogger(__name__)
 
 
@@ -32,6 +34,45 @@ def make_request_logging_middleware(mcp, instance_id: str):
         protocol_version = _get_request_value(ctx, "protocol_version")
         session_id = _get_request_value(ctx, "session_id")
         tool_name = _extract_tool_name(ctx)
+        if method == "tools/call" and isinstance(ctx.params, Mapping):
+            arguments = ctx.params.get("arguments", {})
+            if not isinstance(arguments, Mapping):
+                return CallToolResult(
+                    content=[
+                        TextContent(
+                            type="text",
+                            text="Tool arguments must be a JSON object.",
+                        )
+                    ],
+                    isError=True,
+                )
+            try:
+                tools_for_validation = await mcp.list_tools()
+            except Exception:
+                logger.exception("Unable to inspect MCP tool schemas for argument validation")
+                raise
+            tool = next(
+                (item for item in tools_for_validation if item.name == tool_name),
+                None,
+            )
+            if tool is not None:
+                schema = tool.input_schema
+                properties = schema.get("properties", {}) if isinstance(schema, Mapping) else {}
+                if isinstance(properties, Mapping):
+                    unexpected = sorted(set(arguments) - set(properties))
+                    if unexpected:
+                        return CallToolResult(
+                            content=[
+                                TextContent(
+                                    type="text",
+                                    text=(
+                                        f"Unexpected argument(s) for tool {tool_name!r}: "
+                                        + ", ".join(unexpected)
+                                    ),
+                                )
+                            ],
+                            isError=True,
+                        )
         try:
             tools = await mcp.list_tools()
             tool_names = sorted(tool.name for tool in tools)
