@@ -35,26 +35,26 @@ The current source configures the server identity as `local-computer`, version `
 
 | ID | Test | Expected Result | Status |
 |---|---|---|---|
-| MCP-TRANSPORT-001 | Connect to the configured `/mcp` endpoint | An MCP client establishes a valid session/transport connection | ⚪ Not implemented |
-| MCP-TRANSPORT-002 | Initialize the MCP client | Server initialization succeeds and returns valid protocol metadata | ⚪ Not implemented |
-| MCP-TRANSPORT-003 | Verify server identity | Server name is `local-computer` and version is `0.1.0` | ⚪ Not implemented |
-| MCP-TRANSPORT-004 | Verify negotiated protocol version | Client and server negotiate a supported protocol version | ⚪ Not implemented |
-| MCP-TRANSPORT-005 | Verify server capabilities | Tool capability is advertised | ⚪ Not implemented |
-| MCP-TRANSPORT-006 | Send a valid tool-list request | Server returns a valid MCP tool-list response | ⚪ Not implemented |
-| MCP-TRANSPORT-007 | Send a valid tool-call request | Server returns a protocol-valid tool result | ⚪ Not implemented |
-| MCP-TRANSPORT-008 | Send a malformed protocol request | Server rejects it without crashing or returning a false success | ⚪ Not implemented |
-| MCP-TRANSPORT-009 | Send a request with an unsupported method | Server returns a protocol-appropriate error | ⚪ Not implemented |
-| MCP-TRANSPORT-010 | Send an invalid tool-call envelope | Server returns a protocol error or tool error appropriate to the invalid request | ⚪ Not implemented |
-| MCP-TRANSPORT-011 | Send a request with an invalid JSON body | Request is rejected without terminating the service | ⚪ Not implemented |
-| MCP-TRANSPORT-012 | Send a request exceeding the configured body-size limit | Request is rejected safely | ⚪ Not implemented |
-| MCP-TRANSPORT-013 | Connect using the configured allowed host | Request passes host validation | ⚪ Not implemented |
-| MCP-TRANSPORT-014 | Connect with an unapproved Host header | Request is rejected by transport security | ⚪ Not implemented |
-| MCP-TRANSPORT-015 | Exercise DNS-rebinding protection | Disallowed host/origin patterns are rejected according to the transport implementation | ⚪ Not implemented |
-| MCP-TRANSPORT-016 | Send multiple sequential requests | Server remains available and returns valid responses | ⚪ Not implemented |
-| MCP-TRANSPORT-017 | Send independent requests concurrently | Responses remain valid and request handling does not corrupt shared state | ⚪ Not implemented |
-| MCP-TRANSPORT-018 | Verify stateless HTTP behavior | Client requests do not rely on an undocumented persistent server-side session | ⚪ Not implemented |
-| MCP-TRANSPORT-019 | Restart the server and reconnect | A new client can initialize and use the server after restart | ⚪ Not implemented |
-| MCP-TRANSPORT-020 | Verify transport error handling during server unavailability | Client receives a connection failure rather than a false successful result | ⚪ Not implemented |
+| MCP-TRANSPORT-001 | Connect to the configured `/mcp` endpoint | An MCP client establishes a valid session/transport connection | 🟢 Pass |
+| MCP-TRANSPORT-002 | Initialize the MCP client | Server initialization succeeds and returns valid protocol metadata | 🟢 Pass |
+| MCP-TRANSPORT-003 | Verify server identity | Server name is `local-computer` and version is `0.1.0` | 🟢 Pass |
+| MCP-TRANSPORT-004 | Verify negotiated protocol version | Client and server negotiate a supported protocol version | 🟢 Pass |
+| MCP-TRANSPORT-005 | Verify server capabilities | Tool capability is advertised | 🟢 Pass |
+| MCP-TRANSPORT-006 | Send a valid tool-list request | Server returns a valid MCP tool-list response | 🟢 Pass |
+| MCP-TRANSPORT-007 | Send a valid tool-call request | Server returns a protocol-valid tool result | 🟢 Pass |
+| MCP-TRANSPORT-008 | Send a malformed protocol request | Server rejects it without crashing or returning a false success | 🟢 Pass |
+| MCP-TRANSPORT-009 | Send a request with an unsupported method | Server returns a protocol-appropriate error | 🟢 Pass |
+| MCP-TRANSPORT-010 | Send an invalid tool-call envelope | Server returns a protocol error or tool error appropriate to the invalid request | 🟢 Pass |
+| MCP-TRANSPORT-011 | Send a request with an invalid JSON body | Request is rejected without terminating the service | 🟢 Pass |
+| MCP-TRANSPORT-012 | Send a request exceeding the configured body-size limit | Request is rejected safely | 🟢 Pass |
+| MCP-TRANSPORT-013 | Connect using the configured allowed host | Request passes host validation | 🟢 Pass |
+| MCP-TRANSPORT-014 | Connect with an unapproved Host header | Request is rejected by transport security | 🟢 Pass |
+| MCP-TRANSPORT-015 | Exercise DNS-rebinding protection | Disallowed host/origin patterns are rejected according to the transport implementation | 🟢 Pass |
+| MCP-TRANSPORT-016 | Send multiple sequential requests | Server remains available and returns valid responses | 🟢 Pass |
+| MCP-TRANSPORT-017 | Send independent requests concurrently | Responses remain valid and request handling does not corrupt shared state | 🟢 Pass |
+| MCP-TRANSPORT-018 | Verify stateless HTTP behavior | Client requests do not rely on an undocumented persistent server-side session | 🟢 Pass |
+| MCP-TRANSPORT-019 | Restart the server and reconnect | A new client can initialize and use the server after restart | 🟠 Blocked |
+| MCP-TRANSPORT-020 | Verify transport error handling during server unavailability | Client receives a connection failure rather than a false successful result | 🟢 Pass |
 
 ## 4. Health Endpoint and Service Identity
 
