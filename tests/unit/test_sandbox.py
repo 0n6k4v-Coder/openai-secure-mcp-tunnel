@@ -49,6 +49,11 @@ def test_default_sandbox_does_not_depend_on_external_browser_relay(
     assert npm_policy.name == "npm-registry"
 
     npm_endpoint = npm_policy.endpoints[0]
+    enforcement_field = npm_endpoint.DESCRIPTOR.fields_by_name["enforcement"]
+    enforce_value = enforcement_field.enum_type.values_by_name[
+        "NETWORK_ENFORCEMENT_MODE_ENFORCE"
+    ].number
+
     assert (
         npm_endpoint.host,
         npm_endpoint.port,
@@ -58,7 +63,7 @@ def test_default_sandbox_does_not_depend_on_external_browser_relay(
         "registry.npmjs.org",
         443,
         "rest",
-        "NETWORK_ENFORCEMENT_MODE_ENFORCE",
+        enforce_value,
     )
     assert npm_endpoint.allow_encoded_slash is True
     assert {
