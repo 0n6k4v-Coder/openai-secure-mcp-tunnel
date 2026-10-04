@@ -135,21 +135,21 @@ Supported arguments and options: `name`, exactly one of `--workspace` or `--stan
 
 | ID | Test | Expected Result | Status |
 |---|---|---|---|
-| CLI-SBX-040 | `mcpctl sandbox logs <name>` | Delegates logs for the specified sandbox | ⚪ Not implemented |
-| CLI-SBX-041 | `mcpctl sandbox logs --help` | Displays logs usage | ⚪ Not implemented |
-| CLI-SBX-042 | `mcpctl sandbox start <name>` | Starts the specified sandbox | ⚪ Not implemented |
-| CLI-SBX-043 | `mcpctl sandbox start --help` | Displays start usage | ⚪ Not implemented |
-| CLI-SBX-044 | `mcpctl sandbox stop <name>` | Stops the sandbox while retaining state | ⚪ Not implemented |
-| CLI-SBX-045 | `mcpctl sandbox stop --help` | Displays stop usage | ⚪ Not implemented |
-| CLI-SBX-046 | `mcpctl sandbox restart <name>` | Restarts the sandbox | ⚪ Not implemented |
-| CLI-SBX-047 | `mcpctl sandbox restart --help` | Displays restart usage | ⚪ Not implemented |
-| CLI-SBX-048 | `mcpctl sandbox repair <name>` | Attempts recovery of a retained failed sandbox | ⚪ Not implemented |
-| CLI-SBX-049 | `mcpctl sandbox repair --help` | Displays repair usage | ⚪ Not implemented |
-| CLI-SBX-050 | Lifecycle operation against a missing sandbox | Returns a non-zero exit code with an actionable error | ⚪ Not implemented |
-| CLI-SBX-051 | Start a stopped sandbox | Sandbox returns to a ready state | ⚪ Not implemented |
-| CLI-SBX-052 | Stop a running sandbox | Sandbox becomes stopped and retains state | ⚪ Not implemented |
-| CLI-SBX-053 | Restart a sandbox | Sandbox returns to a usable state | ⚪ Not implemented |
-| CLI-SBX-054 | Repair a sandbox that is not repairable | Reports failure without claiming recovery | ⚪ Not implemented |
+| CLI-SBX-040 | `mcpctl sandbox logs <name>` | Delegates logs for the specified sandbox | 🟢 Pass |
+| CLI-SBX-041 | `mcpctl sandbox logs --help` | Displays logs usage | 🟢 Pass |
+| CLI-SBX-042 | `mcpctl sandbox start <name>` | Starts the specified sandbox | 🟢 Pass |
+| CLI-SBX-043 | `mcpctl sandbox start --help` | Displays start usage | 🟢 Pass |
+| CLI-SBX-044 | `mcpctl sandbox stop <name>` | Stops the sandbox while retaining state | 🟢 Pass |
+| CLI-SBX-045 | `mcpctl sandbox stop --help` | Displays stop usage | 🟢 Pass |
+| CLI-SBX-046 | `mcpctl sandbox restart <name>` | Restarts the sandbox | 🟢 Pass |
+| CLI-SBX-047 | `mcpctl sandbox restart --help` | Displays restart usage | 🟢 Pass |
+| CLI-SBX-048 | `mcpctl sandbox repair <name>` | Attempts recovery of a retained failed sandbox | 🟢 Pass |
+| CLI-SBX-049 | `mcpctl sandbox repair --help` | Displays repair usage | 🟢 Pass |
+| CLI-SBX-050 | Lifecycle operation against a missing sandbox | Returns a non-zero exit code with an actionable error | 🟢 Pass |
+| CLI-SBX-051 | Start a stopped sandbox | Sandbox returns to a ready state | 🟠 Blocked |
+| CLI-SBX-052 | Stop a running sandbox | Sandbox becomes stopped and retains state | 🟠 Blocked |
+| CLI-SBX-053 | Restart a sandbox | Sandbox returns to a usable state | 🟠 Blocked |
+| CLI-SBX-054 | Repair a sandbox that is not repairable | Reports failure without claiming recovery | 🟠 Blocked |
 
 ### 6.5 Delete and Recreate
 
