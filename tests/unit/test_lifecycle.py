@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 from pathlib import Path
+from types import SimpleNamespace
 
 import pytest
 
@@ -485,7 +486,7 @@ def test_reconcile_tunnel_starts_when_client_is_configured(
 
 
 def test_lifecycle_ready_requires_required_client_and_running_tunnel() -> None:
-    tls = object()
+    tls = SimpleNamespace(complete=True)
 
     client = lifecycle.MCPClientStatus(
         key="openai",
@@ -533,7 +534,7 @@ def test_lifecycle_ready_requires_required_client_and_running_tunnel() -> None:
 
 
 def test_lifecycle_not_ready_when_required_client_is_unconfigured() -> None:
-    tls = object()
+    tls = SimpleNamespace(complete=True)
 
     client = lifecycle.MCPClientStatus(
         key="openai",

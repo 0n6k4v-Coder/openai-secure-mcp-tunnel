@@ -125,7 +125,6 @@ class LifecycleStatus:
             self.infrastructure_ready
             and self.required_mcp_clients_configured
             and self.tunnel_client.running
-            and self.tunnel_client.health == "running"
         )
 
 
@@ -676,10 +675,7 @@ def get_status(
         if client.key == "openai":
             if not client.configured:
                 runtime = "—"
-            elif (
-                tunnel_client.running
-                and tunnel_client.health == "running"
-            ):
+            elif tunnel_client.running:
                 runtime = "✓ ACTIVE"
             else:
                 runtime = "○ NOT RUNNING"

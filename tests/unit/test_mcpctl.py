@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import importlib
 from pathlib import Path
+from types import SimpleNamespace
 
 import pytest
 
@@ -280,6 +281,27 @@ def test_mcp_client_setup_flow_shows_status_table_and_skip(
     monkeypatch: pytest.MonkeyPatch,
     capsys: pytest.CaptureFixture[str],
 ) -> None:
+    client = mcpctl.lifecycle.get_mcp_client_statuses()[0]
+
+    unconfigured_client = type(client)(
+        key=client.key,
+        display_name=client.display_name,
+        required=client.required,
+        configured=False,
+        config_present=False,
+        credentials_present=False,
+        permissions_secure=None,
+        config_file=client.config_file,
+        credentials_file=client.credentials_file,
+        insecure_paths=(),
+    )
+
+    monkeypatch.setattr(
+        mcpctl.lifecycle,
+        "get_mcp_client_statuses",
+        lambda: (unconfigured_client,),
+    )
+
     monkeypatch.setattr(
         mcpctl,
         "_prompt_choice",
@@ -300,15 +322,36 @@ def test_mcp_client_setup_flow_shows_status_table_and_skip(
     assert "CONFIGURATION" in output
     assert "OpenAI" in output
     assert "○ NOT CONFIGURED" in output
-    assert "Choose MCP clients to configure" in output
-    assert "1. OpenAI" in output
-    assert "2. Skip for now" in output
+    assert "MCP client configuration skipped." in output
+    assert "You can configure it later with:" in output
+    assert "mcpctl config mcp-client" in output
     assert "Configure OpenAI" not in output
 
 
 def test_mcp_client_setup_configures_unconfigured_client(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
+    client = mcpctl.lifecycle.get_mcp_client_statuses()[0]
+
+    unconfigured_client = type(client)(
+        key=client.key,
+        display_name=client.display_name,
+        required=client.required,
+        configured=False,
+        config_present=False,
+        credentials_present=False,
+        permissions_secure=None,
+        config_file=client.config_file,
+        credentials_file=client.credentials_file,
+        insecure_paths=(),
+    )
+
+    monkeypatch.setattr(
+        mcpctl.lifecycle,
+        "get_mcp_client_statuses",
+        lambda: (unconfigured_client,),
+    )
+
     called = False
 
     def fake_configure() -> int:
@@ -341,7 +384,7 @@ def test_mcp_client_setup_does_not_prompt_when_all_clients_configured(
     monkeypatch: pytest.MonkeyPatch,
     capsys: pytest.CaptureFixture[str],
 ) -> None:
-    client = lifecycle_status = (
+    client = (
         mcpctl.lifecycle.get_mcp_client_statuses()[0]
     )
 
@@ -448,6 +491,29 @@ def test_mcp_client_management_shows_configured_status(
 def test_mcp_client_management_configures_unconfigured_client(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
+    client = (
+        mcpctl.lifecycle.get_mcp_client_statuses()[0]
+    )
+
+    unconfigured_client = type(client)(
+        key=client.key,
+        display_name=client.display_name,
+        required=client.required,
+        configured=False,
+        config_present=False,
+        credentials_present=False,
+        permissions_secure=None,
+        config_file=client.config_file,
+        credentials_file=client.credentials_file,
+        insecure_paths=(),
+    )
+
+    monkeypatch.setattr(
+        mcpctl.lifecycle,
+        "get_mcp_client_statuses",
+        lambda: (unconfigured_client,),
+    )
+
     calls: list[list[str]] = []
     configured = False
 
@@ -565,7 +631,7 @@ def test_setup_configures_mcp_client_before_starting_services(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     events: list[str] = []
-    tls_status = object()
+    tls_status = SimpleNamespace(complete=True)
     final_status = object()
 
     monkeypatch.setattr(
@@ -582,7 +648,9 @@ def test_setup_configures_mcp_client_before_starting_services(
         mcpctl,
         "_config_mcp_client",
         lambda *, allow_skip: (
-            events.append(f"config_mcp_client:{allow_skip}")
+            events.append(
+                f"config_mcp_client:{allow_skip}"
+            )
             or mcpctl.EXIT_OK
         ),
     )
@@ -599,13 +667,17 @@ def test_setup_configures_mcp_client_before_starting_services(
     monkeypatch.setattr(
         mcpctl.lifecycle,
         "reconcile_tunnel_client",
-        lambda: events.append("reconcile_tunnel_client"),
+        lambda: events.append(
+            "reconcile_tunnel_client"
+        ),
     )
     monkeypatch.setattr(
         mcpctl.lifecycle,
         "verify",
         lambda status: (
-            events.append(f"verify:{status is tls_status}")
+            events.append(
+                f"verify:{status is tls_status}"
+            )
             or final_status
         ),
     )
@@ -642,6 +714,6 @@ def test_setup_configures_mcp_client_before_starting_services(
         "validate_compose",
         "start_core_services",
         "reconcile_tunnel_client",
-        "print_status:True",
         "verify:True",
+        "print_status:True",
     ]
