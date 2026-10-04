@@ -15,6 +15,14 @@ def _workspace_grant(workspace_id: str) -> dict[str, object]:
     }
 
 
+def test_sandbox_name_max_length() -> None:
+    valid_name = "a" * policy.MAX_SANDBOX_NAME_LENGTH
+    assert policy.validate_name(valid_name) == valid_name
+
+    with pytest.raises(ValueError, match="at most 19 characters"):
+        policy.validate_name("a" * (policy.MAX_SANDBOX_NAME_LENGTH + 1))
+
+
 def test_build_sandbox_spec_without_workspace_is_standalone() -> None:
     spec = policy.build_sandbox_spec()
 

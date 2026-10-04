@@ -32,10 +32,13 @@ DEFAULT_MEMORY = os.environ.get(
 )
 
 MAX_COMMAND_BYTES = 32 * 1024
+MAX_SANDBOX_NAME_LENGTH = 19
 
 SandboxProfile = Literal["default", "browser"]
 
-_SANDBOX_NAME = re.compile(r"^[a-z0-9][a-z0-9-]{0,62}$")
+_SANDBOX_NAME = re.compile(
+    rf"^[a-z0-9][a-z0-9-]{{0,{MAX_SANDBOX_NAME_LENGTH - 1}}}$"
+)
 
 _CPU_QUANTITY = re.compile(r"^(?:\d+(?:\.\d+)?|\d+m)$")
 
@@ -65,7 +68,7 @@ def validate_name(name: str) -> str:
         raise ValueError(
             "sandbox name must contain only lowercase letters, digits, "
             "and hyphens, start with a letter or digit, and be at most "
-            "63 characters"
+            f"{MAX_SANDBOX_NAME_LENGTH} characters"
         )
 
     return name
