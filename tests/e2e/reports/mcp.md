@@ -77,18 +77,18 @@ The current registration code registers 23 tools: one system-information tool, e
 
 | ID | Test | Expected Result | Status |
 |---|---|---|---|
-| MCP-REG-001 | List all registered tools | Returns the complete expected tool set | ⚪ Not implemented |
-| MCP-REG-002 | Verify exact tool count | Registry contains 23 tools | ⚪ Not implemented |
-| MCP-REG-003 | Verify tool names | Every registered tool has the expected exact name | ⚪ Not implemented |
-| MCP-REG-004 | Verify tool names are unique | No duplicate tool names are returned | ⚪ Not implemented |
-| MCP-REG-005 | Verify tool descriptions | Each tool has a useful description matching its implemented behavior | ⚪ Not implemented |
-| MCP-REG-006 | Verify input schemas | Each tool advertises a valid JSON-compatible input schema | ⚪ Not implemented |
-| MCP-REG-007 | Verify required arguments | Required schema fields match the callable signature | ⚪ Not implemented |
-| MCP-REG-008 | Verify optional arguments and defaults | Optional fields and defaults match the implementation | ⚪ Not implemented |
-| MCP-REG-009 | Verify tool annotations | Read-only, destructive, idempotent, and open-world hints match the intended behavior | ⚪ Not implemented |
-| MCP-REG-010 | Verify registry stability | Repeated list-tools requests return the same tool names for an unchanged server build | ⚪ Not implemented |
-| MCP-REG-011 | Call an unknown tool name | Server returns an MCP tool/protocol error and does not execute another tool | ⚪ Not implemented |
-| MCP-REG-012 | Verify unsupported capabilities | Server does not claim unsupported resources, prompts, or other capabilities | ⚪ Not implemented |
+| MCP-REG-001 | List all registered tools | Returns the complete expected tool set | 🟢 Pass |
+| MCP-REG-002 | Verify exact tool count | Registry contains 23 tools | 🟢 Pass |
+| MCP-REG-003 | Verify tool names | Every registered tool has the expected exact name | 🟢 Pass |
+| MCP-REG-004 | Verify tool names are unique | No duplicate tool names are returned | 🟢 Pass |
+| MCP-REG-005 | Verify tool descriptions | Each tool has a useful description matching its implemented behavior | 🟢 Pass |
+| MCP-REG-006 | Verify input schemas | Each tool advertises a valid JSON-compatible input schema | 🟢 Pass |
+| MCP-REG-007 | Verify required arguments | Required schema fields match the callable signature | 🟢 Pass |
+| MCP-REG-008 | Verify optional arguments and defaults | Optional fields and defaults match the implementation | 🟢 Pass |
+| MCP-REG-009 | Verify tool annotations | Read-only, destructive, idempotent, and open-world hints match the intended behavior | 🟢 Pass |
+| MCP-REG-010 | Verify registry stability | Repeated list-tools requests return the same tool names for an unchanged server build | 🟢 Pass |
+| MCP-REG-011 | Call an unknown tool name | Server returns an MCP tool/protocol error and does not execute another tool | 🟢 Pass |
+| MCP-REG-012 | Verify unsupported capabilities | Server does not claim unsupported resources, prompts, or other capabilities | 🟢 Pass |
 
 ## 6. `get_system_info`
 
@@ -96,12 +96,12 @@ Current signature: `get_system_info() -> dict[str, str]`. It returns the operati
 
 | ID | Test | Expected Result | Status |
 |---|---|---|---|
-| MCP-SYS-001 | Call `get_system_info` with no arguments | Returns system information successfully | ⚪ Not implemented |
-| MCP-SYS-002 | Validate response fields | Includes `operating_system`, `platform`, `python_version`, and `python_implementation` | ⚪ Not implemented |
-| MCP-SYS-003 | Validate response value types | All documented values are strings | ⚪ Not implemented |
-| MCP-SYS-004 | Validate non-empty values | Required environment information is populated | ⚪ Not implemented |
-| MCP-SYS-005 | Supply an unexpected argument | Invalid input is rejected according to the tool schema | ⚪ Not implemented |
-| MCP-SYS-006 | Repeat the call | Calls succeed without mutating server or sandbox state | ⚪ Not implemented |
+| MCP-SYS-001 | Call `get_system_info` with no arguments | Returns system information successfully | 🟢 Pass |
+| MCP-SYS-002 | Validate response fields | Includes `operating_system`, `platform`, `python_version`, and `python_implementation` | 🟢 Pass |
+| MCP-SYS-003 | Validate response value types | All documented values are strings | 🟢 Pass |
+| MCP-SYS-004 | Validate non-empty values | Required environment information is populated | 🟢 Pass |
+| MCP-SYS-005 | Supply an unexpected argument | Invalid input is rejected according to the tool schema | 🟢 Pass |
+| MCP-SYS-006 | Repeat the call | Calls succeed without mutating server or sandbox state | 🟢 Pass |
 
 ## 7. Sandbox Lifecycle Tools
 
