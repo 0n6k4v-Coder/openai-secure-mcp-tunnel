@@ -159,6 +159,5 @@ def configure_openai(
         raise
     except OSError as exc:
         raise ConfigError(
-            "Unable to save OpenAI MCP client configuration: "
-            f"{exc}",
+            f"Unable to save OpenAI MCP client configuration: {exc}",
         ) from exc

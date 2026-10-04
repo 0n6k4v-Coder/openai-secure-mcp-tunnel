@@ -88,10 +88,7 @@ def test_create_credential_does_not_put_secret_in_argv(
         fake_run,
     )
 
-    assert (
-        service.create_credential("my-openai", "openai", "OPENAI_API_KEY")
-        == 0
-    )
+    assert service.create_credential("my-openai", "openai", "OPENAI_API_KEY") == 0
 
     assert captured["command"] == [
         "openshell",

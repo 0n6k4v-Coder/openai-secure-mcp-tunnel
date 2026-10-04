@@ -47,9 +47,7 @@ def _gateway_endpoint() -> str:
         )
 
     if not parsed.hostname:
-        raise CredentialError(
-            "OpenShell CLI gateway endpoint must contain a hostname."
-        )
+        raise CredentialError("OpenShell CLI gateway endpoint must contain a hostname.")
 
     if parsed.username or parsed.password:
         raise CredentialError(
@@ -148,9 +146,7 @@ def _raise_credential_operation_failure(
 ) -> None:
     detail = stderr.strip()
 
-    message = (
-        f"OpenShell credential {operation} failed with exit code {return_code}."
-    )
+    message = f"OpenShell credential {operation} failed with exit code {return_code}."
 
     if detail:
         message += f" {detail}"

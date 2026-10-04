@@ -41,8 +41,12 @@ def main() -> None:
     )
     logger.info(
         "Starting MCP server service=%s version=%s instance_id=%s pid=%s hostname=%s python=%s",
-        SERVICE_NAME, SERVICE_VERSION, INSTANCE_ID, os.getpid(),
-        socket.gethostname(), platform.python_version(),
+        SERVICE_NAME,
+        SERVICE_VERSION,
+        INSTANCE_ID,
+        os.getpid(),
+        socket.gethostname(),
+        platform.python_version(),
     )
     transport_security = TransportSecuritySettings(
         enable_dns_rebinding_protection=True,

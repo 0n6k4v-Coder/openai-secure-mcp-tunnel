@@ -70,7 +70,7 @@ def _write_valid_openai_configuration(
             "control_plane:\n"
             "  base_url: https://api.openai.com\n"
             "  tunnel_id: "
-            "\"tunnel_0123456789abcdef0123456789abcdef\"\n"
+            '"tunnel_0123456789abcdef0123456789abcdef"\n'
             "  api_key: "
             "file:/run/secrets/CONTROL_PLANE_API_KEY\n"
             "mcp:\n"
@@ -110,17 +110,12 @@ def test_prepare_runtime_creates_canonical_runtime_state(
     monkeypatch.setattr(
         lifecycle,
         "installation_state_file",
-        lambda: state_root
-        / "mcp"
-        / "installations.json",
+        lambda: state_root / "mcp" / "installations.json",
     )
     monkeypatch.setattr(
         lifecycle,
         "workspace_grants_file",
-        lambda: state_root
-        / "mcp"
-        / "workspace-grants"
-        / "workspace-grants.json",
+        lambda: state_root / "mcp" / "workspace-grants" / "workspace-grants.json",
     )
 
     lifecycle.prepare_runtime()
@@ -128,65 +123,39 @@ def test_prepare_runtime_creates_canonical_runtime_state(
     assert config_root.is_dir()
     assert state_root.is_dir()
 
-    assert (
-        state_root
-        / "config"
-        / "credentials"
-    ).is_dir()
+    assert (state_root / "config" / "credentials").is_dir()
+
+    assert (state_root / "openshell" / "tls").is_dir()
+
+    assert (state_root / "mcp" / "workspace-grants").is_dir()
+
+    assert (state_root / "logs").is_dir()
+
+    installation_file = state_root / "mcp" / "installations.json"
+
+    grants_file = state_root / "mcp" / "workspace-grants" / "workspace-grants.json"
 
     assert (
-        state_root
-        / "openshell"
-        / "tls"
-    ).is_dir()
-
-    assert (
-        state_root
-        / "mcp"
-        / "workspace-grants"
-    ).is_dir()
-
-    assert (
-        state_root
-        / "logs"
-    ).is_dir()
-
-    installation_file = (
-        state_root
-        / "mcp"
-        / "installations.json"
-    )
-
-    grants_file = (
-        state_root
-        / "mcp"
-        / "workspace-grants"
-        / "workspace-grants.json"
-    )
-
-    assert json.loads(
-        installation_file.read_text(
-            encoding="utf-8",
+        json.loads(
+            installation_file.read_text(
+                encoding="utf-8",
+            )
         )
-    ) == {}
+        == {}
+    )
 
-    assert json.loads(
-        grants_file.read_text(
-            encoding="utf-8",
+    assert (
+        json.loads(
+            grants_file.read_text(
+                encoding="utf-8",
+            )
         )
-    ) == {}
-
-    assert (
-        installation_file.stat().st_mode
-        & 0o777
-        == 0o600
+        == {}
     )
 
-    assert (
-        grants_file.stat().st_mode
-        & 0o777
-        == 0o600
-    )
+    assert installation_file.stat().st_mode & 0o777 == 0o600
+
+    assert grants_file.stat().st_mode & 0o777 == 0o600
 
 
 def test_prepare_runtime_rejects_insecure_state_directory(
@@ -214,17 +183,12 @@ def test_prepare_runtime_rejects_insecure_state_directory(
     monkeypatch.setattr(
         lifecycle,
         "installation_state_file",
-        lambda: state_root
-        / "mcp"
-        / "installations.json",
+        lambda: state_root / "mcp" / "installations.json",
     )
     monkeypatch.setattr(
         lifecycle,
         "workspace_grants_file",
-        lambda: state_root
-        / "mcp"
-        / "workspace-grants"
-        / "workspace-grants.json",
+        lambda: state_root / "mcp" / "workspace-grants" / "workspace-grants.json",
     )
 
     with pytest.raises(

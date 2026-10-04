@@ -139,9 +139,7 @@ def test_chrome_devtools_install_commands_are_accepted(
             tool_name="chrome-devtools-mcp",
             version=version,
             source="npm",
-            install_command=(
-                f"npm install -g chrome-devtools-mcp@{version}"
-            ),
+            install_command=(f"npm install -g chrome-devtools-mcp@{version}"),
             reason="Required for Chrome DevTools MCP integration testing.",
         )
 
@@ -286,9 +284,7 @@ def test_mcp_tool_exposes_installation_validation_error(
                     "tool_name": "chrome-devtools-mcp",
                     "version": "1.10.1",
                     "source": "npm",
-                    "install_command": (
-                        "npm install -g chrome-devtools-mcp@1.10.1"
-                    ),
+                    "install_command": ("npm install -g chrome-devtools-mcp@1.10.1"),
                     "reason": "Test validation error visibility.",
                 },
             )
@@ -338,9 +334,7 @@ def test_mcp_tool_exposes_installation_execution_error(
                     "tool_name": "chrome-devtools-mcp",
                     "version": "1.10.1",
                     "source": "npm",
-                    "install_command": (
-                        "npm install -g chrome-devtools-mcp@1.10.1"
-                    ),
+                    "install_command": ("npm install -g chrome-devtools-mcp@1.10.1"),
                     "reason": "Test execution error visibility.",
                 },
             )

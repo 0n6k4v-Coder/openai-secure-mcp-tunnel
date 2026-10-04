@@ -9,9 +9,7 @@ import pytest
 from argcomplete.completers import EnvironCompleter
 
 
-completion = importlib.import_module(
-    "local_mcp_server.cli.completion"
-)
+completion = importlib.import_module("local_mcp_server.cli.completion")
 
 
 def test_build_completion_parser_uses_local_cli_name() -> None:
@@ -112,16 +110,12 @@ def test_dynamic_completers_are_attached() -> None:
     credential_create = parsers["local-mcp-server credential create"]
 
     sandbox_name_action = next(
-        action
-        for action in sandbox_status._actions
-        if action.dest == "name"
+        action for action in sandbox_status._actions if action.dest == "name"
     )
     assert sandbox_name_action.completer is completion._sandbox_name_completer
 
     workspace_action = next(
-        action
-        for action in sandbox_create._actions
-        if action.dest == "workspace_id"
+        action for action in sandbox_create._actions if action.dest == "workspace_id"
     )
     assert workspace_action.completer is completion._workspace_id_completer
 
@@ -143,9 +137,7 @@ def test_existing_choices_remain_available() -> None:
     )
 
     profile_action = next(
-        action
-        for action in sandbox_create._actions
-        if action.dest == "profile"
+        action for action in sandbox_create._actions if action.dest == "profile"
     )
 
     assert list(profile_action.choices) == ["default", "browser"]
@@ -202,9 +194,7 @@ def test_build_mcpctl_completion_parser_contains_nested_commands() -> None:
 
     sandbox_create = parsers["mcpctl sandbox create"]
     workspace_action = next(
-        action
-        for action in sandbox_create._actions
-        if action.dest == "workspace_id"
+        action for action in sandbox_create._actions if action.dest == "workspace_id"
     )
     assert workspace_action.completer is completion._workspace_id_completer
 

@@ -77,8 +77,7 @@ def _run_openshell_output(
 
     except OSError as exc:
         raise SandboxError(
-            f"Failed to execute OpenShell output command: "
-            f"{type(exc).__name__}: {exc}"
+            f"Failed to execute OpenShell output command: {type(exc).__name__}: {exc}"
         ) from exc
 
     if completed.returncode != 0:
@@ -245,10 +244,7 @@ def create_sandbox(
     grant: dict[str, object] | None = None
 
     if workspace_id is not None:
-        if (
-            not isinstance(workspace_id, str)
-            or not workspace_id.strip()
-        ):
+        if not isinstance(workspace_id, str) or not workspace_id.strip():
             raise ValueError("host_workspace_id must not be empty.")
 
         grant = get_workspace_grant(workspace_id)
@@ -306,8 +302,7 @@ def create_sandbox(
 
     except Exception as exc:
         raise SandboxError(
-            f"Failed to create sandbox '{name}': "
-            f"{type(exc).__name__}: {exc}"
+            f"Failed to create sandbox '{name}': {type(exc).__name__}: {exc}"
         ) from exc
 
 
@@ -326,8 +321,7 @@ def list_sandboxes() -> str:
 
     except Exception as exc:
         raise SandboxError(
-            f"Failed to list OpenShell sandboxes: "
-            f"{type(exc).__name__}: {exc}"
+            f"Failed to list OpenShell sandboxes: {type(exc).__name__}: {exc}"
         ) from exc
 
 
@@ -355,13 +349,10 @@ def sandbox_status(
 
     except Exception as exc:
         raise SandboxError(
-            f"Failed to inspect sandbox '{name}': "
-            f"{type(exc).__name__}: {exc}"
+            f"Failed to inspect sandbox '{name}': {type(exc).__name__}: {exc}"
         ) from exc
 
-    raise SandboxError(
-        f"Sandbox '{name}' was not found."
-    )
+    raise SandboxError(f"Sandbox '{name}' was not found.")
 
 
 def start_sandbox(
@@ -387,8 +378,7 @@ def start_sandbox(
 
     except Exception as exc:
         raise SandboxError(
-            f"Failed to start sandbox '{name}': "
-            f"{type(exc).__name__}: {exc}"
+            f"Failed to start sandbox '{name}': {type(exc).__name__}: {exc}"
         ) from exc
 
 
@@ -415,8 +405,7 @@ def stop_sandbox(
 
     except Exception as exc:
         raise SandboxError(
-            f"Failed to stop sandbox '{name}': "
-            f"{type(exc).__name__}: {exc}"
+            f"Failed to stop sandbox '{name}': {type(exc).__name__}: {exc}"
         ) from exc
 
 
@@ -445,10 +434,7 @@ def sandbox_logs(
 ) -> str:
     name = validate_name(name)
 
-    if (
-        not isinstance(since, str)
-        or not since.strip()
-    ):
+    if not isinstance(since, str) or not since.strip():
         raise ValueError("since must not be empty.")
 
     return _run_openshell_output(
@@ -470,10 +456,7 @@ def execute_sandbox_argv(
     if not argv:
         raise ValueError("argv must not be empty.")
 
-    if any(
-        not isinstance(argument, str) or "\x00" in argument
-        for argument in argv
-    ):
+    if any(not isinstance(argument, str) or "\x00" in argument for argument in argv):
         raise ValueError("argv contains an invalid argument.")
 
     try:
@@ -497,8 +480,7 @@ def execute_sandbox_argv(
 
     except Exception as exc:
         raise SandboxError(
-            f"Failed to execute argv in sandbox '{name}': "
-            f"{type(exc).__name__}: {exc}"
+            f"Failed to execute argv in sandbox '{name}': {type(exc).__name__}: {exc}"
         ) from exc
 
 
@@ -593,8 +575,7 @@ def delete_sandbox(
 
     except Exception as exc:
         raise SandboxError(
-            f"Failed to delete sandbox '{name}': "
-            f"{type(exc).__name__}: {exc}"
+            f"Failed to delete sandbox '{name}': {type(exc).__name__}: {exc}"
         ) from exc
 
 
@@ -618,22 +599,16 @@ def recreate_sandbox(
         )
 
         if not isinstance(current, dict):
-            raise SandboxError(
-                f"Sandbox '{name}' returned invalid metadata."
-            )
+            raise SandboxError(f"Sandbox '{name}' returned invalid metadata.")
 
         workspace_id = current.get(
             "host_workspace_id",
         )
 
         if workspace_id is not None:
-            if (
-                not isinstance(workspace_id, str)
-                or not workspace_id
-            ):
+            if not isinstance(workspace_id, str) or not workspace_id:
                 raise SandboxError(
-                    f"Sandbox '{name}' contains an invalid "
-                    "host workspace ID."
+                    f"Sandbox '{name}' contains an invalid host workspace ID."
                 )
 
         profile = current.get(
@@ -642,10 +617,7 @@ def recreate_sandbox(
         )
 
         if profile not in {"default", "browser"}:
-            raise SandboxError(
-                f"Sandbox '{name}' has unsupported profile "
-                f"'{profile}'."
-            )
+            raise SandboxError(f"Sandbox '{name}' has unsupported profile '{profile}'.")
 
         delete_sandbox(name)
 
@@ -663,6 +635,5 @@ def recreate_sandbox(
 
     except Exception as exc:
         raise SandboxError(
-            f"Failed to recreate sandbox '{name}': "
-            f"{type(exc).__name__}: {exc}"
+            f"Failed to recreate sandbox '{name}': {type(exc).__name__}: {exc}"
         ) from exc

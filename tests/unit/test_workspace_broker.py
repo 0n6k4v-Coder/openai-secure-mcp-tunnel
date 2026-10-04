@@ -230,28 +230,30 @@ def test_acl_helper_uses_current_host_ids(
         operation="provision-sandbox-acl",
     )
 
-    assert commands == [[
-        "/usr/bin/docker",
-        "run",
-        "--rm",
-        "--network",
-        "none",
-        "--read-only",
-        "--cap-drop",
-        "ALL",
-        "--cap-add",
-        "DAC_OVERRIDE",
-        "--cap-add",
-        "FOWNER",
-        "--user",
-        "0:0",
-        "--mount",
-        f"type=bind,source={tmp_path.resolve()},target=/workspace",
-        broker.ACL_HELPER_IMAGE,
-        "provision-sandbox-acl",
-        str(broker.SANDBOX_UID),
-        "2001",
-    ]]
+    assert commands == [
+        [
+            "/usr/bin/docker",
+            "run",
+            "--rm",
+            "--network",
+            "none",
+            "--read-only",
+            "--cap-drop",
+            "ALL",
+            "--cap-add",
+            "DAC_OVERRIDE",
+            "--cap-add",
+            "FOWNER",
+            "--user",
+            "0:0",
+            "--mount",
+            f"type=bind,source={tmp_path.resolve()},target=/workspace",
+            broker.ACL_HELPER_IMAGE,
+            "provision-sandbox-acl",
+            str(broker.SANDBOX_UID),
+            "2001",
+        ]
+    ]
 
 
 def test_provision_sandbox_acl_rejects_unsafe_protected_path(
@@ -341,28 +343,30 @@ def test_acl_helper_uses_narrow_docker_invocation(
         host_gid=1000,
     )
 
-    assert commands == [[
-        "/usr/bin/docker",
-        "run",
-        "--rm",
-        "--network",
-        "none",
-        "--read-only",
-        "--cap-drop",
-        "ALL",
-        "--cap-add",
-        "DAC_OVERRIDE",
-        "--cap-add",
-        "FOWNER",
-        "--user",
-        "0:0",
-        "--mount",
-        f"type=bind,source={tmp_path.resolve()},target=/workspace",
-        broker.ACL_HELPER_IMAGE,
-        "provision-sandbox-acl",
-        str(broker.SANDBOX_UID),
-        "1000",
-    ]]
+    assert commands == [
+        [
+            "/usr/bin/docker",
+            "run",
+            "--rm",
+            "--network",
+            "none",
+            "--read-only",
+            "--cap-drop",
+            "ALL",
+            "--cap-add",
+            "DAC_OVERRIDE",
+            "--cap-add",
+            "FOWNER",
+            "--user",
+            "0:0",
+            "--mount",
+            f"type=bind,source={tmp_path.resolve()},target=/workspace",
+            broker.ACL_HELPER_IMAGE,
+            "provision-sandbox-acl",
+            str(broker.SANDBOX_UID),
+            "1000",
+        ]
+    ]
 
 
 def test_remove_sandbox_acl_with_helper_uses_narrow_docker_invocation(
@@ -400,28 +404,30 @@ def test_remove_sandbox_acl_with_helper_uses_narrow_docker_invocation(
         host_gid=1000,
     )
 
-    assert commands == [[
-        "/usr/bin/docker",
-        "run",
-        "--rm",
-        "--network",
-        "none",
-        "--read-only",
-        "--cap-drop",
-        "ALL",
-        "--cap-add",
-        "DAC_OVERRIDE",
-        "--cap-add",
-        "FOWNER",
-        "--user",
-        "0:0",
-        "--mount",
-        f"type=bind,source={tmp_path.resolve()},target=/workspace",
-        broker.ACL_HELPER_IMAGE,
-        "remove-sandbox-acl",
-        str(broker.SANDBOX_UID),
-        "1000",
-    ]]
+    assert commands == [
+        [
+            "/usr/bin/docker",
+            "run",
+            "--rm",
+            "--network",
+            "none",
+            "--read-only",
+            "--cap-drop",
+            "ALL",
+            "--cap-add",
+            "DAC_OVERRIDE",
+            "--cap-add",
+            "FOWNER",
+            "--user",
+            "0:0",
+            "--mount",
+            f"type=bind,source={tmp_path.resolve()},target=/workspace",
+            broker.ACL_HELPER_IMAGE,
+            "remove-sandbox-acl",
+            str(broker.SANDBOX_UID),
+            "1000",
+        ]
+    ]
 
 
 def test_create_workspace_grant_records_host_uid(
@@ -507,9 +513,7 @@ def test_create_workspace_grant_rolls_back_acl_on_volume_failure(
     monkeypatch.setattr(
         broker,
         "_remove_sandbox_acl",
-        lambda path, *, host_uid=None, host_gid=None: observed.append(
-            ("remove", path)
-        ),
+        lambda path, *, host_uid=None, host_gid=None: observed.append(("remove", path)),
     )
 
     def fail_volume(

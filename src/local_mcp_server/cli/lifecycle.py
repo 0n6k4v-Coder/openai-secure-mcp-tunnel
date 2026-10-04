@@ -103,11 +103,7 @@ class LifecycleStatus:
 
     @property
     def required_mcp_clients_configured(self) -> bool:
-        return all(
-            client.configured
-            for client in self.mcp_clients
-            if client.required
-        )
+        return all(client.configured for client in self.mcp_clients if client.required)
 
     @property
     def infrastructure_ready(self) -> bool:
@@ -180,8 +176,7 @@ def _validate_openai_configuration(
         and "\r" not in credential_content
         and "config_version: 1" in config_content
         and "base_url: https://api.openai.com" in config_content
-        and "api_key: file:/run/secrets/CONTROL_PLANE_API_KEY"
-        in config_content
+        and "api_key: file:/run/secrets/CONTROL_PLANE_API_KEY" in config_content
         and "url: http://mcp-server:8000/mcp" in config_content
     )
 
@@ -203,9 +198,7 @@ def _ensure_private_directory(path: Path) -> None:
     try:
         if path.exists():
             if not path.is_dir():
-                raise LifecycleError(
-                    f"Runtime state path is not a directory: {path}"
-                )
+                raise LifecycleError(f"Runtime state path is not a directory: {path}")
         else:
             path.mkdir(
                 parents=True,
@@ -235,9 +228,7 @@ def _ensure_private_file(path: Path, content: str) -> None:
 
     if path.exists():
         if not path.is_file():
-            raise LifecycleError(
-                f"Runtime state path is not a regular file: {path}"
-            )
+            raise LifecycleError(f"Runtime state path is not a regular file: {path}")
 
         try:
             mode = stat.S_IMODE(path.stat().st_mode)
@@ -322,9 +313,7 @@ def validate_compose() -> None:
             or "Docker Compose configuration validation failed."
         )
 
-        raise LifecycleError(
-            f"Docker Compose configuration is invalid: {diagnostic}"
-        )
+        raise LifecycleError(f"Docker Compose configuration is invalid: {diagnostic}")
 
 
 def _service_statuses() -> dict[str, ServiceStatus]:
@@ -364,9 +353,7 @@ def _service_statuses() -> dict[str, ServiceStatus]:
             ) from exc
 
         if not isinstance(record, dict):
-            raise LifecycleError(
-                "Docker Compose returned an unexpected status record."
-            )
+            raise LifecycleError("Docker Compose returned an unexpected status record.")
 
         service = record.get("Service")
         state = record.get("State")
@@ -455,9 +442,7 @@ def _wait_for_http(
 
         time.sleep(DEFAULT_POLL_INTERVAL_SECONDS)
 
-    raise LifecycleError(
-        f"Timed out waiting for {url}: {last_error}"
-    )
+    raise LifecycleError(f"Timed out waiting for {url}: {last_error}")
 
 
 def _wait_for_service_running(
@@ -477,8 +462,7 @@ def _wait_for_service_running(
         time.sleep(DEFAULT_POLL_INTERVAL_SECONDS)
 
     raise LifecycleError(
-        f"Timed out waiting for Docker Compose service "
-        f"'{service}' to start."
+        f"Timed out waiting for Docker Compose service '{service}' to start."
     )
 
 
@@ -494,9 +478,7 @@ def start_core_services() -> None:
     )
 
     if result != 0:
-        raise LifecycleError(
-            "Failed to start OpenShell Gateway and MCP Server."
-        )
+        raise LifecycleError("Failed to start OpenShell Gateway and MCP Server.")
 
     _wait_for_service_running("openshell-gateway")
     _wait_for_http(GATEWAY_HEALTH_URL)
@@ -517,9 +499,7 @@ def start_tunnel_client() -> None:
     )
 
     if result != 0:
-        raise LifecycleError(
-            "Failed to start the tunnel client."
-        )
+        raise LifecycleError("Failed to start the tunnel client.")
 
 
 def remove_tunnel_client() -> None:
@@ -538,9 +518,7 @@ def remove_tunnel_client() -> None:
             or "Docker Compose could not remove the tunnel client."
         )
 
-        raise LifecycleError(
-            f"Unable to remove tunnel client: {diagnostic}"
-        )
+        raise LifecycleError(f"Unable to remove tunnel client: {diagnostic}")
 
 
 def _client_permissions(
@@ -611,10 +589,7 @@ def _client_status(
 
 
 def get_mcp_client_statuses() -> tuple[MCPClientStatus, ...]:
-    return tuple(
-        _client_status(definition)
-        for definition in MCP_CLIENT_DEFINITIONS
-    )
+    return tuple(_client_status(definition) for definition in MCP_CLIENT_DEFINITIONS)
 
 
 def get_mcp_client_status() -> MCPClientStatus:
@@ -650,11 +625,7 @@ def get_status(
     if gateway.running:
         gateway = replace(
             gateway,
-            health=(
-                "healthy"
-                if _http_healthy(GATEWAY_HEALTH_URL)
-                else "unhealthy"
-            ),
+            health=("healthy" if _http_healthy(GATEWAY_HEALTH_URL) else "unhealthy"),
         )
 
     mcp_server = _service_status(
@@ -714,26 +685,18 @@ def print_status(status: LifecycleStatus) -> None:
             ],
             [
                 "OpenShell TLS",
-                "✓ READY"
-                if status.tls.complete
-                else "✗ NOT READY",
+                "✓ READY" if status.tls.complete else "✗ NOT READY",
             ],
             [
                 "OpenShell Gateway",
                 "✓ READY"
-                if (
-                    status.gateway.running
-                    and status.gateway.health == "healthy"
-                )
+                if (status.gateway.running and status.gateway.health == "healthy")
                 else "✗ NOT READY",
             ],
             [
                 "MCP Server",
                 "✓ READY"
-                if (
-                    status.mcp_server.running
-                    and status.mcp_server.health == "healthy"
-                )
+                if (status.mcp_server.running and status.mcp_server.health == "healthy")
                 else "✗ NOT READY",
             ],
         ],
@@ -753,11 +716,7 @@ def print_status(status: LifecycleStatus) -> None:
             [
                 str(index),
                 client.display_name,
-                (
-                    "✓ CONFIGURED"
-                    if client.configured
-                    else "○ NOT CONFIGURED"
-                ),
+                ("✓ CONFIGURED" if client.configured else "○ NOT CONFIGURED"),
                 client.runtime,
             ]
         )
@@ -768,9 +727,7 @@ def print_status(status: LifecycleStatus) -> None:
     )
 
     insecure_paths = [
-        path
-        for client in status.mcp_clients
-        for path in client.insecure_paths
+        path for client in status.mcp_clients for path in client.insecure_paths
     ]
 
     if insecure_paths:
@@ -818,8 +775,7 @@ def verify(
 
     if not status.infrastructure_ready:
         raise LifecycleError(
-            "Core infrastructure is not ready. "
-            "Run 'mcpctl status' for details."
+            "Core infrastructure is not ready. Run 'mcpctl status' for details."
         )
 
     return status

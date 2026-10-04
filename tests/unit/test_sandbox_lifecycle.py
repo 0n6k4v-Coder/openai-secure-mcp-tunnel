@@ -362,10 +362,7 @@ def test_mcp_registers_complete_sandbox_lifecycle_surface() -> None:
     register_tools(mcp)
 
     tools = asyncio.run(mcp.list_tools())
-    tool_map = {
-        tool.name: tool
-        for tool in tools
-    }
+    tool_map = {tool.name: tool for tool in tools}
 
     expected = {
         "get_system_info",

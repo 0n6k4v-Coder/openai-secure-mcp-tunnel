@@ -71,9 +71,7 @@ def _validate_arguments(
 
     for index, argument in enumerate(values):
         if not isinstance(argument, str) or "\x00" in argument:
-            raise ChromeDevToolsError(
-                "Chrome DevTools arguments contain invalid data."
-            )
+            raise ChromeDevToolsError("Chrome DevTools arguments contain invalid data.")
 
         token = argument.split("=", 1)[0]
 
@@ -115,8 +113,7 @@ def _bounded_result(
 
             if len(encoded) > _MAX_OUTPUT_BYTES:
                 bounded[key] = (
-                    encoded[:_MAX_OUTPUT_BYTES]
-                    .decode("utf-8", errors="replace")
+                    encoded[:_MAX_OUTPUT_BYTES].decode("utf-8", errors="replace")
                     + "\n[output truncated]"
                 )
 

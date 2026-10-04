@@ -36,36 +36,59 @@ def make_request_logging_middleware(mcp, instance_id: str):
             tools = await mcp.list_tools()
             tool_names = sorted(tool.name for tool in tools)
             registry_fingerprint = hashlib.sha256(
-                json.dumps(tool_names, separators=(",", ":"), ensure_ascii=True).encode("utf-8")
+                json.dumps(tool_names, separators=(",", ":"), ensure_ascii=True).encode(
+                    "utf-8"
+                )
             ).hexdigest()[:16]
         except Exception:
             tool_names = []
             registry_fingerprint = "registry-read-error"
             logger.exception(
                 "MCP registry inspection failed instance_id=%s pid=%s method=%s request_id=%s",
-                instance_id, os.getpid(), method, request_id,
+                instance_id,
+                os.getpid(),
+                method,
+                request_id,
             )
         logger.info(
             "MCP REQUEST instance_id=%s pid=%s method=%s request_id=%s protocol_version=%s "
             "session_id=%s tool=%s tool_registered=%s registry_count=%d "
             "registry_fingerprint=%s registry_tools=%s",
-            instance_id, os.getpid(), method, request_id, protocol_version, session_id,
-            tool_name, tool_name in tool_names if tool_name else None, len(tool_names),
-            registry_fingerprint, json.dumps(tool_names, separators=(",", ":")),
+            instance_id,
+            os.getpid(),
+            method,
+            request_id,
+            protocol_version,
+            session_id,
+            tool_name,
+            tool_name in tool_names if tool_name else None,
+            len(tool_names),
+            registry_fingerprint,
+            json.dumps(tool_names, separators=(",", ":")),
         )
         try:
             result = await call_next(ctx)
             logger.info(
                 "MCP RESPONSE instance_id=%s pid=%s method=%s request_id=%s tool=%s status=success",
-                instance_id, os.getpid(), method, request_id, tool_name,
+                instance_id,
+                os.getpid(),
+                method,
+                request_id,
+                tool_name,
             )
             return result
         except Exception as exc:
             logger.exception(
                 "MCP RESPONSE instance_id=%s pid=%s method=%s request_id=%s tool=%s "
                 "status=error error_type=%s error=%s",
-                instance_id, os.getpid(), method, request_id, tool_name,
-                type(exc).__name__, str(exc),
+                instance_id,
+                os.getpid(),
+                method,
+                request_id,
+                tool_name,
+                type(exc).__name__,
+                str(exc),
             )
             raise
+
     return request_logging_middleware

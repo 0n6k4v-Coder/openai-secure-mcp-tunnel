@@ -134,8 +134,7 @@ def _save_grants(
 
     if directory_mode & 0o077:
         raise RuntimeError(
-            "Workspace grants directory must not be accessible "
-            "by group or other users."
+            "Workspace grants directory must not be accessible by group or other users."
         )
 
     temporary_path = grants_file.with_suffix(".tmp")
@@ -206,9 +205,7 @@ def _require_docker() -> str:
     executable = shutil.which("docker")
 
     if executable is None:
-        raise RuntimeError(
-            "docker is required to manage workspace ACLs."
-        )
+        raise RuntimeError("docker is required to manage workspace ACLs.")
 
     return executable
 
@@ -243,10 +240,7 @@ def _is_excluded_path(
     except ValueError:
         return True
 
-    if any(
-        part in EXCLUDED_WORKSPACE_DIRECTORY_NAMES
-        for part in relative.parts
-    ):
+    if any(part in EXCLUDED_WORKSPACE_DIRECTORY_NAMES for part in relative.parts):
         return True
 
     for excluded in EXCLUDED_WORKSPACE_PATHS:
@@ -302,9 +296,7 @@ def _run_acl_helper(
         host_gid = _host_group_id()
 
     if host_uid < 1 or host_gid < 1:
-        raise RuntimeError(
-            "Workspace ACL helper requires a non-root host UID and GID."
-        )
+        raise RuntimeError("Workspace ACL helper requires a non-root host UID and GID.")
 
     if SANDBOX_UID < 1 or SANDBOX_GID < 1:
         raise RuntimeError(
@@ -352,8 +344,7 @@ def _run_acl_helper(
 
         if not message:
             message = (
-                "Workspace ACL helper failed with "
-                f"exit code {completed.returncode}."
+                f"Workspace ACL helper failed with exit code {completed.returncode}."
             )
 
         raise RuntimeError(message)
@@ -497,10 +488,7 @@ def _remove_volume(
         message = completed.stderr.strip()
 
         if not message:
-            message = (
-                f"docker volume rm failed with exit code "
-                f"{completed.returncode}."
-            )
+            message = f"docker volume rm failed with exit code {completed.returncode}."
 
         raise RuntimeError(message)
 
@@ -685,9 +673,7 @@ def main(
     argv: list[str] | None = None,
 ) -> int:
     parser = argparse.ArgumentParser(
-        description=(
-            "Trusted host-side workspace ACL and Docker-volume broker."
-        )
+        description=("Trusted host-side workspace ACL and Docker-volume broker.")
     )
 
     subparsers = parser.add_subparsers(

@@ -19,12 +19,16 @@ from .domain import InstallationRequest
 
 _INSTALLATION_STATE_DEFAULT = installation_state_file()
 
-INSTALLATION_STATE_FILE = Path(
-    os.environ.get(
-        "INSTALLATION_STATE_FILE",
-        str(_INSTALLATION_STATE_DEFAULT),
+INSTALLATION_STATE_FILE = (
+    Path(
+        os.environ.get(
+            "INSTALLATION_STATE_FILE",
+            str(_INSTALLATION_STATE_DEFAULT),
+        )
     )
-).expanduser().resolve()
+    .expanduser()
+    .resolve()
+)
 
 INSTALLATION_TIMEOUT_SECONDS: Final[int] = int(
     os.environ.get("INSTALLATION_TIMEOUT_SECONDS", "300")
@@ -94,9 +98,7 @@ def _load_state() -> dict[str, dict[str, object]]:
         return {}
 
     try:
-        value = json.loads(
-            INSTALLATION_STATE_FILE.read_text(encoding="utf-8")
-        )
+        value = json.loads(INSTALLATION_STATE_FILE.read_text(encoding="utf-8"))
     except (OSError, json.JSONDecodeError) as exc:
         raise InstallationError(
             "Installation approval state could not be read."
@@ -200,16 +202,12 @@ def _validate_install_command(value: str) -> tuple[str, ...]:
         raise InstallationError("install_command is too long.")
 
     if any(char in command for char in _FORBIDDEN_SHELL_CHARS):
-        raise InstallationError(
-            "install_command contains forbidden shell syntax."
-        )
+        raise InstallationError("install_command contains forbidden shell syntax.")
 
     try:
         tokens = tuple(shlex.split(command, posix=True))
     except ValueError as exc:
-        raise InstallationError(
-            "install_command has invalid shell quoting."
-        ) from exc
+        raise InstallationError("install_command has invalid shell quoting.") from exc
 
     if not tokens:
         raise InstallationError("install_command is empty.")
@@ -224,10 +222,7 @@ def _validate_install_command(value: str) -> tuple[str, ...]:
 
     operations = set(tokens[1:])
 
-    if (
-        executable in {"apt", "apt-get", "dnf", "yum"}
-        and "install" not in operations
-    ):
+    if executable in {"apt", "apt-get", "dnf", "yum"} and "install" not in operations:
         raise InstallationError(
             "System package installation commands must use install."
         )
@@ -235,10 +230,7 @@ def _validate_install_command(value: str) -> tuple[str, ...]:
     if executable == "apk" and "add" not in operations:
         raise InstallationError("apk installation commands must use add.")
 
-    if (
-        executable in {"pip", "pip3", "pipx"}
-        and "install" not in operations
-    ):
+    if executable in {"pip", "pip3", "pipx"} and "install" not in operations:
         raise InstallationError(
             "Python package installation commands must use install."
         )
@@ -254,27 +246,18 @@ def _validate_install_command(value: str) -> tuple[str, ...]:
             )
 
     if executable == "npm" and not {"install", "add"} & operations:
-        raise InstallationError(
-            "npm installation commands must use install or add."
-        )
+        raise InstallationError("npm installation commands must use install or add.")
 
     if executable in {"pnpm", "yarn"} and not {"install", "add"} & operations:
         raise InstallationError(
             "Node package installation commands must use install or add."
         )
 
-    if (
-        executable in {"cargo", "go", "gem"}
-        and "install" not in operations
-    ):
-        raise InstallationError(
-            f"{executable} installation commands must use install."
-        )
+    if executable in {"cargo", "go", "gem"} and "install" not in operations:
+        raise InstallationError(f"{executable} installation commands must use install.")
 
     if executable == "composer" and "require" not in operations:
-        raise InstallationError(
-            "Composer installation commands must use require."
-        )
+        raise InstallationError("Composer installation commands must use require.")
 
     if executable == "conda" and not {"install", "create"} & operations:
         raise InstallationError(
@@ -335,9 +318,7 @@ def approve_installation(request_id: str) -> InstallationRequest:
             raise InstallationError("Installation request was not found.")
 
         if entry.get("state") != "pending":
-            raise InstallationError(
-                "Installation request is no longer pending."
-            )
+            raise InstallationError("Installation request is no longer pending.")
 
         entry["state"] = "approved"
         entry["approved_at"] = datetime.now(timezone.utc).isoformat()
@@ -355,9 +336,7 @@ def deny_installation(request_id: str) -> None:
             raise InstallationError("Installation request was not found.")
 
         if entry.get("state") != "pending":
-            raise InstallationError(
-                "Installation request is no longer pending."
-            )
+            raise InstallationError("Installation request is no longer pending.")
 
         entry["state"] = "denied"
         entry["finished_at"] = datetime.now(timezone.utc).isoformat()
@@ -375,9 +354,7 @@ def consume_installation_approval(
             raise InstallationError("Installation request was not found.")
 
         if entry.get("state") != "approved":
-            raise InstallationError(
-                "Installation request has not been approved."
-            )
+            raise InstallationError("Installation request has not been approved.")
 
         entry["state"] = "consumed"
         entry["consumed_at"] = datetime.now(timezone.utc).isoformat()

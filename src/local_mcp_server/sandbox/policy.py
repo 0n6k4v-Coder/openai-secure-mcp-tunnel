@@ -39,13 +39,9 @@ _SANDBOX_NAME = re.compile(r"^[a-z0-9][a-z0-9-]{0,62}$")
 
 _CPU_QUANTITY = re.compile(r"^(?:\d+(?:\.\d+)?|\d+m)$")
 
-_MEMORY_QUANTITY = re.compile(
-    r"^\d+(?:\.\d+)?(?:Ki|Mi|Gi|Ti|Pi|Ei|K|M|G|T|P|E)$"
-)
+_MEMORY_QUANTITY = re.compile(r"^\d+(?:\.\d+)?(?:Ki|Mi|Gi|Ti|Pi|Ei|K|M|G|T|P|E)$")
 
-_ENDPOINT = re.compile(
-    r"^(?P<host>[A-Za-z0-9*.-]+):(?P<port>[1-9][0-9]{0,4})$"
-)
+_ENDPOINT = re.compile(r"^(?P<host>[A-Za-z0-9*.-]+):(?P<port>[1-9][0-9]{0,4})$")
 
 _NPM_NODE_BINARY = "/usr/local/bin/node"
 _NPM_REGISTRY_HOST = "registry.npmjs.org"
@@ -77,9 +73,7 @@ def validate_name(name: str) -> str:
 
 def validate_profile(profile: str) -> SandboxProfile:
     if profile not in {"default", "browser"}:
-        raise ValueError(
-            "sandbox profile must be either 'default' or 'browser'"
-        )
+        raise ValueError("sandbox profile must be either 'default' or 'browser'")
 
     return profile  # type: ignore[return-value]
 
@@ -95,9 +89,7 @@ def validate_cpu(value: str) -> str:
 
 def validate_memory(value: str) -> str:
     if not isinstance(value, str) or not _MEMORY_QUANTITY.fullmatch(value):
-        raise ValueError(
-            "memory must be a quantity such as 512Mi, 4Gi, or 8G"
-        )
+        raise ValueError("memory must be a quantity such as 512Mi, 4Gi, or 8G")
 
     return value
 
@@ -137,9 +129,7 @@ def _browser_endpoints() -> tuple[tuple[str, int], ...]:
         port = int(match.group("port"))
 
         if port > 65535:
-            raise ValueError(
-                "BROWSER_ALLOWED_ENDPOINTS contains an invalid port."
-            )
+            raise ValueError("BROWSER_ALLOWED_ENDPOINTS contains an invalid port.")
 
         endpoints.append((host, port))
 
@@ -216,10 +206,7 @@ def build_sandbox_spec(
     grant: dict[str, object] | None = None
 
     if workspace_id is not None:
-        if (
-            not isinstance(workspace_id, str)
-            or not workspace_id.strip()
-        ):
+        if not isinstance(workspace_id, str) or not workspace_id.strip():
             raise ValueError("host_workspace_id must not be empty.")
 
         grant = get_workspace_grant(workspace_id)

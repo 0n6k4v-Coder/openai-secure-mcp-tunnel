@@ -76,31 +76,16 @@ def test_application_paths_are_canonical(
         str(state_home),
     )
 
-    assert paths.app_config_root() == (
-        config_home / "local-mcp-server"
-    )
-    assert paths.app_state_root() == (
-        state_home / "local-mcp-server"
-    )
+    assert paths.app_config_root() == (config_home / "local-mcp-server")
+    assert paths.app_state_root() == (state_home / "local-mcp-server")
     assert paths.openai_config_file() == (
-        config_home
-        / "local-mcp-server"
-        / "mcp-clients"
-        / "openai"
-        / "config.yaml"
+        config_home / "local-mcp-server" / "mcp-clients" / "openai" / "config.yaml"
     )
     assert paths.openai_api_key_file() == (
-        config_home
-        / "local-mcp-server"
-        / "mcp-clients"
-        / "openai"
-        / "credentials"
+        config_home / "local-mcp-server" / "mcp-clients" / "openai" / "credentials"
     )
     assert paths.installation_state_file() == (
-        state_home
-        / "local-mcp-server"
-        / "mcp"
-        / "installations.json"
+        state_home / "local-mcp-server" / "mcp" / "installations.json"
     )
     assert paths.workspace_grants_file() == (
         state_home

@@ -9,9 +9,8 @@ from dataclasses import dataclass
 from pathlib import Path
 
 
-OPEN_SHELL_GATEWAY_IMAGE = (
-    "ghcr.io/nvidia/openshell/gateway:"
-    + os.environ.get("OPENSHELL_IMAGE_TAG", "latest")
+OPEN_SHELL_GATEWAY_IMAGE = "ghcr.io/nvidia/openshell/gateway:" + os.environ.get(
+    "OPENSHELL_IMAGE_TAG", "latest"
 )
 
 OPEN_SHELL_CLI_GATEWAY_NAME = "local"
@@ -71,12 +70,7 @@ def _xdg_config_home() -> Path:
 
 
 def tls_root() -> Path:
-    return (
-        _xdg_state_home()
-        / "local-mcp-server"
-        / "openshell"
-        / "tls"
-    )
+    return _xdg_state_home() / "local-mcp-server" / "openshell" / "tls"
 
 
 def _openshell_cli_mtls_root() -> Path:
@@ -90,10 +84,7 @@ def _openshell_cli_mtls_root() -> Path:
 
 
 def _required_paths(root: Path) -> tuple[Path, ...]:
-    return tuple(
-        root / relative_path
-        for relative_path in EXPECTED_FILES
-    )
+    return tuple(root / relative_path for relative_path in EXPECTED_FILES)
 
 
 def _insecure_paths(root: Path) -> tuple[Path, ...]:
@@ -135,11 +126,7 @@ def get_status() -> TLSStatus:
     root = tls_root()
     required_paths = _required_paths(root)
 
-    missing = tuple(
-        path
-        for path in required_paths
-        if not path.is_file()
-    )
+    missing = tuple(path for path in required_paths if not path.is_file())
 
     insecure_paths = _insecure_paths(root)
 
@@ -241,16 +228,13 @@ def _sync_openshell_cli_bundle(root: Path) -> None:
     )
 
     missing = [
-        str(path.relative_to(root))
-        for path in required_sources
-        if not path.is_file()
+        str(path.relative_to(root)) for path in required_sources if not path.is_file()
     ]
 
     if missing:
         raise OpenShellTLSStatusError(
             "Cannot synchronize the OpenShell CLI mTLS bundle because "
-            "required TLS files are missing: "
-            + ", ".join(missing)
+            "required TLS files are missing: " + ", ".join(missing)
         )
 
     target_root = _openshell_cli_mtls_root()
@@ -281,8 +265,7 @@ def _sync_openshell_cli_bundle(root: Path) -> None:
 
     except OSError as exc:
         raise OpenShellTLSStatusError(
-            "Unable to synchronize the OpenShell CLI mTLS bundle: "
-            f"{exc}"
+            f"Unable to synchronize the OpenShell CLI mTLS bundle: {exc}"
         ) from exc
 
 
@@ -307,10 +290,7 @@ def _run_generate_certs(root: Path) -> None:
             "--user",
             f"{os.getuid()}:{os.getgid()}",
             "-v",
-            (
-                f"{parent}:"
-                "/home/openshell/.local/state/local-mcp-server/openshell"
-            ),
+            (f"{parent}:/home/openshell/.local/state/local-mcp-server/openshell"),
             "-v",
             f"{config_home}:/home/openshell/.config",
             OPEN_SHELL_GATEWAY_IMAGE,
@@ -318,8 +298,7 @@ def _run_generate_certs(root: Path) -> None:
             "--output-dir",
             (
                 "/home/openshell/.local/state/"
-                "local-mcp-server/openshell/"
-                + temporary_root.name
+                "local-mcp-server/openshell/" + temporary_root.name
             ),
             "--server-san",
             "host.openshell.internal",
@@ -346,8 +325,7 @@ def _run_generate_certs(root: Path) -> None:
 
         except OSError as exc:
             raise OpenShellTLSStatusError(
-                "Failed to execute Docker: "
-                f"{type(exc).__name__}: {exc}"
+                f"Failed to execute Docker: {type(exc).__name__}: {exc}"
             ) from exc
 
         if completed.returncode != 0:
@@ -358,8 +336,7 @@ def _run_generate_certs(root: Path) -> None:
             )
 
             raise OpenShellTLSStatusError(
-                "OpenShell TLS generation failed: "
-                f"{diagnostic}"
+                f"OpenShell TLS generation failed: {diagnostic}"
             )
 
         generated_paths = (
@@ -419,28 +396,20 @@ def _rebuild() -> TLSStatus:
         if final.missing:
             details.append(
                 "missing: "
-                + ", ".join(
-                    str(path.relative_to(final.root))
-                    for path in final.missing
-                )
+                + ", ".join(str(path.relative_to(final.root)) for path in final.missing)
             )
 
         if final.insecure_paths:
             details.append(
                 "insecure permissions: "
                 + ", ".join(
-                    str(path.relative_to(final.root))
-                    for path in final.insecure_paths
+                    str(path.relative_to(final.root)) for path in final.insecure_paths
                 )
             )
 
         raise OpenShellTLSStatusError(
             "OpenShell TLS setup did not produce a healthy bundle"
-            + (
-                f" ({'; '.join(details)})"
-                if details
-                else "."
-            )
+            + (f" ({'; '.join(details)})" if details else ".")
         )
 
     return final

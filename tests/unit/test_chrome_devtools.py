@@ -131,9 +131,7 @@ def test_mcp_tool_exposes_validation_errors() -> None:
                 {
                     "sandbox_name": "clone-web",
                     "command": "list_pages",
-                    "arguments": [
-                        "--browser-url=http://127.0.0.1:9222"
-                    ],
+                    "arguments": ["--browser-url=http://127.0.0.1:9222"],
                 },
             )
         )

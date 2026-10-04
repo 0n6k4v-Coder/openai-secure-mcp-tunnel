@@ -63,8 +63,7 @@ def _ensure_grants_directory() -> None:
 
     if mode & 0o077:
         raise RuntimeError(
-            "Workspace grants directory must not be accessible "
-            "by group or other users."
+            "Workspace grants directory must not be accessible by group or other users."
         )
 
 
@@ -116,9 +115,7 @@ def _load_workspace_grants() -> dict[str, dict[str, object]]:
                     "host_path": host_path,
                     "volume_name": volume_name,
                     "target": (
-                        target
-                        if isinstance(target, str)
-                        else "/workspace/project"
+                        target if isinstance(target, str) else "/workspace/project"
                     ),
                     "read_only": read_only,
                 }

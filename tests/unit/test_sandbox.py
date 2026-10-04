@@ -83,10 +83,7 @@ def test_default_sandbox_does_not_depend_on_external_browser_relay(
 
     assert npm_endpoint.allow_encoded_slash is True
 
-    assert {
-        (rule.allow.method, rule.allow.path)
-        for rule in npm_endpoint.rules
-    } == {
+    assert {(rule.allow.method, rule.allow.path) for rule in npm_endpoint.rules} == {
         ("GET", "/**"),
         ("HEAD", "/**"),
         ("OPTIONS", "/**"),

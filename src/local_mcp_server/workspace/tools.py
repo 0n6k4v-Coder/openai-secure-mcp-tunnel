@@ -15,6 +15,7 @@ from .service import (
     write_workspace_file as write_workspace_file_impl,
 )
 
+
 def register_tools(mcp: MCPServer) -> None:
     """Register this domain MCP tools."""
 
