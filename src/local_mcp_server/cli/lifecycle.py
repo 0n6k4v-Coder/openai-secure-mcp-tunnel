@@ -399,6 +399,31 @@ def _service_status(
     )
 
 
+def _http_healthy(
+    url: str,
+    *,
+    timeout_seconds: float = 3.0,
+) -> bool:
+    """Return whether an HTTP readiness endpoint responds with HTTP 200."""
+    try:
+        request = urllib.request.Request(
+            url,
+            method="GET",
+        )
+
+        with urllib.request.urlopen(
+            request,
+            timeout=timeout_seconds,
+        ) as response:
+            return response.status == 200
+
+    except (
+        OSError,
+        urllib.error.URLError,
+    ):
+        return False
+
+
 def _wait_for_http(
     url: str,
     *,
@@ -622,10 +647,22 @@ def get_status(
         statuses,
         "openshell-gateway",
     )
+
+    if gateway.running:
+        gateway = replace(
+            gateway,
+            health=(
+                "healthy"
+                if _http_healthy(GATEWAY_HEALTH_URL)
+                else "unhealthy"
+            ),
+        )
+
     mcp_server = _service_status(
         statuses,
         "mcp-server",
     )
+
     tunnel_client = _service_status(
         statuses,
         "tunnel-client",
@@ -639,7 +676,10 @@ def get_status(
         if client.key == "openai":
             if not client.configured:
                 runtime = "—"
-            elif tunnel_client.running and tunnel_client.health == "running":
+            elif (
+                tunnel_client.running
+                and tunnel_client.health == "running"
+            ):
                 runtime = "✓ ACTIVE"
             else:
                 runtime = "○ NOT RUNNING"
