@@ -21,7 +21,15 @@ from mcp.client.streamable_http import streamable_http_client
 
 MCP_TRANSPORT_TEST_IDS = tuple(f"MCP-TRANSPORT-{number:03d}" for number in range(1, 21))
 MCP_HEALTH_TEST_IDS = tuple(f"MCP-HEALTH-{number:03d}" for number in range(1, 9))
-MCP_E2E_TEST_IDS = MCP_TRANSPORT_TEST_IDS + MCP_HEALTH_TEST_IDS
+MCP_REG_TEST_IDS = tuple(f"MCP-REG-{number:03d}" for number in range(1, 13))
+MCP_TEST_ID_GROUPS = {
+    "TRANSPORT": MCP_TRANSPORT_TEST_IDS,
+    "HEALTH": MCP_HEALTH_TEST_IDS,
+    "REG": MCP_REG_TEST_IDS,
+}
+MCP_E2E_TEST_IDS = tuple(
+    test_id for group in MCP_TEST_ID_GROUPS.values() for test_id in group
+)
 VALID_STATUSES = {"Not implemented", "Blocked", "Pass", "Fail", "Skipped"}
 STATUS_ICONS = {
     "Not implemented": "⚪",
@@ -30,7 +38,7 @@ STATUS_ICONS = {
     "Fail": "🔴",
     "Skipped": "🟡",
 }
-TEST_ID_PATTERN = re.compile(r"MCP[-_](TRANSPORT|HEALTH)[-_](\d{3})")
+TEST_ID_PATTERN = re.compile(r"MCP[-_](TRANSPORT|HEALTH|REG)[-_](\d{3})")
 
 
 def _test_id(node_id: str) -> str | None:
@@ -83,6 +91,8 @@ def _update_mcp_report(statuses: dict[str, str]) -> None:
         )
 
     for test_id, status in statuses.items():
+        if test_id not in row_indexes:
+            raise ValueError(f"Unknown MCP E2E test ID: {test_id}")
         if status not in VALID_STATUSES:
             raise ValueError(f"Invalid status for {test_id}: {status!r}")
         row_index = row_indexes[test_id][0]
@@ -124,31 +134,37 @@ def pytest_runtest_makereport(item, call):
 
 def pytest_sessionfinish(session, exitstatus):
     del exitstatus
-    mcp_items = [item for item in session.items if _test_id(item.nodeid) is not None]
-    if not mcp_items:
-        return
-
+    collected_by_group: dict[str, set[str]] = {
+        group: set() for group in MCP_TEST_ID_GROUPS
+    }
     reports_by_id: dict[str, list[pytest.TestReport]] = {
         test_id: [] for test_id in MCP_E2E_TEST_IDS
     }
-    for item in mcp_items:
-        test_id = _test_id(item.nodeid)
-        if test_id is not None:
-            reports_by_id[test_id].extend(getattr(item, "_mcp_e2e_reports", []))
 
-    collected_ids = {
-        test_id for item in mcp_items if (test_id := _test_id(item.nodeid)) is not None
+    for item in session.items:
+        test_id = _test_id(item.nodeid)
+        if test_id is None:
+            continue
+        group = test_id.split("-")[1]
+        collected_by_group[group].add(test_id)
+        reports_by_id[test_id].extend(getattr(item, "_mcp_e2e_reports", []))
+
+    active_groups = {
+        group for group, ids in collected_by_group.items() if ids
     }
-    complete_suites = set()
-    if set(MCP_TRANSPORT_TEST_IDS).issubset(collected_ids):
-        complete_suites.update(MCP_TRANSPORT_TEST_IDS)
-    if set(MCP_HEALTH_TEST_IDS).issubset(collected_ids):
-        complete_suites.update(MCP_HEALTH_TEST_IDS)
-    ids_to_update = collected_ids | complete_suites
+    if not active_groups:
+        return
+
+    # When a family is selected, reset its uncollected cases to "Not implemented"
+    # so a partial run cannot leave stale green statuses in the report.
+    ids_to_update = {
+        test_id
+        for group in active_groups
+        for test_id in MCP_TEST_ID_GROUPS[group]
+    }
     statuses = {
         test_id: _status_for_reports(reports_by_id[test_id])
-        for test_id in MCP_E2E_TEST_IDS
-        if test_id in ids_to_update
+        for test_id in ids_to_update
     }
     try:
         _update_mcp_report(statuses)
