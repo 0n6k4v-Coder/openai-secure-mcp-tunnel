@@ -62,14 +62,14 @@ The current source registers `GET /healthz`. The response includes `status`, `se
 
 | ID | Test | Expected Result | Status |
 |---|---|---|---|
-| MCP-HEALTH-001 | `GET /healthz` | Returns HTTP 200 when the service is available | ⚪ Not implemented |
-| MCP-HEALTH-002 | Validate health response JSON | Response is valid JSON and contains the expected fields | ⚪ Not implemented |
-| MCP-HEALTH-003 | Validate health status | `status` equals `ok` | ⚪ Not implemented |
-| MCP-HEALTH-004 | Validate service identity | `service` is `local-computer` and `version` is `0.1.0` | ⚪ Not implemented |
-| MCP-HEALTH-005 | Validate instance metadata | `instance_id` is non-empty and `pid` is a valid process identifier | ⚪ Not implemented |
-| MCP-HEALTH-006 | Repeated health requests | Endpoint remains responsive across repeated requests | ⚪ Not implemented |
-| MCP-HEALTH-007 | Health request with the configured Host header | Request succeeds when the host is allowed | ⚪ Not implemented |
-| MCP-HEALTH-008 | Health request with a disallowed Host header | Request is rejected according to transport host validation | ⚪ Not implemented |
+| MCP-HEALTH-001 | `GET /healthz` | Returns HTTP 200 when the service is available | 🟢 Pass |
+| MCP-HEALTH-002 | Validate health response JSON | Response is valid JSON and contains the expected fields | 🟢 Pass |
+| MCP-HEALTH-003 | Validate health status | `status` equals `ok` | 🟢 Pass |
+| MCP-HEALTH-004 | Validate service identity | `service` is `local-computer` and `version` is `0.1.0` | 🟢 Pass |
+| MCP-HEALTH-005 | Validate instance metadata | `instance_id` is non-empty and `pid` is a valid process identifier | 🟢 Pass |
+| MCP-HEALTH-006 | Repeated health requests | Endpoint remains responsive across repeated requests | 🟢 Pass |
+| MCP-HEALTH-007 | Health request with the configured Host header | Request succeeds when the host is allowed | 🟢 Pass |
+| MCP-HEALTH-008 | Health request with a disallowed Host header | Request is rejected according to transport host validation | 🟢 Pass |
 
 ## 5. Tool Registry and Discovery
 

@@ -19,9 +19,9 @@ import pytest
 from mcp import Client
 from mcp.client.streamable_http import streamable_http_client
 
-MCP_TRANSPORT_TEST_IDS = tuple(
-    f"MCP-TRANSPORT-{number:03d}" for number in range(1, 21)
-)
+MCP_TRANSPORT_TEST_IDS = tuple(f"MCP-TRANSPORT-{number:03d}" for number in range(1, 21))
+MCP_HEALTH_TEST_IDS = tuple(f"MCP-HEALTH-{number:03d}" for number in range(1, 9))
+MCP_E2E_TEST_IDS = MCP_TRANSPORT_TEST_IDS + MCP_HEALTH_TEST_IDS
 VALID_STATUSES = {"Not implemented", "Blocked", "Pass", "Fail", "Skipped"}
 STATUS_ICONS = {
     "Not implemented": "⚪",
@@ -30,15 +30,15 @@ STATUS_ICONS = {
     "Fail": "🔴",
     "Skipped": "🟡",
 }
-TEST_ID_PATTERN = re.compile(r"MCP[-_]TRANSPORT[-_](\d{3})")
+TEST_ID_PATTERN = re.compile(r"MCP[-_](TRANSPORT|HEALTH)[-_](\d{3})")
 
 
 def _test_id(node_id: str) -> str | None:
     match = TEST_ID_PATTERN.search(node_id)
     if match is None:
         return None
-    test_id = f"MCP-TRANSPORT-{match.group(1)}"
-    return test_id if test_id in MCP_TRANSPORT_TEST_IDS else None
+    test_id = f"MCP-{match.group(1)}-{match.group(2)}"
+    return test_id if test_id in MCP_E2E_TEST_IDS else None
 
 
 def _status_for_reports(reports: list[pytest.TestReport]) -> str:
@@ -62,7 +62,7 @@ def _update_mcp_report(statuses: dict[str, str]) -> None:
         raise FileNotFoundError(f"MCP E2E report does not exist: {report_path}")
 
     lines = report_path.read_text(encoding="utf-8").splitlines()
-    row_indexes: dict[str, list[int]] = {test_id: [] for test_id in MCP_TRANSPORT_TEST_IDS}
+    row_indexes: dict[str, list[int]] = {test_id: [] for test_id in MCP_E2E_TEST_IDS}
     for index, line in enumerate(lines):
         if not line.startswith("|"):
             continue
@@ -73,10 +73,12 @@ def _update_mcp_report(statuses: dict[str, str]) -> None:
         if test_id in row_indexes:
             row_indexes[test_id].append(index)
 
-    invalid_rows = [test_id for test_id, indexes in row_indexes.items() if len(indexes) != 1]
+    invalid_rows = [
+        test_id for test_id, indexes in row_indexes.items() if len(indexes) != 1
+    ]
     if invalid_rows:
         raise ValueError(
-            "Expected exactly one report row for each MCP transport test ID; "
+            "Expected exactly one report row for every MCP E2E test ID; "
             "invalid rows: " + ", ".join(invalid_rows)
         )
 
@@ -127,22 +129,26 @@ def pytest_sessionfinish(session, exitstatus):
         return
 
     reports_by_id: dict[str, list[pytest.TestReport]] = {
-        test_id: [] for test_id in MCP_TRANSPORT_TEST_IDS
+        test_id: [] for test_id in MCP_E2E_TEST_IDS
     }
     for item in mcp_items:
         test_id = _test_id(item.nodeid)
         if test_id is not None:
             reports_by_id[test_id].extend(getattr(item, "_mcp_e2e_reports", []))
 
-    collected_ids = {_test_id(item.nodeid) for item in mcp_items}
-    full_suite_collected = (
-        len(mcp_items) == len(MCP_TRANSPORT_TEST_IDS)
-        and collected_ids == set(MCP_TRANSPORT_TEST_IDS)
-    )
+    collected_ids = {
+        test_id for item in mcp_items if (test_id := _test_id(item.nodeid)) is not None
+    }
+    complete_suites = set()
+    if set(MCP_TRANSPORT_TEST_IDS).issubset(collected_ids):
+        complete_suites.update(MCP_TRANSPORT_TEST_IDS)
+    if set(MCP_HEALTH_TEST_IDS).issubset(collected_ids):
+        complete_suites.update(MCP_HEALTH_TEST_IDS)
+    ids_to_update = collected_ids | complete_suites
     statuses = {
         test_id: _status_for_reports(reports_by_id[test_id])
-        for test_id in MCP_TRANSPORT_TEST_IDS
-        if full_suite_collected or test_id in collected_ids
+        for test_id in MCP_E2E_TEST_IDS
+        if test_id in ids_to_update
     }
     try:
         _update_mcp_report(statuses)
@@ -191,7 +197,9 @@ class MCPTransportClient:
             },
             timeout=httpx2.Timeout(30.0, read=60.0),
         ) as http_client:
-            transport = streamable_http_client(self.settings.url, http_client=http_client)
+            transport = streamable_http_client(
+                self.settings.url, http_client=http_client
+            )
             async with Client(transport) as client:
                 result = operation(client)
                 if inspect.isawaitable(result):
@@ -202,10 +210,16 @@ class MCPTransportClient:
         async def operation(client: Client) -> Any:
             result = await client.call_tool(name)
             if result.is_error:
-                raise AssertionError(f"MCP tool {name!r} returned an error: {result.content!r}")
+                raise AssertionError(
+                    f"MCP tool {name!r} returned an error: {result.content!r}"
+                )
             structured = result.structured_content
             if structured is not None:
-                value = structured["result"] if isinstance(structured, dict) and set(structured) == {"result"} else structured
+                value = (
+                    structured["result"]
+                    if isinstance(structured, dict) and set(structured) == {"result"}
+                    else structured
+                )
                 if isinstance(value, str):
                     try:
                         return json.loads(value)

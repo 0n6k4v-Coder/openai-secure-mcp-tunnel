@@ -8,6 +8,8 @@ import uuid
 
 from mcp.server import MCPServer
 from mcp.server.transport_security import TransportSecuritySettings
+from starlette.requests import Request
+from starlette.responses import PlainTextResponse
 
 from ..mcp.registration import register_all_tools
 from .health import health_response
@@ -17,13 +19,21 @@ SERVICE_NAME = "local-computer"
 SERVICE_VERSION = "0.1.0"
 INSTANCE_ID = f"{socket.gethostname()}:{os.getpid()}:{uuid.uuid4()}"
 logger = logging.getLogger(__name__)
+HEALTH_ALLOWED_HOSTS = {
+    "mcp-server:8000",
+    "127.0.0.1:8000",
+    "localhost:8000",
+}
 
 mcp = MCPServer(SERVICE_NAME, version=SERVICE_VERSION)
 mcp.middleware.append(make_request_logging_middleware(mcp, INSTANCE_ID))
 
 
 @mcp.custom_route("/healthz", methods=["GET"])
-async def healthz(_request):
+async def healthz(request: Request):
+    host = request.headers.get("host", "").strip().lower()
+    if host not in HEALTH_ALLOWED_HOSTS:
+        return PlainTextResponse("Invalid Host header", status_code=400)
     return health_response(
         service_name=SERVICE_NAME,
         service_version=SERVICE_VERSION,
