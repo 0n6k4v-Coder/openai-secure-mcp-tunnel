@@ -42,11 +42,13 @@ RUN groupadd \
 
 RUN mkdir -p \
         /workspace \
+        /workspace/project \
         /workspace/.npm-global \
         /workspace/.npm \
     && printf '%s\n' 'prefix=/workspace/.npm-global' > /workspace/.npmrc \
     && chown -R 10001:10001 \
         /workspace \
+        /workspace/project \
         /workspace/.npm-global \
         /workspace/.npm \
         /workspace/.npmrc

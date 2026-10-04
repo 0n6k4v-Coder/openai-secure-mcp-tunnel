@@ -63,8 +63,12 @@ RUN apt-get update \
 COPY entrypoint.sh /usr/local/bin/browser-runtime
 
 RUN chmod 0555 /usr/local/bin/browser-runtime \
-    && mkdir -p /workspace \
-    && chown -R 10001:10001 /workspace
+    && mkdir -p \
+        /workspace \
+        /workspace/project \
+    && chown -R 10001:10001 \
+        /workspace \
+        /workspace/project
 
 ENV CHROME_DEVTOOLS_MCP_NO_USAGE_STATISTICS=1 \
     CHROME_DEVTOOLS_MCP_NO_UPDATE_CHECKS=1 \

@@ -270,9 +270,11 @@ def test_recreate_preserves_workspace_and_profile(
     ]
 
 
-def test_recreate_rejects_missing_workspace_label(
+def test_recreate_preserves_standalone_workspace(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
+    calls: list[tuple[str, object]] = []
+
     monkeypatch.setattr(
         sandbox,
         "sandbox_status",
@@ -283,12 +285,53 @@ def test_recreate_rejects_missing_workspace_label(
             }
         ),
     )
+    monkeypatch.setattr(
+        sandbox,
+        "delete_sandbox",
+        lambda name: calls.append(("delete", name)) or json.dumps({"name": name}),
+    )
+    monkeypatch.setattr(
+        sandbox,
+        "create_sandbox",
+        lambda name, workspace_id=None, profile="default": calls.append(
+            (
+                "create",
+                {
+                    "name": name,
+                    "workspace_id": workspace_id,
+                    "profile": profile,
+                },
+            )
+        )
+        or json.dumps(
+            {
+                "name": name,
+                "profile": profile,
+                "host_workspace_id": workspace_id,
+            }
+        ),
+    )
 
-    with pytest.raises(
-        sandbox.SandboxError,
-        match="does not contain a managed host workspace ID",
-    ):
-        sandbox.recreate_sandbox("project-api")
+    result = sandbox.recreate_sandbox("project-api")
+    data = json.loads(result)
+
+    assert data == {
+        "name": "project-api",
+        "profile": "default",
+        "host_workspace_id": None,
+    }
+
+    assert calls == [
+        ("delete", "project-api"),
+        (
+            "create",
+            {
+                "name": "project-api",
+                "workspace_id": None,
+                "profile": "default",
+            },
+        ),
+    ]
 
 
 def test_recreate_rejects_unsupported_profile(

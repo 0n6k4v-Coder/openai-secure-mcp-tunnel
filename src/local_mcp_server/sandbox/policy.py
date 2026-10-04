@@ -9,6 +9,8 @@ from openshell._proto import openshell_pb2
 from ..workspace.repository import get_workspace_grant
 
 
+SANDBOX_WORKSPACE_ROOT = "/workspace/project"
+
 SANDBOX_IMAGE = os.environ.get(
     "SANDBOX_IMAGE",
     "local-mcp-openshell-sandbox:1.0.0",
@@ -186,51 +188,41 @@ def _add_browser_policy(
         endpoint = browser_policy.endpoints.add()
         endpoint.host = host
         endpoint.port = port
-        # Browser traffic is HTTP(S). Leave protocol unset so OpenShell uses
-        # its explicit-proxy L4 path instead of transparent TCP capture.
-        # Chrome speaks HTTPS itself and does not need native TCP semantics.
 
     browser_binary = browser_policy.binaries.add()
     browser_binary.path = _BROWSER_BINARY
 
 
 def build_sandbox_spec(
-    workspace_id: str,
+    workspace_id: str | None = None,
     profile: str = "default",
 ) -> openshell_pb2.SandboxSpec:
     """
     Build the OpenShell sandbox specification.
 
-    The host path is never supplied directly by the model. It is resolved
-    through an opaque, previously authorized workspace capability into the
-    system-managed Docker volume, mount target, and access mode stored in
-    the grant database.
+    workspace_id is an optional application-level host workspace capability.
+
+    When workspace_id is provided, the authorized host workspace volume is
+    mounted into the sandbox.
+
+    When workspace_id is None, no host filesystem resource is mounted and the
+    sandbox's own filesystem becomes the application workspace.
     """
     profile = validate_profile(profile)
 
     cpu = validate_cpu(DEFAULT_CPU)
     memory = validate_memory(DEFAULT_MEMORY)
 
-    grant = get_workspace_grant(workspace_id)
+    grant: dict[str, object] | None = None
 
-    volume_name = grant["volume_name"]
-    target = grant["target"]
-    read_only = grant["read_only"]
+    if workspace_id is not None:
+        if (
+            not isinstance(workspace_id, str)
+            or not workspace_id.strip()
+        ):
+            raise ValueError("host_workspace_id must not be empty.")
 
-    if not isinstance(volume_name, str) or not volume_name.strip():
-        raise ValueError(
-            f"Workspace grant '{workspace_id}' has no valid volume name."
-        )
-
-    if not isinstance(target, str) or not target.strip():
-        raise ValueError(
-            f"Workspace grant '{workspace_id}' has no valid mount target."
-        )
-
-    if not isinstance(read_only, bool):
-        raise ValueError(
-            f"Workspace grant '{workspace_id}' has an invalid read_only value."
-        )
+        grant = get_workspace_grant(workspace_id)
 
     spec = openshell_pb2.SandboxSpec()
 
@@ -261,20 +253,40 @@ def build_sandbox_spec(
         }
     )
 
-    spec.template.driver_config.update(
-        {
-            "docker": {
-                "mounts": [
-                    {
-                        "type": "volume",
-                        "source": volume_name,
-                        "target": target,
-                        "read_only": read_only,
-                    },
-                ],
-            },
-        }
-    )
+    if grant is not None:
+        volume_name = grant["volume_name"]
+        target = grant["target"]
+        read_only = grant["read_only"]
+
+        if not isinstance(volume_name, str) or not volume_name.strip():
+            raise ValueError(
+                f"Workspace grant '{workspace_id}' has no valid volume name."
+            )
+
+        if not isinstance(target, str) or not target.strip():
+            raise ValueError(
+                f"Workspace grant '{workspace_id}' has no valid mount target."
+            )
+
+        if not isinstance(read_only, bool):
+            raise ValueError(
+                f"Workspace grant '{workspace_id}' has an invalid read_only value."
+            )
+
+        spec.template.driver_config.update(
+            {
+                "docker": {
+                    "mounts": [
+                        {
+                            "type": "volume",
+                            "source": volume_name,
+                            "target": target,
+                            "read_only": read_only,
+                        },
+                    ],
+                },
+            }
+        )
 
     spec.policy.version = 1
     spec.policy.filesystem.include_workdir = True
@@ -295,7 +307,7 @@ def build_sandbox_spec(
         [
             "/tmp",
             "/dev/null",
-            target,
+            SANDBOX_WORKSPACE_ROOT,
         ]
     )
 

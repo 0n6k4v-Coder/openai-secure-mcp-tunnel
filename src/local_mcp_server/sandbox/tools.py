@@ -52,11 +52,18 @@ def register_tools(mcp: MCPServer) -> None:
     )
     def create_sandbox(
         name: str,
-        host_workspace_id: str,
+        host_workspace_id: str | None = None,
         profile: str = "default",
     ) -> str:
         """
-        Create an OpenShell sandbox using an authorized host workspace grant.
+        Create an OpenShell sandbox.
+
+        host_workspace_id is optional.
+
+        When supplied, the sandbox uses the authorized host workspace.
+
+        When omitted, the sandbox is standalone and its own sandbox-local
+        filesystem is exposed as the application workspace.
 
         profile selects the workload image and policy. Supported profiles are
         'default' and 'browser'.
@@ -128,9 +135,7 @@ def register_tools(mcp: MCPServer) -> None:
     def start_sandbox(
         name: str,
     ) -> str:
-        """
-        Start a stopped or retained failed OpenShell sandbox.
-        """
+        """Start a stopped or retained failed OpenShell sandbox."""
         return start_sandbox_impl(name)
 
     @mcp.tool(
@@ -158,9 +163,7 @@ def register_tools(mcp: MCPServer) -> None:
     def restart_sandbox(
         name: str,
     ) -> str:
-        """
-        Restart an OpenShell sandbox by stopping it and starting it again.
-        """
+        """Restart an OpenShell sandbox by stopping and starting it."""
         return restart_sandbox_impl(name)
 
     @mcp.tool(
@@ -174,11 +177,7 @@ def register_tools(mcp: MCPServer) -> None:
     def repair_sandbox(
         name: str,
     ) -> str:
-        """
-        Retry startup of a retained failed OpenShell sandbox.
-
-        Repair does not delete or recreate the sandbox.
-        """
+        """Retry startup of a retained failed OpenShell sandbox."""
         return repair_sandbox_impl(name)
 
     @mcp.tool(
@@ -192,13 +191,7 @@ def register_tools(mcp: MCPServer) -> None:
     def recreate_sandbox(
         name: str,
     ) -> str:
-        """
-        Delete and recreate a managed sandbox.
-
-        ChatGPT treats this as a destructive action and may require user
-        confirmation before invoking the tool. The server remains responsible
-        for authorization and validation of the requested sandbox.
-        """
+        """Delete and recreate a sandbox preserving profile and workspace binding."""
         return recreate_sandbox_impl(name)
 
     @mcp.tool(
@@ -212,13 +205,7 @@ def register_tools(mcp: MCPServer) -> None:
     def delete_sandbox(
         name: str,
     ) -> str:
-        """
-        Permanently delete an OpenShell sandbox.
-
-        ChatGPT treats this as a destructive action and may require user
-        confirmation before invoking the tool. The server remains responsible
-        for authorization and validation of the requested sandbox.
-        """
+        """Permanently delete an OpenShell sandbox."""
         return delete_sandbox_impl(name)
 
     @mcp.tool(

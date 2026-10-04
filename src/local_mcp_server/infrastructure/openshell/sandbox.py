@@ -1,15 +1,16 @@
 from __future__ import annotations
 
 import json
+import os
 import shutil
 import subprocess
-from typing import Any
 
 from openshell import SandboxClient
 
 from .client import active_client
 
 from ...sandbox.policy import (
+    SANDBOX_WORKSPACE_ROOT,
     build_sandbox_spec,
     validate_command,
     validate_name,
@@ -40,12 +41,6 @@ def _client() -> SandboxClient:
 
 
 def _openshell_command(*args: str) -> list[str]:
-    """
-    Build an OpenShell CLI command.
-
-    The CLI is intentionally used only for sandbox log retrieval because
-    the Python SDK does not expose a public logs API.
-    """
     executable = shutil.which("openshell")
 
     if executable is None:
@@ -60,15 +55,8 @@ def _run_openshell_output(
     *args: str,
     timeout_seconds: int = 30,
 ) -> str:
-    """
-    Run an OpenShell CLI command and return stdout.
-
-    This helper is intentionally limited to read-only output operations such
-    as sandbox log retrieval. Sandbox lifecycle operations continue to use
-    the Python SDK.
-    """
     environment = {
-        **__import__("os").environ,
+        **os.environ,
         "OPENSHELL_WORKSPACE": OPENSHELL_WORKSPACE,
     }
 
@@ -111,21 +99,12 @@ def _run_openshell_output(
 def _host_workspace_id_from_labels(
     labels,
 ) -> str | None:
-    if not isinstance(
-        labels,
-        dict,
-    ):
+    if not isinstance(labels, dict):
         return None
 
     value = labels.get(HOST_WORKSPACE_LABEL)
 
-    if (
-        isinstance(
-            value,
-            str,
-        )
-        and value
-    ):
+    if isinstance(value, str) and value:
         return value
 
     return None
@@ -148,13 +127,6 @@ def _sandbox_profile_from_labels(
 def _host_workspace_metadata(
     host_workspace_id: str | None,
 ) -> dict[str, object] | None:
-    """
-    Return only MCP-safe metadata for an authorized host workspace.
-
-    The exact host filesystem path and Docker volume name are intentionally
-    excluded from MCP tool results. Those values remain application-only
-    implementation details.
-    """
     if not host_workspace_id:
         return None
 
@@ -162,15 +134,29 @@ def _host_workspace_metadata(
         grant = get_workspace_grant(host_workspace_id)
     except ValueError:
         return {
-            "workspace_id": host_workspace_id,
+            "type": "host",
+            "id": host_workspace_id,
             "authorized": False,
         }
 
     return {
-        "workspace_id": host_workspace_id,
+        "type": "host",
+        "id": host_workspace_id,
         "authorized": True,
-        "target": grant["target"],
+        "root": grant["target"],
         "read_only": grant["read_only"],
+    }
+
+
+def _sandbox_workspace_metadata(
+    sandbox_name: str,
+) -> dict[str, object]:
+    return {
+        "type": "sandbox",
+        "id": sandbox_name,
+        "authorized": True,
+        "root": SANDBOX_WORKSPACE_ROOT,
+        "read_only": False,
     }
 
 
@@ -189,7 +175,22 @@ def _sandbox_to_dict(
         None,
     )
 
+    name = getattr(
+        sandbox,
+        "name",
+        None,
+    )
+
     host_workspace_id = _host_workspace_id_from_labels(labels)
+    profile = _sandbox_profile_from_labels(labels)
+
+    if host_workspace_id:
+        workspace = _host_workspace_metadata(host_workspace_id)
+
+        if workspace is None:
+            workspace = _sandbox_workspace_metadata(name or "")
+    else:
+        workspace = _sandbox_workspace_metadata(name or "")
 
     result: dict[str, object] = {
         "id": getattr(
@@ -197,12 +198,8 @@ def _sandbox_to_dict(
             "id",
             None,
         ),
-        "name": getattr(
-            sandbox,
-            "name",
-            None,
-        ),
-        "workspace": OPENSHELL_WORKSPACE,
+        "name": name,
+        "openshell_workspace": OPENSHELL_WORKSPACE,
         "phase": getattr(
             sandbox,
             "phase",
@@ -213,7 +210,8 @@ def _sandbox_to_dict(
             "phase",
             None,
         ),
-        "profile": _sandbox_profile_from_labels(labels),
+        "profile": profile,
+        "workspace": workspace,
         "labels": labels,
     }
 
@@ -230,40 +228,44 @@ def _sandbox_to_dict(
 
 def create_sandbox(
     name: str,
-    workspace_id: str,
+    workspace_id: str | None = None,
     profile: str = "default",
 ) -> str:
     """
     Create and wait for an OpenShell sandbox.
 
-    workspace_id identifies a human-authorized host workspace capability.
+    workspace_id is an optional authorized host workspace capability.
 
-    The exact host filesystem path and Docker volume name are resolved by
-    the trusted application layer and are never returned to the MCP client.
+    If workspace_id is omitted, the sandbox is standalone and its own
+    /workspace/project filesystem is the application workspace.
     """
     name = validate_name(name)
     profile = validate_profile(profile)
 
-    if (
-        not isinstance(
-            workspace_id,
-            str,
-        )
-        or not workspace_id.strip()
-    ):
-        raise ValueError("host_workspace_id must not be empty.")
+    grant: dict[str, object] | None = None
 
-    try:
+    if workspace_id is not None:
+        if (
+            not isinstance(workspace_id, str)
+            or not workspace_id.strip()
+        ):
+            raise ValueError("host_workspace_id must not be empty.")
+
         grant = get_workspace_grant(workspace_id)
 
+    labels = {
+        SANDBOX_PROFILE_LABEL: profile,
+    }
+
+    if workspace_id is not None:
+        labels[HOST_WORKSPACE_LABEL] = workspace_id
+
+    try:
         with _client() as client:
             sandbox = client.create(
                 workspace=OPENSHELL_WORKSPACE,
                 name=name,
-                labels={
-                    HOST_WORKSPACE_LABEL: workspace_id,
-                    SANDBOX_PROFILE_LABEL: profile,
-                },
+                labels=labels,
                 spec=build_sandbox_spec(
                     workspace_id,
                     profile=profile,
@@ -278,19 +280,20 @@ def create_sandbox(
 
             result = _sandbox_to_dict(ready)
 
-            result["host_workspace_id"] = workspace_id
+            if workspace_id is not None and grant is not None:
+                result["host_workspace_id"] = workspace_id
+                result["host_workspace"] = {
+                    "type": "host",
+                    "id": workspace_id,
+                    "authorized": True,
+                    "root": grant["target"],
+                    "read_only": grant["read_only"],
+                }
 
-            result["host_workspace"] = {
-                "workspace_id": workspace_id,
-                "authorized": True,
-                "target": grant["target"],
-                "read_only": grant["read_only"],
-            }
-
-            result["project_mount"] = {
-                "target": grant["target"],
-                "read_only": grant["read_only"],
-            }
+            else:
+                result["workspace"] = _sandbox_workspace_metadata(
+                    sandbox.name,
+                )
 
             return json.dumps(
                 result,
@@ -309,7 +312,6 @@ def create_sandbox(
 
 
 def list_sandboxes() -> str:
-    """List OpenShell sandboxes in the configured OpenShell workspace."""
     try:
         with _client() as client:
             sandboxes = client.list_all(
@@ -332,7 +334,6 @@ def list_sandboxes() -> str:
 def sandbox_status(
     name: str,
 ) -> str:
-    """Return OpenShell sandbox metadata."""
     name = validate_name(name)
 
     try:
@@ -366,7 +367,6 @@ def sandbox_status(
 def start_sandbox(
     name: str,
 ) -> str:
-    """Start a stopped or retained failed OpenShell sandbox."""
     name = validate_name(name)
 
     try:
@@ -395,7 +395,6 @@ def start_sandbox(
 def stop_sandbox(
     name: str,
 ) -> str:
-    """Stop an OpenShell sandbox while retaining its state."""
     name = validate_name(name)
 
     try:
@@ -424,7 +423,6 @@ def stop_sandbox(
 def restart_sandbox(
     name: str,
 ) -> str:
-    """Restart an OpenShell sandbox by stopping it and starting it again."""
     name = validate_name(name)
 
     stop_sandbox(name)
@@ -435,12 +433,6 @@ def restart_sandbox(
 def repair_sandbox(
     name: str,
 ) -> str:
-    """
-    Retry startup of a retained failed OpenShell sandbox.
-
-    Repair intentionally reuses OpenShell start semantics instead of
-    deleting and recreating the sandbox.
-    """
     name = validate_name(name)
 
     return start_sandbox(name)
@@ -451,13 +443,6 @@ def sandbox_logs(
     *,
     since: str = "5m",
 ) -> str:
-    """
-    Return a bounded recent OpenShell log window for a sandbox.
-
-    Uses the OpenShell CLI because the installed Python SDK does not expose
-    a public sandbox logs API and its internal GetSandboxLogs request
-    construction is incompatible with the installed protobuf schema.
-    """
     name = validate_name(name)
 
     if (
@@ -480,10 +465,6 @@ def execute_sandbox_argv(
     *,
     timeout_seconds: int = 120,
 ) -> dict[str, object]:
-    """
-    Execute an argv vector inside an existing sandbox without invoking a
-    shell.
-    """
     name = validate_name(name)
 
     if not argv:
@@ -582,7 +563,6 @@ def execute_sandbox(
 def delete_sandbox(
     name: str,
 ) -> str:
-    """Delete an OpenShell sandbox and wait for deletion to complete."""
     name = validate_name(name)
 
     try:
@@ -622,11 +602,13 @@ def recreate_sandbox(
     name: str,
 ) -> str:
     """
-    Delete and recreate a managed sandbox using its existing workspace grant
-    and sandbox profile.
+    Delete and recreate a sandbox while preserving its profile and workspace
+    binding.
 
-    Recreate is intentionally destructive. The caller is responsible for
-    explicit confirmation before invoking this function.
+    A host-backed sandbox preserves its host workspace capability.
+
+    A standalone sandbox is recreated without a host workspace, so its new
+    sandbox-local filesystem becomes its workspace.
     """
     name = validate_name(name)
 
@@ -644,14 +626,15 @@ def recreate_sandbox(
             "host_workspace_id",
         )
 
-        if (
-            not isinstance(workspace_id, str)
-            or not workspace_id
-        ):
-            raise SandboxError(
-                f"Sandbox '{name}' does not contain "
-                "a managed host workspace ID."
-            )
+        if workspace_id is not None:
+            if (
+                not isinstance(workspace_id, str)
+                or not workspace_id
+            ):
+                raise SandboxError(
+                    f"Sandbox '{name}' contains an invalid "
+                    "host workspace ID."
+                )
 
         profile = current.get(
             "profile",

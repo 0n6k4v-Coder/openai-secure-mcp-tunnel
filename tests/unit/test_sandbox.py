@@ -15,6 +15,13 @@ def _workspace_grant(workspace_id: str) -> dict[str, object]:
     }
 
 
+def test_build_sandbox_spec_without_workspace_is_standalone() -> None:
+    spec = policy.build_sandbox_spec()
+
+    assert spec.policy is not None
+    assert not spec.template.driver_config
+
+
 def test_build_sandbox_spec_emits_expected_workspace_mount(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -27,6 +34,14 @@ def test_build_sandbox_spec_emits_expected_workspace_mount(
     spec = policy.build_sandbox_spec("ws_test")
 
     assert spec.policy is not None
+    assert spec.template.driver_config["docker"]["mounts"] == [
+        {
+            "type": "volume",
+            "source": "mcp-ws-testvolume123",
+            "target": "/workspace/project",
+            "read_only": False,
+        }
+    ]
 
 
 def test_default_sandbox_does_not_depend_on_external_browser_relay(
@@ -65,7 +80,9 @@ def test_default_sandbox_does_not_depend_on_external_browser_relay(
         "rest",
         enforce_value,
     )
+
     assert npm_endpoint.allow_encoded_slash is True
+
     assert {
         (rule.allow.method, rule.allow.path)
         for rule in npm_endpoint.rules
@@ -76,45 +93,34 @@ def test_default_sandbox_does_not_depend_on_external_browser_relay(
         ("POST", "/-/npm/v1/security/advisories/bulk"),
         ("POST", "/-/npm/v1/security/audits/quick"),
     }
+
     assert npm_policy.binaries[0].path == policy._NPM_NODE_BINARY
 
 
-def test_default_sandbox_uses_default_image_and_command(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    monkeypatch.setattr(
-        policy,
-        "get_workspace_grant",
-        _workspace_grant,
-    )
-
+def test_default_sandbox_uses_default_image_and_command() -> None:
     spec = policy.build_sandbox_spec(
-        "ws_test",
         profile="default",
     )
 
     assert spec.template.image == policy.SANDBOX_IMAGE
+
     assert list(spec.command) == [
         "sleep",
         "infinity",
     ]
 
-
-def test_browser_sandbox_uses_browser_image(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    monkeypatch.setattr(
-        policy,
-        "get_workspace_grant",
-        _workspace_grant,
+    assert list(spec.policy.filesystem.read_write)[-1] == (
+        policy.SANDBOX_WORKSPACE_ROOT
     )
 
+
+def test_browser_sandbox_uses_browser_image() -> None:
     spec = policy.build_sandbox_spec(
-        "ws_test",
         profile="browser",
     )
 
     assert spec.template.image == policy.BROWSER_SANDBOX_IMAGE
+
     assert list(spec.command) == [
         "/usr/bin/dumb-init",
         "--",
@@ -125,19 +131,12 @@ def test_browser_sandbox_uses_browser_image(
 def test_browser_sandbox_has_browser_specific_policy(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    monkeypatch.setattr(
-        policy,
-        "get_workspace_grant",
-        _workspace_grant,
-    )
-
     monkeypatch.setenv(
         "BROWSER_ALLOWED_ENDPOINTS",
         "host.openshell.internal:4173,mtioon.com:443",
     )
 
     spec = policy.build_sandbox_spec(
-        "ws_test",
         profile="browser",
     )
 
