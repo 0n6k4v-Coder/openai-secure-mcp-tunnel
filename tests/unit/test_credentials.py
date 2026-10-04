@@ -34,6 +34,26 @@ def test_validate_credential_key() -> None:
         service._validate_credential_key("1KEY")
 
 
+def test_command_exists_accepts_installed_command(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(service.shutil, "which", lambda command: "/usr/bin/openshell")
+
+    service._command_exists("openshell")
+
+
+def test_command_exists_rejects_missing_command(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(service.shutil, "which", lambda command: None)
+
+    with pytest.raises(
+        service.CredentialError,
+        match="Required command 'openshell' is not installed or is not on PATH",
+    ):
+        service._command_exists("openshell")
+
+
 def test_gateway_endpoint_defaults_to_https() -> None:
     assert service._gateway_endpoint() == "https://127.0.0.1:8080"
 
@@ -54,6 +74,7 @@ def test_create_credential_does_not_put_secret_in_argv(
 ) -> None:
     captured: dict[str, object] = {}
 
+    monkeypatch.setattr(service, "_command_exists", lambda command: None)
     monkeypatch.setattr(
         service.getpass,
         "getpass",
@@ -114,6 +135,7 @@ def test_update_credential_uses_environment_not_arguments(
 ) -> None:
     captured: dict[str, object] = {}
 
+    monkeypatch.setattr(service, "_command_exists", lambda command: None)
     monkeypatch.setattr(
         service.getpass,
         "getpass",
@@ -169,6 +191,8 @@ def test_grant_credential_uses_provider_attach(
 ) -> None:
     captured: dict[str, object] = {}
 
+    monkeypatch.setattr(service, "_command_exists", lambda command: None)
+
     def fake_run(
         command: list[str],
         *,
@@ -211,6 +235,8 @@ def test_revoke_credential_uses_provider_detach(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     captured: dict[str, object] = {}
+
+    monkeypatch.setattr(service, "_command_exists", lambda command: None)
 
     def fake_run(
         command: list[str],
