@@ -58,7 +58,7 @@ def test_default_sandbox_does_not_depend_on_external_browser_relay(
         "registry.npmjs.org",
         443,
         "rest",
-        "enforce",
+        "NETWORK_ENFORCEMENT_MODE_ENFORCE",
     )
     assert npm_endpoint.allow_encoded_slash is True
     assert {
