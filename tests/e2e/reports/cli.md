@@ -103,16 +103,16 @@ Supported arguments and options: `name`, exactly one of `--workspace` or `--stan
 
 | ID | Test | Expected Result | Status |
 |---|---|---|---|
-| CLI-SBX-020 | `mcpctl sandbox list` | Delegates list and returns the sandbox collection | ⚪ Not implemented |
-| CLI-SBX-021 | `mcpctl sandbox list --help` | Displays list help | ⚪ Not implemented |
-| CLI-SBX-022 | `mcpctl sandbox list --json` | Currently unsupported by the `mcpctl` parser; rejects the option | ⚪ Not implemented |
-| CLI-SBX-023 | `mcpctl sandbox status <name>` | Delegates status for the specified sandbox | ⚪ Not implemented |
-| CLI-SBX-024 | `mcpctl sandbox status <name> --json` | Forwards `--json` and returns valid JSON | ⚪ Not implemented |
-| CLI-SBX-025 | `mcpctl sandbox status <name>` with no matching sandbox | Returns a clear failure and non-zero exit code | ⚪ Not implemented |
-| CLI-SBX-026 | Omit status sandbox name | Returns an argument error | ⚪ Not implemented |
-| CLI-SBX-027 | `mcpctl sandbox status --help` | Lists status arguments and options | ⚪ Not implemented |
-| CLI-SBX-028 | Status JSON schema | Contains the documented fields and correct value types | ⚪ Not implemented |
-| CLI-SBX-029 | Status output with unexpected or malformed downstream output | Fails clearly without reporting false success | ⚪ Not implemented |
+| CLI-SBX-020 | `mcpctl sandbox list` | Delegates list and returns the sandbox collection | 🟢 Pass |
+| CLI-SBX-021 | `mcpctl sandbox list --help` | Displays list help | 🟢 Pass |
+| CLI-SBX-022 | `mcpctl sandbox list --json` | Currently unsupported by the `mcpctl` parser; rejects the option | 🟢 Pass |
+| CLI-SBX-023 | `mcpctl sandbox status <name>` | Delegates status for the specified sandbox | 🟢 Pass |
+| CLI-SBX-024 | `mcpctl sandbox status <name> --json` | Forwards `--json` and returns valid JSON | 🟢 Pass |
+| CLI-SBX-025 | `mcpctl sandbox status <name>` with no matching sandbox | Returns a clear failure and non-zero exit code | 🟢 Pass |
+| CLI-SBX-026 | Omit status sandbox name | Returns an argument error | 🟢 Pass |
+| CLI-SBX-027 | `mcpctl sandbox status --help` | Lists status arguments and options | 🟢 Pass |
+| CLI-SBX-028 | Status JSON schema | Contains the documented fields and correct value types | 🟢 Pass |
+| CLI-SBX-029 | Status output with unexpected or malformed downstream output | Fails clearly without reporting false success | 🟢 Pass |
 
 ### 6.3 Shell and Exec
 
