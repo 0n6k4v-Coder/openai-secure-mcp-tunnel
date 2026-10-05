@@ -160,11 +160,7 @@ The sole application operator CLI is:
 uv run mcpctl --help
 ```
 
-The same `mcpctl` CLI also manages configuration and OpenShell TLS:
-
-```bash
-uv run mcpctl --help
-```
+It also includes setup, status, repair, profile, cleanup, uninstall, and configuration commands.
 
 The trusted host-side workspace broker is:
 
@@ -422,7 +418,7 @@ Run:
 uv run mcpctl --help
 ```
 
-The current Compose and operator commands are:
+The current top-level commands include:
 
 ```text
 start
@@ -430,8 +426,16 @@ stop
 restart
 compose-status
 logs
+setup
+status
+repair
+profile
+cleanup
+uninstall
 sandbox
 credential
+workspace
+config
 ```
 
 ### Start the Compose stack
