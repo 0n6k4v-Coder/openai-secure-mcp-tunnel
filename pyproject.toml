@@ -13,7 +13,6 @@ dependencies = [
 
 [project.scripts]
 mcpctl = "local_mcp_server.cli.completion:mcpctl_main"
-workspace-broker = "local_mcp_server.cli.workspace_broker:main"
 
 [dependency-groups]
 dev = [
