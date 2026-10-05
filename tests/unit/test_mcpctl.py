@@ -636,6 +636,9 @@ def test_mcpctl_parser_contains_expected_commands() -> None:
         "credential",
         "workspace",
         "config",
+        "profile",
+        "cleanup",
+        "uninstall",
     }
 
 
