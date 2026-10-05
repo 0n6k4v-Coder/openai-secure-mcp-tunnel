@@ -629,6 +629,11 @@ def test_mcpctl_parser_contains_expected_commands() -> None:
     action = next(action for action in parser._actions if action.dest == "command")
 
     assert set(action.choices) == {
+        "start",
+        "stop",
+        "restart",
+        "compose-status",
+        "logs",
         "setup",
         "status",
         "repair",
