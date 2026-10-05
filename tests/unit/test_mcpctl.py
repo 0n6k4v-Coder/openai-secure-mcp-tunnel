@@ -641,7 +641,6 @@ def test_mcpctl_parser_contains_expected_commands() -> None:
         "credential",
         "workspace",
         "config",
-        "profile",
         "cleanup",
         "uninstall",
     }
@@ -765,3 +764,93 @@ def test_compose_commands_delegate_to_shared_cli(
         "command": expected_command,
         "arguments": expected_arguments,
     }
+
+
+def test_cleanup_is_read_only_and_reports_legacy_profile_paths(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    config_home = tmp_path / "config"
+    state_home = tmp_path / "state"
+    profile = config_home / "local-mcp-server/profiles/dev"
+    profile.mkdir(parents=True)
+    (profile / "profile.json").write_text("{}", encoding="utf-8")
+    state_profile = state_home / "local-mcp-server/profiles/dev"
+    state_profile.mkdir(parents=True)
+
+    monkeypatch.setattr(mcpctl, "xdg_config_home", lambda: config_home)
+    monkeypatch.setattr(mcpctl, "xdg_state_home", lambda: state_home)
+
+    assert mcpctl.main(["cleanup"]) == mcpctl.EXIT_OK
+    output = capsys.readouterr().out
+    assert str(profile) in output
+    assert "No files" in output
+    assert (profile / "profile.json").is_file()
+    assert state_profile.is_dir()
+
+
+def test_uninstall_defaults_to_dry_run_and_preserves_state(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    config_home = tmp_path / "config"
+    state_home = tmp_path / "state"
+    profile = config_home / "local-mcp-server/profiles/dev"
+    profile.mkdir(parents=True)
+    (profile / "profile.json").write_text("{}", encoding="utf-8")
+    state_profile = state_home / "local-mcp-server/profiles/dev"
+    state_profile.mkdir(parents=True)
+
+    monkeypatch.setattr(mcpctl, "xdg_config_home", lambda: config_home)
+    monkeypatch.setattr(mcpctl, "xdg_state_home", lambda: state_home)
+
+    assert mcpctl.main(["uninstall"]) == mcpctl.EXIT_OK
+    assert "Dry run only" in capsys.readouterr().out
+    assert profile.is_dir()
+    assert state_profile.is_dir()
+
+
+def test_uninstall_yes_removes_only_marked_profile_configuration(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    config_home = tmp_path / "config"
+    state_home = tmp_path / "state"
+    profile = config_home / "local-mcp-server/profiles/dev"
+    profile.mkdir(parents=True)
+    (profile / "profile.json").write_text("{}", encoding="utf-8")
+    unrelated = config_home / "local-mcp-server/profiles/unrelated"
+    unrelated.mkdir()
+    (unrelated / "keep.txt").write_text("keep", encoding="utf-8")
+    state_profile = state_home / "local-mcp-server/profiles/dev"
+    state_profile.mkdir(parents=True)
+    (state_profile / "state.json").write_text("keep", encoding="utf-8")
+
+    monkeypatch.setattr(mcpctl, "xdg_config_home", lambda: config_home)
+    monkeypatch.setattr(mcpctl, "xdg_state_home", lambda: state_home)
+
+    assert mcpctl.main(["uninstall", "--yes"]) == mcpctl.EXIT_OK
+    capsys.readouterr()
+    assert not profile.exists()
+    assert (unrelated / "keep.txt").is_file()
+    assert (state_profile / "state.json").read_text(encoding="utf-8") == "keep"
+
+
+def test_cleanup_json_reports_non_destructive_actions(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    monkeypatch.setattr(mcpctl, "xdg_config_home", lambda: tmp_path / "config")
+    monkeypatch.setattr(mcpctl, "xdg_state_home", lambda: tmp_path / "state")
+
+    assert mcpctl.main(["cleanup", "--json"]) == mcpctl.EXIT_OK
+    import json
+
+    payload = json.loads(capsys.readouterr().out)
+    assert payload["destructive"] is False
+    assert payload["state_preserved"] is True
+    assert payload["workspace_grants_preserved"] is True
