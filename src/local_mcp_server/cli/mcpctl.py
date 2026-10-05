@@ -10,15 +10,7 @@ import sys
 from collections.abc import Sequence
 from pathlib import Path
 
-from ..config.paths import (
-    APPLICATION_NAME,
-    installation_state_file,
-    openai_api_key_file,
-    openai_config_file,
-    workspace_grants_file,
-    xdg_config_home,
-    xdg_state_home,
-)
+from ..config.paths import APPLICATION_NAME, xdg_config_home, xdg_state_home
 from ..config.service import ConfigError, configure_openai
 from ..infrastructure.openshell.tls import (
     OpenShellTLSStatusError,
@@ -26,8 +18,6 @@ from ..infrastructure.openshell.tls import (
     get_status as get_openshell_tls_status,
     repair as repair_openshell_tls,
     setup as setup_openshell_tls,
-    tls_root as openshell_tls_root,
-    _openshell_cli_mtls_root,
 )
 from . import lifecycle
 from .main import _print_table
@@ -533,19 +523,35 @@ def _purge_inventory() -> list[tuple[str, Path, str]]:
     app_state_root = xdg_state_home() / APPLICATION_NAME
     inventory: list[tuple[str, Path, str]] = [
         ("Application configuration", app_config_root, "REMOVE"),
-        ("OpenAI MCP config", openai_config_file(), "REMOVE"),
+        (
+            "OpenAI MCP config",
+            app_config_root / "mcp-clients" / "openai" / "config.yaml",
+            "REMOVE",
+        ),
         (
             "OpenAI MCP credentials (secret contents hidden)",
-            openai_api_key_file(),
+            app_config_root / "mcp-clients" / "openai" / "credentials",
             "REMOVE",
         ),
         ("Application state", app_state_root, "REMOVE"),
-        ("Installation state", installation_state_file(), "REMOVE"),
-        ("Workspace grant records", workspace_grants_file(), "REMOVE"),
-        ("Application OpenShell TLS", openshell_tls_root(), "REMOVE"),
+        (
+            "Installation state",
+            app_state_root / "mcp" / "installations.json",
+            "REMOVE",
+        ),
+        (
+            "Workspace grant records",
+            app_state_root / "mcp" / "workspace-grants" / "workspace-grants.json",
+            "REMOVE",
+        ),
+        (
+            "Application OpenShell TLS",
+            app_state_root / "openshell" / "tls",
+            "REMOVE",
+        ),
         (
             "OpenShell CLI mTLS bundle (outside app root; may be shared)",
-            _openshell_cli_mtls_root(),
+            xdg_config_home() / "openshell" / "gateways" / "local" / "mtls",
             "PRESERVE",
         ),
     ]
