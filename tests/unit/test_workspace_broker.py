@@ -636,3 +636,95 @@ def test_revoke_workspace_grant_uses_privileged_sandbox_acl_helper(
     assert observed["path"] == host_path.resolve()
     assert observed["host_uid"] == 2003
     assert observed["host_gid"] == 2004
+
+
+
+def test_public_grant_excludes_infrastructure_details() -> None:
+    public = broker._public_grant(
+        "ws_example",
+        {
+            "host_path": "/home/user/project",
+            "host_uid": 1000,
+            "host_gid": 1000,
+            "read_only": False,
+            "target": "/workspace/project",
+            "volume_name": "mcp-ws-example",
+        },
+    )
+
+    assert public == {
+        "id": "ws_example",
+        "host_path": "/home/user/project",
+        "sandbox_path": "/workspace/project",
+        "read_only": False,
+    }
+
+
+def test_list_grants_defaults_to_public_schema(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    grants_file = tmp_path / "workspace-grants.json"
+    grants_file.write_text(
+        (
+            "{\n"
+            '  "ws_example": {\n'
+            '    "host_path": "/home/user/project",\n'
+            '    "host_gid": 1000,\n'
+            '    "host_uid": 1000,\n'
+            '    "read_only": false,\n'
+            '    "target": "/workspace/project",\n'
+            '    "volume_name": "mcp-ws-example"\n'
+            "  }\n"
+            "}\n"
+        ),
+        encoding="utf-8",
+    )
+    monkeypatch.setattr(
+        broker.workspace_service,
+        "WORKSPACE_GRANTS_FILE",
+        grants_file,
+    )
+
+    assert broker._list_grants() == [
+        {
+            "id": "ws_example",
+            "host_path": "/home/user/project",
+            "sandbox_path": "/workspace/project",
+            "read_only": False,
+        }
+    ]
+
+
+def test_list_grants_verbose_includes_internal_fields(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    grants_file = tmp_path / "workspace-grants.json"
+    grants_file.write_text(
+        (
+            "{\n"
+            '  "ws_example": {\n'
+            '    "host_path": "/home/user/project",\n'
+            '    "host_gid": 1000,\n'
+            '    "host_uid": 1000,\n'
+            '    "read_only": false,\n'
+            '    "target": "/workspace/project",\n'
+            '    "volume_name": "mcp-ws-example"\n'
+            "  }\n"
+            "}\n"
+        ),
+        encoding="utf-8",
+    )
+    monkeypatch.setattr(
+        broker.workspace_service,
+        "WORKSPACE_GRANTS_FILE",
+        grants_file,
+    )
+
+    result = broker._list_grants(verbose=True)
+
+    assert result[0]["workspace_id"] == "ws_example"
+    assert result[0]["host_uid"] == 1000
+    assert result[0]["host_gid"] == 1000
+    assert result[0]["volume_name"] == "mcp-ws-example"
