@@ -917,6 +917,12 @@ def _build_parser() -> argparse.ArgumentParser:
         "--json",
         dest="json_output",
         action="store_true",
+        help="Output the public workspace schema as JSON.",
+    )
+    workspace_list.add_argument(
+        "--verbose",
+        action="store_true",
+        help="Include internal workspace and infrastructure details.",
     )
 
     config = commands.add_parser(
@@ -1097,6 +1103,8 @@ def _workspace_arguments(
 
         if args.json_output:
             arguments.append("--json")
+        if args.verbose:
+            arguments.append("--verbose")
 
         return arguments
 
