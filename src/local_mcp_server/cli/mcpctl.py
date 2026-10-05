@@ -467,6 +467,36 @@ def _build_parser() -> argparse.ArgumentParser:
     )
 
     commands.add_parser(
+        "start",
+        help="Build and start the Compose stack.",
+    )
+    commands.add_parser(
+        "stop",
+        help="Stop and remove the Compose stack.",
+    )
+    commands.add_parser(
+        "restart",
+        help="Rebuild and recreate the Compose stack.",
+    )
+    compose_status = commands.add_parser(
+        "compose-status",
+        help="Show Docker Compose service status.",
+    )
+    compose_status.add_argument("--json", dest="json_output", action="store_true")
+
+    logs = commands.add_parser(
+        "logs",
+        help="Show Docker Compose service logs.",
+    )
+    logs.add_argument(
+        "service",
+        nargs="?",
+        choices=["openshell-gateway", "mcp-server", "tunnel-client"],
+    )
+    logs.add_argument("--follow", "-f", action="store_true")
+    logs.add_argument("--tail", "-n", default="100")
+
+    commands.add_parser(
         "setup",
         help="Initialize and start the local MCP application.",
     )
@@ -973,6 +1003,22 @@ def main(
     args = parser.parse_args(argv)
 
     try:
+        if args.command in {"start", "stop", "restart"}:
+            return _delegate_local_cli(args.command, [])
+
+        if args.command == "compose-status":
+            arguments = ["--json"] if args.json_output else []
+            return _delegate_local_cli("status", arguments)
+
+        if args.command == "logs":
+            arguments = []
+            if args.service is not None:
+                arguments.append(args.service)
+            if args.follow:
+                arguments.append("--follow")
+            arguments.extend(["--tail", args.tail])
+            return _delegate_local_cli("logs", arguments)
+
         if args.command == "setup":
             return _setup()
 
