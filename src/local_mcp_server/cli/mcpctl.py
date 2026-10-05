@@ -3,9 +3,13 @@ from __future__ import annotations
 import argparse
 from builtins import input
 import getpass
+import json
+import shutil
 import sys
 from collections.abc import Sequence
+from pathlib import Path
 
+from ..config.paths import APPLICATION_NAME, xdg_config_home, xdg_state_home
 from ..config.service import ConfigError, configure_openai
 from ..infrastructure.openshell.tls import (
     OpenShellTLSStatusError,
@@ -237,8 +241,7 @@ def _config_mcp_client(
         )
 
         if selected is None:
-            print()
-            print("MCP client configuration skipped.")
+            print()            print("MCP client configuration skipped.")
             print("You can configure it later with:")
             print("  mcpctl config mcp-client")
             return EXIT_OK
@@ -455,6 +458,101 @@ def _repair() -> int:
     return EXIT_OK
 
 
+def _legacy_profile_roots() -> tuple[Path, Path]:
+    config_root = xdg_config_home() / APPLICATION_NAME / "profiles"
+    state_root = xdg_state_home() / APPLICATION_NAME / "profiles"
+    return config_root, state_root
+
+
+def _legacy_profile_configurations() -> list[Path]:
+    config_root, _ = _legacy_profile_roots()
+
+    if not config_root.is_dir() or config_root.is_symlink():
+        return []
+
+    return [
+        child
+        for child in sorted(config_root.iterdir())
+        if child.is_dir()
+        and not child.is_symlink()
+        and (child / "profile.json").is_file()
+        and not (child / "profile.json").is_symlink()
+    ]
+
+
+def _cleanup(*, json_output: bool = False) -> int:
+    config_root, state_root = _legacy_profile_roots()
+    configurations = _legacy_profile_configurations()
+    payload = {
+        "configuration_root": str(config_root),
+        "state_root": str(state_root),
+        "generated_configurations": [str(path) for path in configurations],
+        "state_preserved": True,
+        "workspace_grants_preserved": True,
+        "host_workspaces_preserved": True,
+        "docker_volumes_preserved": True,
+        "repository_preserved": True,
+        "destructive": False,
+    }
+
+    if json_output:
+        print(json.dumps(payload, indent=2))
+        return EXIT_OK
+
+    print("Read-only legacy profile cleanup inventory")
+    print(f"Generated configuration root: {config_root}")
+    print(f"Legacy profile state root (preserved): {state_root}")
+    print()
+    if configurations:
+        print("Generated profile configurations:")
+        for path in configurations:
+            print(f"  - {path}")
+    else:
+        print("No generated legacy profile configurations found.")
+    print()
+    print("No files, workspace grants, host workspaces, Docker volumes,")
+    print("credentials, or runtime data were changed.")
+    return EXIT_OK
+
+
+def _uninstall(*, confirmed: bool) -> int:
+    config_root, state_root = _legacy_profile_roots()
+    configurations = _legacy_profile_configurations()
+
+    print(f"Generated profile configuration root: {config_root}")
+    print(f"Legacy profile state root (preserved): {state_root}")
+    if not confirmed:
+        print("Dry run only; no files were removed.")
+        if configurations:
+            print("Would remove the following generated profile configuration directories:")
+            for path in configurations:
+                print(f"  - {path}")
+        else:
+            print("No generated legacy profile configurations found.")
+        print("Use 'mcpctl uninstall --yes' to remove only these generated")
+        print("configuration directories. Profile state and all other data are preserved.")
+        return EXIT_OK
+
+    removed: list[Path] = []
+    for path in configurations:
+        # Re-check the generated marker immediately before deletion.
+        marker = path / "profile.json"
+        if path.is_symlink() or not path.is_dir() or marker.is_symlink() or not marker.is_file():
+            continue
+        shutil.rmtree(path)
+        removed.append(path)
+
+    print("Removed generated legacy profile configuration directories:")
+    if removed:
+        for path in removed:
+            print(f"  - {path}")
+    else:
+        print("  (none)")
+    print("Preserved profile state, workspace grants, host workspaces, credentials,")
+    print("Docker volumes, central application configuration, and the repository.")
+    return EXIT_OK
+
+
 def _build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         prog="mcpctl",
@@ -477,8 +575,7 @@ def _build_parser() -> argparse.ArgumentParser:
     commands.add_parser(
         "restart",
         help="Rebuild and recreate the Compose stack.",
-    )
-    compose_status = commands.add_parser(
+    )    compose_status = commands.add_parser(
         "compose-status",
         help="Show Docker Compose service status.",
     )
@@ -511,23 +608,33 @@ def _build_parser() -> argparse.ArgumentParser:
         help="Repair OpenShell runtime state and restart core services.",
     )
 
-    profile = commands.add_parser(
-        "profile",
-        help="Manage isolated application profiles.",
-    )
-    profile.add_argument("profile_args", nargs=argparse.REMAINDER)
-
     cleanup = commands.add_parser(
         "cleanup",
-        help="Show a safe, non-destructive cleanup plan.",
+        help="Show a read-only inventory of legacy application-profile data.",
     )
-    cleanup.add_argument("cleanup_args", nargs=argparse.REMAINDER)
+    cleanup.add_argument(
+        "--json",
+        dest="json_output",
+        action="store_true",
+        help="Print the cleanup inventory as JSON.",
+    )
 
     uninstall = commands.add_parser(
         "uninstall",
-        help="Inspect or remove generated profile configuration.",
+        help="Remove generated legacy profile configuration; retained state is preserved.",
     )
-    uninstall.add_argument("uninstall_args", nargs=argparse.REMAINDER)
+    uninstall_confirmation = uninstall.add_mutually_exclusive_group()
+    uninstall_confirmation.add_argument(
+        "--dry-run",
+        action="store_true",
+        help="Show what would be removed without changing files (the default).",
+    )
+    uninstall_confirmation.add_argument(
+        "--yes",
+        action="store_true",
+        dest="confirmed",
+        help="Confirm removal of generated legacy profile configuration.",
+    )
 
     sandbox = commands.add_parser(
         "sandbox",
@@ -717,7 +824,6 @@ def _build_parser() -> argparse.ArgumentParser:
         "get",
         help="Inspect one credential provider without secret values.",
     )
-
     credential_get.add_argument("name")
 
     credential_get.add_argument(
@@ -958,7 +1064,6 @@ def _credential_arguments(
             args.sandbox_name,
             args.credential_name,
         ]
-
     else:
         raise RuntimeError(f"Unsupported credential command: {command}")
 
@@ -1028,20 +1133,11 @@ def main(
         if args.command == "repair":
             return _repair()
 
-        if args.command == "profile":
-            from . import profiles
-
-            return profiles.main(args.profile_args)
-
         if args.command == "cleanup":
-            from . import profiles
-
-            return profiles.main(["cleanup", *args.cleanup_args])
+            return _cleanup(json_output=args.json_output)
 
         if args.command == "uninstall":
-            from . import profiles
-
-            return profiles.main(["uninstall", *args.uninstall_args])
+            return _uninstall(confirmed=args.confirmed)
 
         if args.command == "config":
             if args.config_command != "mcp-client":
@@ -1083,6 +1179,7 @@ def main(
 
     except (
         ConfigError,
+        OSError,
         lifecycle.LifecycleError,
         OpenShellTLSStatusError,
         RuntimeError,
