@@ -49,7 +49,7 @@ def _sandbox_name_completer(*, prefix: str, **_: object) -> list[str]:
 
 def _workspace_id_completer(*, prefix: str, **_: object) -> list[str]:
     try:
-        grants = _list_grants()
+        grants = _list_grants(verbose=True)
     except Exception:
         return []
 
