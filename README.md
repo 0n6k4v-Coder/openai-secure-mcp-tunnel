@@ -154,13 +154,13 @@ The project requires:
 Python >=3.14,<3.15
 ```
 
-The primary operator CLI is:
+The sole application operator CLI is:
 
 ```bash
-uv run secure-mcp --help
+uv run mcpctl --help
 ```
 
-The configuration and OpenShell TLS control CLI is:
+The same `mcpctl` CLI also manages configuration and OpenShell TLS:
 
 ```bash
 uv run mcpctl --help
@@ -412,23 +412,23 @@ Unauthenticated Gateway users are disabled.
 
 # CLI Reference
 
-The project has three separate host-side CLI entry points.
+The project has two host-side CLI entry points: `mcpctl` and the separate trusted `workspace-broker`.
 
-## Secure MCP CLI
+## mcpctl application and Compose commands
 
 Run:
 
 ```bash
-uv run secure-mcp --help
+uv run mcpctl --help
 ```
 
-The current top-level commands are:
+The current Compose and operator commands are:
 
 ```text
 start
 stop
 restart
-status
+compose-status
 logs
 sandbox
 credential
@@ -437,55 +437,55 @@ credential
 ### Start the Compose stack
 
 ```bash
-uv run secure-mcp start
+uv run mcpctl start
 ```
 
 ### Stop the Compose stack
 
 ```bash
-uv run secure-mcp stop
+uv run mcpctl stop
 ```
 
 ### Restart the Compose stack
 
 ```bash
-uv run secure-mcp restart
+uv run mcpctl restart
 ```
 
 ### Show Compose service status
 
 ```bash
-uv run secure-mcp status
+uv run mcpctl compose-status
 ```
 
 JSON output:
 
 ```bash
-uv run secure-mcp status --json
+uv run mcpctl compose-status --json
 ```
 
 ### Show Compose logs
 
 ```bash
-uv run secure-mcp logs
+uv run mcpctl logs
 ```
 
 Show one service:
 
 ```bash
-uv run secure-mcp logs mcp-server
+uv run mcpctl logs mcp-server
 ```
 
 Follow logs:
 
 ```bash
-uv run secure-mcp logs --follow
+uv run mcpctl logs --follow
 ```
 
 Follow one service:
 
 ```bash
-uv run secure-mcp logs --follow mcp-server
+uv run mcpctl logs --follow mcp-server
 ```
 
 The service choices are:
@@ -503,7 +503,7 @@ tunnel-client
 Run:
 
 ```bash
-uv run secure-mcp sandbox --help
+uv run mcpctl sandbox --help
 ```
 
 The current sandbox CLI provides:
@@ -532,25 +532,25 @@ The `create` command supports:
 ### List sandboxes
 
 ```bash
-uv run secure-mcp sandbox list
+uv run mcpctl sandbox list
 ```
 
 ### Check a sandbox
 
 ```bash
-uv run secure-mcp sandbox status <sandbox-name>
+uv run mcpctl sandbox status <sandbox-name>
 ```
 
 JSON output:
 
 ```bash
-uv run secure-mcp sandbox status <sandbox-name> --json
+uv run mcpctl sandbox status <sandbox-name> --json
 ```
 
 ### Create a default sandbox
 
 ```bash
-uv run secure-mcp sandbox create \
+uv run mcpctl sandbox create \
   <sandbox-name> \
   --workspace <workspace-id>
 ```
@@ -558,7 +558,7 @@ uv run secure-mcp sandbox create \
 ### Create a browser sandbox
 
 ```bash
-uv run secure-mcp sandbox create \
+uv run mcpctl sandbox create \
   <sandbox-name> \
   --workspace <workspace-id> \
   --profile browser
@@ -577,26 +577,26 @@ and starts the browser runtime inside the OpenShell sandbox.
 ### Open an interactive shell
 
 ```bash
-uv run secure-mcp sandbox shell <sandbox-name>
+uv run mcpctl sandbox shell <sandbox-name>
 ```
 
 ### Execute a command
 
 ```bash
-uv run secure-mcp sandbox exec <sandbox-name> -- \
+uv run mcpctl sandbox exec <sandbox-name> -- \
   sh -lc 'echo "OpenShell sandbox is working"'
 ```
 
 ### Show sandbox logs
 
 ```bash
-uv run secure-mcp sandbox logs <sandbox-name>
+uv run mcpctl sandbox logs <sandbox-name>
 ```
 
 ### Start a sandbox
 
 ```bash
-uv run secure-mcp sandbox start <sandbox-name>
+uv run mcpctl sandbox start <sandbox-name>
 ```
 
 Start is used for a stopped sandbox or a retained failed sandbox.
@@ -604,7 +604,7 @@ Start is used for a stopped sandbox or a retained failed sandbox.
 ### Stop a sandbox
 
 ```bash
-uv run secure-mcp sandbox stop <sandbox-name>
+uv run mcpctl sandbox stop <sandbox-name>
 ```
 
 Stop retains the sandbox record and workspace association.
@@ -612,7 +612,7 @@ Stop retains the sandbox record and workspace association.
 ### Restart a sandbox
 
 ```bash
-uv run secure-mcp sandbox restart <sandbox-name>
+uv run mcpctl sandbox restart <sandbox-name>
 ```
 
 Restart is implemented as:
@@ -628,7 +628,7 @@ There is no separate custom OpenShell restart API used by the project.
 ### Repair a sandbox
 
 ```bash
-uv run secure-mcp sandbox repair <sandbox-name>
+uv run mcpctl sandbox repair <sandbox-name>
 ```
 
 Repair retries OpenShell startup of the existing sandbox.
@@ -638,7 +638,7 @@ It does **not** delete and recreate the sandbox.
 ### Delete a sandbox
 
 ```bash
-uv run secure-mcp sandbox delete <sandbox-name>
+uv run mcpctl sandbox delete <sandbox-name>
 ```
 
 Deletion permanently removes the OpenShell sandbox.
@@ -648,7 +648,7 @@ Deletion does not revoke the associated host workspace grant.
 ### Recreate a sandbox
 
 ```bash
-uv run secure-mcp sandbox recreate <sandbox-name> --yes
+uv run mcpctl sandbox recreate <sandbox-name> --yes
 ```
 
 Recreate is destructive.
@@ -678,7 +678,7 @@ Recreate does not preserve runtime state from the deleted sandbox.
 Run:
 
 ```bash
-uv run secure-mcp credential --help
+uv run mcpctl credential --help
 ```
 
 The current credential commands are:
@@ -753,7 +753,7 @@ OpenAI MCP server configuration
 
 under the user-local XDG configuration directory.
 
-The `mcpctl sandbox ...`, `mcpctl credential ...`, and `mcpctl workspace ...` commands provide the same operator functionality through the secondary CLI entry point.
+Sandbox, credential, and workspace commands are available through `mcpctl`; shared service implementations remain internal to the package.
 
 ---
 
@@ -811,13 +811,7 @@ POSIX ACL revocation
 workspace grant registry
 ```
 
-Do **not** use:
-
-```bash
-uv run secure-mcp workspace-broker ...
-```
-
-`workspace-broker` is a separate executable.
+Do **not** treat `workspace-broker` as an `mcpctl` subcommand. It remains a separate trusted executable.
 
 ---
 
@@ -1286,7 +1280,7 @@ The sandbox creation API does not accept arbitrary host filesystem paths.
 Create a default sandbox:
 
 ```bash
-uv run secure-mcp sandbox create \
+uv run mcpctl sandbox create \
   <sandbox-name> \
   --workspace <workspace-id>
 ```
@@ -1294,7 +1288,7 @@ uv run secure-mcp sandbox create \
 For browser automation:
 
 ```bash
-uv run secure-mcp sandbox create \
+uv run mcpctl sandbox create \
   <sandbox-name> \
   --workspace <workspace-id> \
   --profile browser
@@ -1328,7 +1322,7 @@ browser
 Use:
 
 ```bash
-uv run secure-mcp sandbox status <sandbox-name>
+uv run mcpctl sandbox status <sandbox-name>
 ```
 
 or:
@@ -1357,7 +1351,7 @@ The exact numeric OpenShell phase/status values are implementation details and s
 Start a stopped or retained failed sandbox:
 
 ```bash
-uv run secure-mcp sandbox start <sandbox-name>
+uv run mcpctl sandbox start <sandbox-name>
 ```
 
 or:
@@ -1369,7 +1363,7 @@ start_sandbox
 Stop a running sandbox:
 
 ```bash
-uv run secure-mcp sandbox stop <sandbox-name>
+uv run mcpctl sandbox stop <sandbox-name>
 ```
 
 or:
@@ -1381,7 +1375,7 @@ stop_sandbox
 Restart a sandbox:
 
 ```bash
-uv run secure-mcp sandbox restart <sandbox-name>
+uv run mcpctl sandbox restart <sandbox-name>
 ```
 
 or:
@@ -1401,7 +1395,7 @@ start
 Repair a retained failed sandbox:
 
 ```bash
-uv run secure-mcp sandbox repair <sandbox-name>
+uv run mcpctl sandbox repair <sandbox-name>
 ```
 
 or:
@@ -1421,7 +1415,7 @@ It does not delete or recreate the sandbox.
 Use:
 
 ```bash
-uv run secure-mcp sandbox exec <sandbox-name> -- \
+uv run mcpctl sandbox exec <sandbox-name> -- \
   sh -lc 'echo "OpenShell sandbox is working"'
 ```
 
@@ -1472,7 +1466,7 @@ The sandbox does not receive an arbitrary host filesystem path from the MCP call
 Create a browser sandbox:
 
 ```bash
-uv run secure-mcp sandbox create \
+uv run mcpctl sandbox create \
   browser-test \
   --workspace <workspace-id> \
   --profile browser
@@ -1481,7 +1475,7 @@ uv run secure-mcp sandbox create \
 Check its status:
 
 ```bash
-uv run secure-mcp sandbox status browser-test
+uv run mcpctl sandbox status browser-test
 ```
 
 Use:
@@ -1573,7 +1567,7 @@ Browser runtime dependencies are baked into the browser image rather than instal
 After testing:
 
 ```bash
-uv run secure-mcp sandbox delete <sandbox-name>
+uv run mcpctl sandbox delete <sandbox-name>
 ```
 
 or use:
@@ -1597,7 +1591,7 @@ Deleting a sandbox does **not** automatically revoke the host workspace grant.
 When a sandbox needs a fresh runtime while retaining its managed workspace capability and profile:
 
 ```bash
-uv run secure-mcp sandbox recreate <sandbox-name> --yes
+uv run mcpctl sandbox recreate <sandbox-name> --yes
 ```
 
 The MCP tool:
