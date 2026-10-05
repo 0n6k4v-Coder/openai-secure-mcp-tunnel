@@ -839,6 +839,45 @@ def test_uninstall_yes_removes_only_marked_profile_configuration(
     assert (state_profile / "state.json").read_text(encoding="utf-8") == "keep"
 
 
+def test_uninstall_purge_removes_app_config_and_state_but_preserves_external_data(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    config_home = tmp_path / "config"
+    state_home = tmp_path / "state"
+    app_config = config_home / "local-mcp-server"
+    app_state = state_home / "local-mcp-server"
+    credentials = app_config / "mcp-clients/openai/credentials"
+    workspace_grants = app_state / "mcp/workspace-grants/workspace-grants.json"
+    credentials.parent.mkdir(parents=True)
+    workspace_grants.parent.mkdir(parents=True)
+    credentials.write_text("secret", encoding="utf-8")
+    workspace_grants.write_text("{}", encoding="utf-8")
+    host_workspace = tmp_path / "host-workspace"
+    host_workspace.mkdir()
+    (host_workspace / "keep.txt").write_text("keep", encoding="utf-8")
+    repository = tmp_path / "repository"
+    repository.mkdir()
+    (repository / "README.md").write_text("keep", encoding="utf-8")
+
+    monkeypatch.setattr(mcpctl, "xdg_config_home", lambda: config_home)
+    monkeypatch.setattr(mcpctl, "xdg_state_home", lambda: state_home)
+
+    assert mcpctl.main(["uninstall", "--purge"]) == mcpctl.EXIT_OK
+    assert "Dry run only" in capsys.readouterr().out
+    assert credentials.is_file()
+    assert workspace_grants.is_file()
+
+    assert mcpctl.main(["uninstall", "--yes", "--purge"]) == mcpctl.EXIT_OK
+    output = capsys.readouterr().out
+    assert "Preserved host workspaces, Docker volumes, and the repository." in output
+    assert not app_config.exists()
+    assert not app_state.exists()
+    assert (host_workspace / "keep.txt").is_file()
+    assert (repository / "README.md").is_file()
+
+
 def test_cleanup_json_reports_non_destructive_actions(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
