@@ -58,10 +58,9 @@ log "Installing local-mcp-server"
 [[ -x "${MCPCTL_BIN}" ]] || fail "Installation completed but ${MCPCTL_BIN} was not created."
 [[ -x "${VENV_DIR}/bin/register-python-argcomplete" ]] || fail "argcomplete was not installed; register-python-argcomplete is missing."
 
-COMPLETION_MARKER="# mcpctl argcomplete completion"
 sed -i '/register-python-argcomplete local-mcp-server/d' "${ACTIVATE_FILE}"
 sed -i 's/# local-mcp-server argcomplete completion/# mcpctl argcomplete completion/' "${ACTIVATE_FILE}"
-if ! grep -Fq "${COMPLETION_MARKER}" "${ACTIVATE_FILE}"; then
+if ! grep -Fq 'register-python-argcomplete mcpctl' "${ACTIVATE_FILE}"; then
     cat >>"${ACTIVATE_FILE}" <<'EOF'
 
 # mcpctl argcomplete completion
@@ -71,8 +70,6 @@ if [[ -n "${BASH_VERSION:-}" ]]; then
     fi
 fi
 EOF
-elif ! grep -Fq 'register-python-argcomplete mcpctl' "${ACTIVATE_FILE}"; then
-    :
 fi
 
 log "Verifying CLI completion hook"
