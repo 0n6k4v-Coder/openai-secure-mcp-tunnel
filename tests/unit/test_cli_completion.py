@@ -55,7 +55,7 @@ def test_workspace_id_completer(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr(
         completion,
         "_list_grants",
-        lambda: [
+        lambda verbose=False: [
             {"workspace_id": "ws_alpha"},
             {"workspace_id": "ws_beta"},
             {"workspace_id": "ws_gamma"},
