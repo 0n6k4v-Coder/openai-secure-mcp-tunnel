@@ -61,8 +61,9 @@ def _manifest_path(name: str) -> Path:
 
 
 def _read_manifest(name: str) -> dict[str, object]:
+    root = _profile_root(name)
     path = _manifest_path(name)
-    if not path.is_file() or path.is_symlink():
+    if root.is_symlink() or not root.is_dir() or not path.is_file() or path.is_symlink():
         raise ProfileError(f"Profile '{name}' does not exist. Create it first.")
     try:
         value = json.loads(path.read_text(encoding="utf-8"))
@@ -198,7 +199,7 @@ def _compose(name: str, *arguments: str) -> None:
 def create_profile(name: str) -> dict[str, object]:
     _validate_name(name)
     root = _profile_root(name)
-    if root.exists():
+    if root.exists() or root.is_symlink():
         raise ProfileError(f"Profile '{name}' already exists.")
     ports = _allocate_ports()
     state_root = _profile_state_root(name)
@@ -273,13 +274,17 @@ def _up(name: str) -> int:
     from . import lifecycle
     from ..infrastructure.openshell.tls import setup as setup_tls
 
-    with _temporary_environment(_profile_environment(name)):
+    env = _profile_environment(name)
+    with _temporary_environment(env):
         lifecycle.prepare_runtime()
         status = setup_tls()
         if not status.complete:
             raise ProfileError("OpenShell TLS setup did not complete.")
-    _compose(name, "up", "-d")
-    print(f"Profile '{name}' started.")
+    _compose(name, "up", "--build", "-d", "openshell-gateway", "mcp-server")
+    config_root = Path(env["XDG_CONFIG_HOME"]) / APPLICATION_NAME / "mcp-clients" / "openai"
+    if (config_root / "config.yaml").is_file() and (config_root / "credentials").is_file():
+        _compose(name, "up", "-d", "tunnel-client")
+    print(f"Profile '{name}' core services started.")
     return 0
 
 
