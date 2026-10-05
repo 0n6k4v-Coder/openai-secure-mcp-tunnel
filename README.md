@@ -156,7 +156,7 @@ The sole application operator CLI is:
 uv run mcpctl --help
 ```
 
-It also includes setup, status, repair, profile, cleanup, uninstall, and configuration commands.
+It also includes setup, status, repair, read-only cleanup inventory, uninstall, and configuration commands.
 
 The trusted host-side workspace broker is:
 
@@ -425,7 +425,6 @@ logs
 setup
 status
 repair
-profile
 cleanup
 uninstall
 sandbox
