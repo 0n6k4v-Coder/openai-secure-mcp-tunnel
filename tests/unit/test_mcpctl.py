@@ -727,3 +727,41 @@ def test_setup_configures_mcp_client_before_starting_services(
         "verify:True",
         "print_status:True",
     ]
+
+
+@pytest.mark.parametrize(
+    ("argv", "expected_command", "expected_arguments"),
+    [
+        (["start"], "start", []),
+        (["stop"], "stop", []),
+        (["restart"], "restart", []),
+        (["compose-status"], "status", []),
+        (["compose-status", "--json"], "status", ["--json"]),
+        (["logs"], "logs", ["--tail", "100"]),
+        (
+            ["logs", "mcp-server", "--follow", "--tail", "25"],
+            "logs",
+            ["mcp-server", "--follow", "--tail", "25"],
+        ),
+    ],
+)
+def test_compose_commands_delegate_to_shared_cli(
+    argv: list[str],
+    expected_command: str,
+    expected_arguments: list[str],
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    captured: dict[str, object] = {}
+
+    def fake_delegate(command: str, arguments: list[str]) -> int:
+        captured["command"] = command
+        captured["arguments"] = arguments
+        return 17
+
+    monkeypatch.setattr(mcpctl, "_delegate_local_cli", fake_delegate)
+
+    assert mcpctl.main(argv) == 17
+    assert captured == {
+        "command": expected_command,
+        "arguments": expected_arguments,
+    }
