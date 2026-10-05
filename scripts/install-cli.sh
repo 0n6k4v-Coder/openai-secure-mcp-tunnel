@@ -9,8 +9,8 @@ CLI_BIN="${VENV_DIR}/bin/local-mcp-server"
 MCPCTL_BIN="${VENV_DIR}/bin/mcpctl"
 ACTIVATE_FILE="${VENV_DIR}/bin/activate"
 
-log() { printf '[install-cli] %s\\n' "$*"; }
-fail() { printf '[install-cli] ERROR: %s\\n' "$*" >&2; exit 1; }
+log() { printf '[install-cli] %s\n' "$*"; }
+fail() { printf '[install-cli] ERROR: %s\n' "$*" >&2; exit 1; }
 
 cd "${PROJECT_ROOT}"
 
@@ -73,7 +73,7 @@ if [[ -n "${BASH_VERSION:-}" ]]; then
 fi
 EOF
 elif ! grep -Fq 'register-python-argcomplete mcpctl' "${ACTIVATE_FILE}"; then
-    sed -i '/eval "$(register-python-argcomplete local-mcp-server)"/a\\        eval "$(register-python-argcomplete mcpctl)"' "${ACTIVATE_FILE}"
+    sed -i '/eval "$(register-python-argcomplete local-mcp-server)"/a\        eval "$(register-python-argcomplete mcpctl)"' "${ACTIVATE_FILE}"
 fi
 
 log "Verifying CLI completion hook"
@@ -93,7 +93,7 @@ log "Verifying config command"
 "${MCPCTL_BIN}" config --help >/dev/null
 
 log "CLI installation successful."
-printf '\\n'
-printf 'CLI: %s\\n' "${MCPCTL_BIN}"
-printf 'Python: %s\\n' "${PYTHON_BIN}"
-printf 'Run: %s --help\\n' "${MCPCTL_BIN}"
+printf '\n'
+printf 'CLI: %s\n' "${MCPCTL_BIN}"
+printf 'Python: %s\n' "${PYTHON_BIN}"
+printf 'Run: %s --help\n' "${MCPCTL_BIN}"
