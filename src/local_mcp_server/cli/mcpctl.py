@@ -534,12 +534,20 @@ def _purge_inventory() -> list[tuple[str, Path, str]]:
     inventory: list[tuple[str, Path, str]] = [
         ("Application configuration", app_config_root, "REMOVE"),
         ("OpenAI MCP config", openai_config_file(), "REMOVE"),
-        ("OpenAI MCP credentials (secret contents hidden)", openai_api_key_file(), "REMOVE"),
+        (
+            "OpenAI MCP credentials (secret contents hidden)",
+            openai_api_key_file(),
+            "REMOVE",
+        ),
         ("Application state", app_state_root, "REMOVE"),
         ("Installation state", installation_state_file(), "REMOVE"),
         ("Workspace grant records", workspace_grants_file(), "REMOVE"),
         ("Application OpenShell TLS", openshell_tls_root(), "REMOVE"),
-        ("OpenShell CLI mTLS bundle (outside app root; may be shared)", _openshell_cli_mtls_root(), "PRESERVE"),
+        (
+            "OpenShell CLI mTLS bundle (outside app root; may be shared)",
+            _openshell_cli_mtls_root(),
+            "PRESERVE",
+        ),
     ]
 
     # Compose can be configured to mount data outside the standard XDG roots.
@@ -552,11 +560,20 @@ def _purge_inventory() -> list[tuple[str, Path, str]]:
                 candidate = Path.cwd() / candidate
             standard_roots = (app_config_root, app_state_root)
             try:
-                inside_app_roots = any(candidate.resolve().is_relative_to(root.resolve()) for root in standard_roots)
+                inside_app_roots = any(
+                    candidate.resolve().is_relative_to(root.resolve())
+                    for root in standard_roots
+                )
             except OSError:
                 inside_app_roots = False
             if not inside_app_roots:
-                inventory.append((f"{variable} override (outside purge scope)", candidate, "PRESERVE"))
+                inventory.append(
+                    (
+                        f"{variable} override (outside purge scope)",
+                        candidate,
+                        "PRESERVE",
+                    )
+                )
     return inventory
 
 
@@ -577,8 +594,14 @@ def _uninstall(*, confirmed: bool, purge: bool = False) -> int:
     if purge:
         inventory = _purge_inventory()
         print("Uninstall preflight inventory")
-        print(f"Application configuration root: {app_config_root} [{_path_status(app_config_root)}]")
-        print(f"Application state root: {app_state_root} [{_path_status(app_state_root)}]")
+        print(
+            f"Application configuration root: {app_config_root} "
+            f"[{_path_status(app_config_root)}]"
+        )
+        print(
+            f"Application state root: {app_state_root} "
+            f"[{_path_status(app_state_root)}]"
+        )
         print()
         for label, path, action in inventory:
             status = _path_status(path)
@@ -590,12 +613,18 @@ def _uninstall(*, confirmed: bool, purge: bool = False) -> int:
         print()
         print("Host workspaces, Docker volumes, and the repository are preserved.")
         print("OpenShell CLI mTLS files outside the application root are preserved.")
-        print("Custom Compose paths outside the application roots are preserved and must be reviewed separately.")
+        print(
+            "Custom Compose paths outside the application roots are preserved "
+            "and must be reviewed separately."
+        )
 
         if not confirmed:
             print()
             print("Dry run only; no files were removed.")
-            print("Review the inventory, then run 'mcpctl uninstall --yes --purge' to execute.")
+            print(
+                "Review the inventory, then run "
+                "'mcpctl uninstall --yes --purge' to execute."
+            )
             return EXIT_OK
 
         # Never delete application state while this Compose project is running.
@@ -604,25 +633,47 @@ def _uninstall(*, confirmed: bool, purge: bool = False) -> int:
             try:
                 service_statuses = lifecycle._service_statuses()
             except (OSError, RuntimeError, ValueError) as exc:
-                print(f"PREFLIGHT FAILED: unable to determine Compose runtime state: {exc}", file=sys.stderr)
-                print("No application data was removed. Check Docker, then retry.", file=sys.stderr)
+                print(
+                    "PREFLIGHT FAILED: unable to determine Compose runtime state: "
+                    f"{exc}",
+                    file=sys.stderr,
+                )
+                print(
+                    "No application data was removed. Check Docker, then retry.",
+                    file=sys.stderr,
+                )
                 return EXIT_ERROR
             running = sorted(
                 name for name, status in service_statuses.items() if status.running
             )
             if running:
-                print("PREFLIGHT FAILED: application services are still running: " + ", ".join(running), file=sys.stderr)
-                print("No application data was removed. Run 'mcpctl stop' and retry.", file=sys.stderr)
+                print(
+                    "PREFLIGHT FAILED: application services are still running: "
+                    + ", ".join(running),
+                    file=sys.stderr,
+                )
+                print(
+                    "No application data was removed. Run 'mcpctl stop' and retry.",
+                    file=sys.stderr,
+                )
                 return EXIT_ERROR
 
         # Validate every deletion root before changing either root.
         roots = (app_config_root, app_state_root)
         for root in roots:
             if root.is_symlink():
-                print(f"PREFLIGHT FAILED: refusing to purge symlinked application data root: {root}", file=sys.stderr)
+                print(
+                    "PREFLIGHT FAILED: refusing to purge symlinked application "
+                    f"data root: {root}",
+                    file=sys.stderr,
+                )
                 return EXIT_ERROR
             if root.exists() and not root.is_dir():
-                print(f"PREFLIGHT FAILED: refusing to purge non-directory application data root: {root}", file=sys.stderr)
+                print(
+                    "PREFLIGHT FAILED: refusing to purge non-directory application "
+                    f"data root: {root}",
+                    file=sys.stderr,
+                )
                 return EXIT_ERROR
 
         results: list[tuple[Path, str]] = []
@@ -645,7 +696,11 @@ def _uninstall(*, confirmed: bool, purge: bool = False) -> int:
             print(f"  {status}: {root}")
         failed = any(status.startswith("FAILED") for _, status in results)
         if failed:
-            print("PARTIAL FAILURE: inspect failed paths and rerun the command after resolving the issue.", file=sys.stderr)
+            print(
+                "PARTIAL FAILURE: inspect failed paths and rerun the command "
+                "after resolving the issue.",
+                file=sys.stderr,
+            )
             return EXIT_ERROR
         print("Purge completed; both application roots are verified absent.")
         print("Preserved host workspaces, Docker volumes, and the repository.")
@@ -656,13 +711,17 @@ def _uninstall(*, confirmed: bool, purge: bool = False) -> int:
     if not confirmed:
         print("Dry run only; no files were removed.")
         if configurations:
-            print("Would remove the following generated profile configuration directories:")
+            print(
+                "Would remove the following generated profile configuration directories:"
+            )
             for path in configurations:
                 print(f"  - {path}")
         else:
             print("No generated legacy profile configurations found.")
         print("Use 'mcpctl uninstall --yes' to remove only these generated")
-        print("configuration directories. Profile state and all other data are preserved.")
+        print(
+            "configuration directories. Profile state and all other data are preserved."
+        )
         return EXIT_OK
 
     removed: list[Path] = []
@@ -670,7 +729,12 @@ def _uninstall(*, confirmed: bool, purge: bool = False) -> int:
     for path in configurations:
         # Re-check the generated marker immediately before deletion.
         marker = path / "profile.json"
-        if path.is_symlink() or not path.is_dir() or marker.is_symlink() or not marker.is_file():
+        if (
+            path.is_symlink()
+            or not path.is_dir()
+            or marker.is_symlink()
+            or not marker.is_file()
+        ):
             continue
         try:
             shutil.rmtree(path)
