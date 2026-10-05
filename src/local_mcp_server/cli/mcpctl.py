@@ -481,6 +481,24 @@ def _build_parser() -> argparse.ArgumentParser:
         help="Repair OpenShell runtime state and restart core services.",
     )
 
+    profile = commands.add_parser(
+        "profile",
+        help="Manage isolated application profiles.",
+    )
+    profile.add_argument("profile_args", nargs=argparse.REMAINDER)
+
+    cleanup = commands.add_parser(
+        "cleanup",
+        help="Show a safe, non-destructive cleanup plan.",
+    )
+    cleanup.add_argument("cleanup_args", nargs=argparse.REMAINDER)
+
+    uninstall = commands.add_parser(
+        "uninstall",
+        help="Inspect or remove generated profile configuration.",
+    )
+    uninstall.add_argument("uninstall_args", nargs=argparse.REMAINDER)
+
     sandbox = commands.add_parser(
         "sandbox",
         help="Manage OpenShell sandboxes.",
@@ -963,6 +981,21 @@ def main(
 
         if args.command == "repair":
             return _repair()
+
+        if args.command == "profile":
+            from . import profiles
+
+            return profiles.main(args.profile_args)
+
+        if args.command == "cleanup":
+            from . import profiles
+
+            return profiles.main(["cleanup", *args.cleanup_args])
+
+        if args.command == "uninstall":
+            from . import profiles
+
+            return profiles.main(["uninstall", *args.uninstall_args])
 
         if args.command == "config":
             if args.config_command != "mcp-client":
