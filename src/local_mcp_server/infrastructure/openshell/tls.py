@@ -302,6 +302,8 @@ def _run_generate_certs(root: Path) -> None:
             ),
             "--server-san",
             "host.openshell.internal",
+            "--server-san",
+            "openshell-gateway",
         ]
 
         try:
