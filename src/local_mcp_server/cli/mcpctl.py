@@ -516,9 +516,41 @@ def _cleanup(*, json_output: bool = False) -> int:
     return EXIT_OK
 
 
-def _uninstall(*, confirmed: bool) -> int:
+def _uninstall(*, confirmed: bool, purge: bool = False) -> int:
     config_root, state_root = _legacy_profile_roots()
     configurations = _legacy_profile_configurations()
+    app_config_root = xdg_config_home() / APPLICATION_NAME
+    app_state_root = xdg_state_home() / APPLICATION_NAME
+
+    if purge:
+        print(f"Application configuration root: {app_config_root}")
+        print(f"Application state root: {app_state_root}")
+        if not confirmed:
+            print("Dry run only; no files were removed.")
+            print("Would remove all application-owned configuration and state under those roots,")
+            print("including profile state, workspace grants, and stored MCP client credentials.")
+            print("Host workspaces, Docker volumes, and the repository are preserved.")
+            print("Use 'mcpctl uninstall --yes --purge' to permanently remove these data.")
+            return EXIT_OK
+
+        roots = (app_config_root, app_state_root)
+        for root in roots:
+            if root.is_symlink():
+                raise ValueError(f"Refusing to purge symlinked application data root: {root}")
+        removed_roots: list[Path] = []
+        for root in roots:
+            if root.is_dir():
+                shutil.rmtree(root)
+                removed_roots.append(root)
+            elif root.exists():
+                raise ValueError(f"Refusing to purge non-directory application data root: {root}")
+        print("Purged application configuration and state roots:")
+        for root in removed_roots:
+            print(f"  - {root}")
+        if not removed_roots:
+            print("  (none found)")
+        print("Preserved host workspaces, Docker volumes, and the repository.")
+        return EXIT_OK
 
     print(f"Generated profile configuration root: {config_root}")
     print(f"Legacy profile state root (preserved): {state_root}")
@@ -635,7 +667,12 @@ def _build_parser() -> argparse.ArgumentParser:
         "--yes",
         action="store_true",
         dest="confirmed",
-        help="Confirm removal of generated legacy profile configuration.",
+        help="Confirm the requested uninstall operation.",
+    )
+    uninstall.add_argument(
+        "--purge",
+        action="store_true",
+        help="Remove all application-owned configuration and state (requires --yes to execute).",
     )
 
     sandbox = commands.add_parser(
@@ -1147,7 +1184,7 @@ def main(
             return _cleanup(json_output=args.json_output)
 
         if args.command == "uninstall":
-            return _uninstall(confirmed=args.confirmed)
+            return _uninstall(confirmed=args.confirmed, purge=args.purge)
 
         if args.command == "config":
             if args.config_command != "mcp-client":
