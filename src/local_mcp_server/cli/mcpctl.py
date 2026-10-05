@@ -570,7 +570,7 @@ def _purge_inventory() -> list[tuple[str, Path, str]]:
                     candidate.resolve().is_relative_to(root.resolve())
                     for root in standard_roots
                 )
-            except OSError:
+            except (OSError, RuntimeError):
                 inside_app_roots = False
             if not inside_app_roots:
                 inventory.append(
@@ -718,7 +718,8 @@ def _uninstall(*, confirmed: bool, purge: bool = False) -> int:
         print("Dry run only; no files were removed.")
         if configurations:
             print(
-                "Would remove the following generated profile configuration directories:"
+                "Would remove the following generated profile configuration "
+                "directories:"
             )
             for path in configurations:
                 print(f"  - {path}")
