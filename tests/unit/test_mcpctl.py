@@ -863,6 +863,7 @@ def test_uninstall_purge_removes_app_config_and_state_but_preserves_external_dat
 
     monkeypatch.setattr(mcpctl, "xdg_config_home", lambda: config_home)
     monkeypatch.setattr(mcpctl, "xdg_state_home", lambda: state_home)
+    monkeypatch.setattr(mcpctl.shutil, "which", lambda _: None)
 
     assert mcpctl.main(["uninstall", "--purge"]) == mcpctl.EXIT_OK
     assert "Dry run only" in capsys.readouterr().out
@@ -893,3 +894,93 @@ def test_cleanup_json_reports_non_destructive_actions(
     assert payload["destructive"] is False
     assert payload["state_preserved"] is True
     assert payload["workspace_grants_preserved"] is True
+
+
+def test_uninstall_purge_inventory_lists_client_files_and_preserves_external_mtls(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    config_home = tmp_path / "config"
+    state_home = tmp_path / "state"
+    app_config = config_home / "local-mcp-server"
+    app_state = state_home / "local-mcp-server"
+    credentials = app_config / "mcp-clients/openai/credentials"
+    config_file = app_config / "mcp-clients/openai/config.yaml"
+    credentials.parent.mkdir(parents=True)
+    credentials.write_text("never print this secret", encoding="utf-8")
+    config_file.write_text("config_version: 1", encoding="utf-8")
+    app_state.mkdir(parents=True)
+    external_mtls = config_home / "openshell/gateways/local/mtls/tls.key"
+    external_mtls.parent.mkdir(parents=True)
+    external_mtls.write_text("preserve me", encoding="utf-8")
+
+    monkeypatch.setattr(mcpctl, "xdg_config_home", lambda: config_home)
+    monkeypatch.setattr(mcpctl, "xdg_state_home", lambda: state_home)
+    monkeypatch.setattr(mcpctl.shutil, "which", lambda _: None)
+
+    assert mcpctl.main(["uninstall", "--purge"]) == mcpctl.EXIT_OK
+    output = capsys.readouterr().out
+    assert "OpenAI MCP config" in output
+    assert "OpenAI MCP credentials (secret contents hidden)" in output
+    assert "OUTSIDE SCOPE" in output
+    assert str(external_mtls.parent) in output
+    assert "never print this secret" not in output
+    assert credentials.is_file()
+    assert external_mtls.is_file()
+
+
+def test_uninstall_purge_blocks_when_compose_services_are_running(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    app_config = tmp_path / "config/local-mcp-server"
+    app_state = tmp_path / "state/local-mcp-server"
+    app_config.mkdir(parents=True)
+    app_state.mkdir(parents=True)
+    monkeypatch.setattr(mcpctl, "xdg_config_home", lambda: tmp_path / "config")
+    monkeypatch.setattr(mcpctl, "xdg_state_home", lambda: tmp_path / "state")
+    monkeypatch.setattr(mcpctl.shutil, "which", lambda _: "/usr/bin/docker")
+    monkeypatch.setattr(
+        mcpctl.lifecycle,
+        "_service_statuses",
+        lambda: {"mcp-server": SimpleNamespace(running=True)},
+    )
+
+    assert mcpctl.main(["uninstall", "--yes", "--purge"]) == mcpctl.EXIT_ERROR
+    output = capsys.readouterr()
+    assert "PREFLIGHT FAILED" in output.err
+    assert "mcpctl stop" in output.err
+    assert app_config.is_dir()
+    assert app_state.is_dir()
+
+
+def test_uninstall_purge_reports_partial_failure_and_verifies_successful_root(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    config_home = tmp_path / "config"
+    state_home = tmp_path / "state"
+    app_config = config_home / "local-mcp-server"
+    app_state = state_home / "local-mcp-server"
+    app_config.mkdir(parents=True)
+    app_state.mkdir(parents=True)
+    monkeypatch.setattr(mcpctl, "xdg_config_home", lambda: config_home)
+    monkeypatch.setattr(mcpctl, "xdg_state_home", lambda: state_home)
+    monkeypatch.setattr(mcpctl.shutil, "which", lambda _: None)
+    real_rmtree = mcpctl.shutil.rmtree
+
+    def fail_state_root(path: Path, *args: object, **kwargs: object) -> None:
+        if Path(path) == app_state:
+            raise PermissionError("test permission failure")
+        real_rmtree(path, *args, **kwargs)
+
+    monkeypatch.setattr(mcpctl.shutil, "rmtree", fail_state_root)
+    assert mcpctl.main(["uninstall", "--yes", "--purge"]) == mcpctl.EXIT_ERROR
+    output = capsys.readouterr()
+    assert "REMOVED (verified absent)" in output.out
+    assert "PARTIAL FAILURE" in output.err
+    assert not app_config.exists()
+    assert app_state.is_dir()
