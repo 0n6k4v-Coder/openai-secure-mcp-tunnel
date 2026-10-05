@@ -350,7 +350,7 @@ src/local_mcp_server/
 │   └── __main__.py            # python -m local_mcp_server.server
 │
 └── cli/
-    ├── main.py                # secure-mcp operator CLI
+    ├── main.py                # mcpctl operator CLI
     └── workspace_broker.py    # trusted host workspace broker
 ```
 
@@ -427,7 +427,7 @@ Generic `execute_sandbox` remains the lower-level sandbox command API. Installat
 Credential management is also kept outside the generic sandbox command path:
 
 ```text
-secure-mcp CLI
+mcpctl CLI
       │
       ▼
 infrastructure.openshell.credentials
