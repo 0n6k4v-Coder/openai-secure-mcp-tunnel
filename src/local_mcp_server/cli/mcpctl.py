@@ -241,7 +241,8 @@ def _config_mcp_client(
         )
 
         if selected is None:
-            print()            print("MCP client configuration skipped.")
+            print()
+            print("MCP client configuration skipped.")
             print("You can configure it later with:")
             print("  mcpctl config mcp-client")
             return EXIT_OK
@@ -575,7 +576,8 @@ def _build_parser() -> argparse.ArgumentParser:
     commands.add_parser(
         "restart",
         help="Rebuild and recreate the Compose stack.",
-    )    compose_status = commands.add_parser(
+    )
+    compose_status = commands.add_parser(
         "compose-status",
         help="Show Docker Compose service status.",
     )
