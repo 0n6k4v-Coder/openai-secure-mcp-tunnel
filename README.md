@@ -497,6 +497,34 @@ tunnel-client
 
 ---
 
+## Cleanup and uninstall
+
+Preview legacy profile cleanup without changing files:
+
+```bash
+uv run mcpctl uninstall
+```
+
+Remove only generated legacy profile configuration:
+
+```bash
+uv run mcpctl uninstall --yes
+```
+
+Preview a full purge of application-owned configuration and state:
+
+```bash
+uv run mcpctl uninstall --purge
+```
+
+To execute that purge, explicitly confirm it:
+
+```bash
+uv run mcpctl uninstall --yes --purge
+```
+
+The purge removes the `local-mcp-server` directories under the configured XDG config and state roots, including stored MCP client credentials, profile state, and workspace-grant records. It does not delete host workspace files, Docker volumes, or the repository. Back up anything you may need before purging; this operation is destructive and is not reversible through the CLI.
+
 ## Sandbox commands
 
 Run:
