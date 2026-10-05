@@ -85,11 +85,7 @@ The previous `terminal-executor` service is no longer part of the architecture.
 
 ### Workspace ACL helper
 
-Host workspace authorization is handled by the separate trusted host-side:
-
-```text
-workspace-broker
-```
+Host workspace authorization is exposed through `mcpctl workspace` and implemented by the trusted host-side workspace broker module.
 
 When a workspace is authorized, the broker:
 
@@ -165,7 +161,7 @@ It also includes setup, status, repair, profile, cleanup, uninstall, and configu
 The trusted host-side workspace broker is:
 
 ```bash
-uv run workspace-broker --help
+uv run mcpctl workspace --help
 ```
 
 ---
@@ -408,7 +404,7 @@ Unauthenticated Gateway users are disabled.
 
 # CLI Reference
 
-The project has two host-side CLI entry points: `mcpctl` and the separate trusted `workspace-broker`.
+The project exposes one host-side CLI entry point: `mcpctl`. Workspace authorization uses its `workspace` subcommands.
 
 ## mcpctl application and Compose commands
 
@@ -761,61 +757,41 @@ Sandbox, credential, and workspace commands are available through `mcpctl`; shar
 
 ---
 
-## Workspace Broker CLI
+## Workspace commands
 
-Workspace authorization is intentionally a separate trusted host-side CLI.
+Workspace authorization is available through the trusted host-side `mcpctl workspace` commands.
 
-Run:
+Show workspace command help:
 
 ```bash
-uv run workspace-broker --help
-```
-
-The current commands are:
-
-```text
-authorize
-revoke
-list
+uv run mcpctl workspace --help
 ```
 
 List all authorized host workspaces:
 
 ```bash
-uv run workspace-broker list
+uv run mcpctl workspace list
 ```
 
 List as JSON:
 
 ```bash
-uv run workspace-broker list --json
+uv run mcpctl workspace list --json
 ```
 
 Authorize a workspace:
 
 ```bash
-uv run workspace-broker authorize <host-path>
+uv run mcpctl workspace authorize <host-path>
 ```
 
 Revoke a workspace:
 
 ```bash
-uv run workspace-broker revoke <workspace-id>
+uv run mcpctl workspace revoke <workspace-id>
 ```
 
-The workspace broker is responsible for:
-
-```text
-host path validation
-protected path validation
-workspace authorization
-Docker volume creation
-POSIX ACL provisioning
-POSIX ACL revocation
-workspace grant registry
-```
-
-Do **not** treat `workspace-broker` as an `mcpctl` subcommand. It remains a separate trusted executable.
+The internal workspace broker implementation handles host path validation, protected path validation, workspace authorization, Docker volume creation, POSIX ACL provisioning/revocation, and the workspace grant registry. It is invoked by `mcpctl`; there is no separate `workspace-broker` executable.
 
 ---
 
@@ -912,7 +888,7 @@ docker build \
   deploy/docker/workspace-acl-helper
 ```
 
-The helper is used by `workspace-broker` during workspace authorization and revocation.
+The helper is used by the internal workspace broker implementation invoked through `mcpctl workspace` during authorization and revocation.
 
 It does not provide a general-purpose shell or network access.
 
@@ -1258,7 +1234,7 @@ Docker sandbox
 First authorize a host workspace:
 
 ```bash
-uv run workspace-broker authorize "$HOME/path/to/workspace"
+uv run mcpctl workspace authorize "$HOME/path/to/workspace"
 ```
 
 Record the returned:
@@ -1638,13 +1614,13 @@ Recreation is a destructive operation.
 After the sandbox has been deleted:
 
 ```bash
-uv run workspace-broker revoke <workspace-id>
+uv run mcpctl workspace revoke <workspace-id>
 ```
 
 Then verify:
 
 ```bash
-uv run workspace-broker list
+uv run mcpctl workspace list
 ```
 
 The revoked workspace should no longer appear.
@@ -1907,25 +1883,25 @@ There is normally no reason to create a new tunnel simply because the MCP tool l
 List all authorized workspaces:
 
 ```bash
-uv run workspace-broker list
+uv run mcpctl workspace list
 ```
 
 List as JSON:
 
 ```bash
-uv run workspace-broker list --json
+uv run mcpctl workspace list --json
 ```
 
 Authorize a workspace:
 
 ```bash
-uv run workspace-broker authorize "$HOME/path/to/workspace"
+uv run mcpctl workspace authorize "$HOME/path/to/workspace"
 ```
 
 Revoke a workspace:
 
 ```bash
-uv run workspace-broker revoke <workspace-id>
+uv run mcpctl workspace revoke <workspace-id>
 ```
 
 The broker records:
@@ -2314,7 +2290,7 @@ Host workspace lifecycle:
 Host directory
       │
       ▼
-workspace-broker authorize
+mcpctl workspace authorize
       │
       ├── validate host path
       ├── POSIX ACL provisioning
@@ -2328,7 +2304,7 @@ workspace-broker authorize
        /workspace/project
               │
               ▼
-workspace-broker revoke
+mcpctl workspace revoke
               │
               ▼
 workspace-acl-helper
