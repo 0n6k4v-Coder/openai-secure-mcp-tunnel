@@ -9,8 +9,8 @@ CLI_BIN="${VENV_DIR}/bin/local-mcp-server"
 MCPCTL_BIN="${VENV_DIR}/bin/mcpctl"
 ACTIVATE_FILE="${VENV_DIR}/bin/activate"
 
-log() { printf '[install-cli] %s\n' "$*"; }
-fail() { printf '[install-cli] ERROR: %s\n' "$*" >&2; exit 1; }
+log() { printf '[install-cli] %s\\n' "$*"; }
+fail() { printf '[install-cli] ERROR: %s\\n' "$*" >&2; exit 1; }
 
 cd "${PROJECT_ROOT}"
 
@@ -22,7 +22,7 @@ if [[ "${PYTHON_VERSION}" != 3.14.* ]]; then fail "Python 3.14 is required, but 
 log "Using Python ${PYTHON_VERSION}"
 
 if [[ -x "${PYTHON_BIN}" ]]; then
-    VENV_VERSION="$(${PYTHON_BIN} -c 'import sys; print(".".join(map(str, sys.version_info[:3])))')"
+    VENV_VERSION="$("${PYTHON_BIN}" -c 'import sys; print(".".join(map(str, sys.version_info[:3])))')"
     if [[ "${VENV_VERSION}" != 3.14.* ]]; then
         log "Existing .venv uses Python ${VENV_VERSION}; recreating it."
         rm -rf "${VENV_DIR}"
@@ -34,8 +34,22 @@ if [[ ! -x "${PYTHON_BIN}" ]]; then
     python3.14 -m venv "${VENV_DIR}"
 fi
 
-VENV_VERSION="$(${PYTHON_BIN} -c 'import sys; print(".".join(map(str, sys.version_info[:3])))')"
+VENV_VERSION="$("${PYTHON_BIN}" -c 'import sys; print(".".join(map(str, sys.version_info[:3])))')"
 if [[ "${VENV_VERSION}" != 3.14.* ]]; then fail "The virtual environment is using Python ${VENV_VERSION}, not Python 3.14."; fi
+
+# A virtual environment can exist without pip (for example, if it was created
+# with --without-pip or its pip installation was removed). Repair it before
+# trying to upgrade or install anything.
+if ! "${PYTHON_BIN}" -m pip --version >/dev/null 2>&1; then
+    log "pip is missing from .venv; bootstrapping it with ensurepip."
+    if ! "${PYTHON_BIN}" -m ensurepip --upgrade; then
+        fail "Could not bootstrap pip in ${VENV_DIR}. Ensure this Python 3.14 installation includes ensurepip, or recreate only the virtual environment with 'rm -rf .venv && python3.14 -m venv .venv', then rerun this installer. This removes .venv only; it does not remove profile data."
+    fi
+fi
+
+if ! "${PYTHON_BIN}" -m pip --version; then
+    fail "pip is still unavailable in ${VENV_DIR} after ensurepip. Repair or recreate the virtual environment, then rerun this installer."
+fi
 
 log "Upgrading pip"
 "${PYTHON_BIN}" -m pip install --upgrade pip
@@ -59,7 +73,7 @@ if [[ -n "${BASH_VERSION:-}" ]]; then
 fi
 EOF
 elif ! grep -Fq 'register-python-argcomplete mcpctl' "${ACTIVATE_FILE}"; then
-    sed -i '/eval "$(register-python-argcomplete local-mcp-server)"/a\        eval "$(register-python-argcomplete mcpctl)"' "${ACTIVATE_FILE}"
+    sed -i '/eval "$(register-python-argcomplete local-mcp-server)"/a\\        eval "$(register-python-argcomplete mcpctl)"' "${ACTIVATE_FILE}"
 fi
 
 log "Verifying CLI completion hook"
@@ -79,7 +93,7 @@ log "Verifying config command"
 "${MCPCTL_BIN}" config --help >/dev/null
 
 log "CLI installation successful."
-printf '\n'
-printf 'CLI: %s\n' "${MCPCTL_BIN}"
-printf 'Python: %s\n' "${PYTHON_BIN}"
-printf 'Run: %s --help\n' "${MCPCTL_BIN}"
+printf '\\n'
+printf 'CLI: %s\\n' "${MCPCTL_BIN}"
+printf 'Python: %s\\n' "${PYTHON_BIN}"
+printf 'Run: %s --help\\n' "${MCPCTL_BIN}"
