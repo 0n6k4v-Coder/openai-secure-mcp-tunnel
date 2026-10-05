@@ -720,9 +720,13 @@ def main(
 
     if args.command == "authorize":
         result = _authorize(args.host_path)
+        public_result = _public_grant(
+            str(result["workspace_id"]),
+            result,
+        )
         print(
             json.dumps(
-                result,
+                public_result,
                 ensure_ascii=False,
             )
         )
