@@ -2341,3 +2341,23 @@ Compose service.
 The MCP server exposes sandbox operations through OpenShell, workspace operations through authorized workspace boundaries, controlled tool installation through the sandbox installation workflow, and browser automation through the isolated browser sandbox.
 
 The trusted host-side workspace broker remains separate from the MCP server and is responsible for host filesystem authorization, Docker volume provisioning, and POSIX ACL lifecycle.
+
+---
+
+# Workspace CLI Output
+
+The workspace CLI keeps its default output focused on user-relevant fields:
+
+```bash
+mcpctl workspace list
+mcpctl workspace list --json
+```
+
+The public workspace schema contains `id`, `host_path`, `sandbox_path`, and `read_only`. Use `--verbose` when debugging or inspecting host-side infrastructure details:
+
+```bash
+mcpctl workspace list --verbose
+mcpctl workspace list --verbose --json
+```
+
+Verbose output includes internal identifiers and infrastructure metadata such as host UID/GID and Docker volume name. Treat this output as operational detail and avoid sharing it unnecessarily.
