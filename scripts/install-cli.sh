@@ -5,7 +5,6 @@ set -euo pipefail
 PROJECT_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 VENV_DIR="${PROJECT_ROOT}/.venv"
 PYTHON_BIN="${VENV_DIR}/bin/python"
-CLI_BIN="${VENV_DIR}/bin/local-mcp-server"
 MCPCTL_BIN="${VENV_DIR}/bin/mcpctl"
 ACTIVATE_FILE="${VENV_DIR}/bin/activate"
 
@@ -56,31 +55,28 @@ log "Upgrading pip"
 log "Installing local-mcp-server"
 "${PYTHON_BIN}" -m pip install -e "${PROJECT_ROOT}"
 
-[[ -x "${CLI_BIN}" ]] || fail "Installation completed but ${CLI_BIN} was not created."
 [[ -x "${MCPCTL_BIN}" ]] || fail "Installation completed but ${MCPCTL_BIN} was not created."
 [[ -x "${VENV_DIR}/bin/register-python-argcomplete" ]] || fail "argcomplete was not installed; register-python-argcomplete is missing."
 
-COMPLETION_MARKER="# local-mcp-server argcomplete completion"
+COMPLETION_MARKER="# mcpctl argcomplete completion"
+sed -i '/register-python-argcomplete local-mcp-server/d' "${ACTIVATE_FILE}"
+sed -i 's/# local-mcp-server argcomplete completion/# mcpctl argcomplete completion/' "${ACTIVATE_FILE}"
 if ! grep -Fq "${COMPLETION_MARKER}" "${ACTIVATE_FILE}"; then
     cat >>"${ACTIVATE_FILE}" <<'EOF'
 
-# local-mcp-server argcomplete completion
+# mcpctl argcomplete completion
 if [[ -n "${BASH_VERSION:-}" ]]; then
     if command -v register-python-argcomplete >/dev/null 2>&1; then
-        eval "$(register-python-argcomplete local-mcp-server)"
         eval "$(register-python-argcomplete mcpctl)"
     fi
 fi
 EOF
 elif ! grep -Fq 'register-python-argcomplete mcpctl' "${ACTIVATE_FILE}"; then
-    sed -i '/eval "$(register-python-argcomplete local-mcp-server)"/a\        eval "$(register-python-argcomplete mcpctl)"' "${ACTIVATE_FILE}"
+    :
 fi
 
 log "Verifying CLI completion hook"
-"${VENV_DIR}/bin/register-python-argcomplete" local-mcp-server >/dev/null
 "${VENV_DIR}/bin/register-python-argcomplete" mcpctl >/dev/null
-log "Verifying local-mcp-server"
-"${CLI_BIN}" --help >/dev/null
 log "Verifying mcpctl"
 "${MCPCTL_BIN}" --help >/dev/null
 log "Verifying sandbox command"
