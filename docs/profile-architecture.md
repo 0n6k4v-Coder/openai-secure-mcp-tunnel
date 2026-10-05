@@ -1,31 +1,31 @@
-# Profile architecture and safe cleanup
+# Application lifecycle and retained data
 
-The profile manager adds isolated Compose projects while preserving the existing default
-runtime. Each profile has a unique project name, a non-overlapping set of loopback host
-ports, profile-scoped XDG configuration and state directories, and generated OpenShell
-gateway configuration/metadata.
+The application has one central Docker Compose runtime. Application lifecycle commands
+operate on that shared runtime; they do not create isolated application-level profiles.
 
-## Commands
+## Runtime and sandbox profiles
 
-- mcpctl profile create dev
-- mcpctl profile list
-- mcpctl profile show dev
-- mcpctl profile validate dev
-- mcpctl profile up dev
-- mcpctl profile down dev
-- mcpctl cleanup --plan
-- mcpctl uninstall --dry-run
-- mcpctl uninstall --purge --yes
+The Compose deployment remains the single source of truth for the application services:
+`openshell-gateway`, `mcp-server`, and `tunnel-client`.
 
-Profile creation never overwrites an existing profile. Validation is non-destructive.
-Profile down stops only that profile's Compose project and preserves data. Cleanup is a
-read-only inventory. Uninstall defaults to a dry run; purge requires an explicit --yes
-and removes generated profile configuration only.
+Sandbox profiles are a separate OpenShell feature and remain supported:
 
-## Data retention
+- `default` is used for normal development and command execution.
+- `browser` provides the isolated Chrome runtime and Chrome DevTools MCP daemon.
 
-Uninstall deliberately preserves profile state, workspace grants, host workspaces,
-Docker volumes, the default/legacy runtime, and the repository clone. Review the
-reported paths and handle retained state manually when appropriate. Container-to-
-container gateway traffic uses the Compose service name openshell-gateway, which is
-already present in the TLS server SAN template.
+Use `mcpctl sandbox create NAME --workspace WORKSPACE_ID --profile default` or
+`mcpctl sandbox create NAME --workspace WORKSPACE_ID --profile browser` to select a
+sandbox profile. These sandbox profiles are not application-level configuration profiles.
+
+## Cleanup and uninstall
+
+`mcpctl cleanup` (or `mcpctl cleanup --json`) inventories generated legacy
+application-profile configuration without changing files.
+
+`mcpctl uninstall` is a dry run by default. `mcpctl uninstall --yes` removes only
+legacy generated configuration directories that contain a regular `profile.json`
+marker. It does not delete legacy profile state, credentials, workspace grants, host
+workspaces, Docker volumes, central application configuration, or the repository clone.
+
+Review the inventory before explicitly confirming removal. Migration or deletion of
+retained state is a separate, manual operation.
