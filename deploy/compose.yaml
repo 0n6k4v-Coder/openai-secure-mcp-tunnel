@@ -26,7 +26,7 @@ services:
         read_only: true
 
       - type: bind
-        source: ${XDG_STATE_HOME:-$HOME/.local/state}/local-mcp-server/openshell/tls
+        source: ${MCP_TLS_DIR:-${XDG_STATE_HOME:-$HOME/.local/state}/local-mcp-server/openshell/tls}
         target: /etc/openshell/tls
         read_only: true
         bind:
@@ -177,7 +177,7 @@ services:
 
     volumes:
       - type: bind
-        source: ${XDG_CONFIG_HOME:-$HOME/.config}/local-mcp-server/mcp-clients/openai/config.yaml
+        source: ${MCP_OPENAI_CONFIG_FILE:-${XDG_CONFIG_HOME:-$HOME/.config}/local-mcp-server/mcp-clients/openai/config.yaml}
         target: /etc/tunnel-client/openai.yaml
         read_only: true
         bind:

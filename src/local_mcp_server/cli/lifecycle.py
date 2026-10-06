@@ -43,6 +43,15 @@ def _configured_port(name: str, default: int) -> int:
     """Read and validate a host-published port from the runtime environment."""
     raw_value = os.environ.get(name)
     if raw_value is None or not raw_value.strip():
+        if os.environ.get("MCP_RUNTIME", "default") != "default":
+            from ..runtime.context import get_runtime_context
+            profile = get_runtime_context().profile
+            runtime_ports = {
+                "MCP_PORT": profile.mcp_port,
+                "OPENSHELL_PORT": profile.openshell_port,
+                "OPENSHELL_HEALTH_PORT": profile.openshell_health_port,
+            }
+            return runtime_ports.get(name, default)
         return default
 
     try:
