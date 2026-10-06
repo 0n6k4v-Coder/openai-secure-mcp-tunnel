@@ -210,7 +210,6 @@ class NpmAdapter:
         from ..infrastructure.openshell.sandbox import execute_sandbox_argv, sandbox_status
         from ..infrastructure.openshell.sandbox_files import (
             create_sandbox_workspace_directory,
-            create_sandbox_workspace_file,
         )
         metadata = json.loads(sandbox_status(sandbox))
         if not isinstance(metadata, dict) or metadata.get("profile", "default") != self.network_profile:
