@@ -13,6 +13,7 @@ from ..sandbox.service import list_sandboxes
 from .mcpctl import _build_parser as _build_mcpctl_parser
 from .mcpctl import main as _mcpctl_main
 from .workspace_broker import _list_grants
+from ..runtime.registry import list_runtimes
 
 
 def _filter_prefix(values: Iterable[str], prefix: str) -> list[str]:
@@ -88,6 +89,9 @@ def _configure_dynamic_completers(
 ) -> None:
     for current_parser in _iter_parsers(parser):
         parser_path = current_parser.prog.split()
+        for action in current_parser._actions:
+            if action.dest == "name" and "runtime" in parser_path:
+                action.completer = lambda **_: [profile.name for profile in list_runtimes()]
 
         for action in current_parser._actions:
             if action.dest == "workspace_id":

@@ -19,7 +19,14 @@ from ...sandbox.policy import (
 from ...workspace.repository import get_workspace_grant
 
 
-OPENSHELL_WORKSPACE = "default"
+from ...runtime.context import get_runtime_context
+
+_runtime_context = get_runtime_context()
+OPENSHELL_WORKSPACE = (
+    _runtime_context.profile.openshell_workspace
+    if not _runtime_context.is_default
+    else os.environ.get("OPENSHELL_WORKSPACE", "default")
+)
 
 HOST_WORKSPACE_LABEL = "mcp_host_workspace_id"
 SANDBOX_PROFILE_LABEL = "mcp_sandbox_profile"

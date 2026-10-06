@@ -135,22 +135,30 @@ def configure_openai(
 ) -> None:
     validated_tunnel_id = _validate_tunnel_id(tunnel_id)
     validated_api_key = _validate_api_key(api_key)
-    config_content = OPENAI_CONFIG_TEMPLATE.format(
-        tunnel_id=validated_tunnel_id,
-    )
+    if os.environ.get("MCP_RUNTIME", "default") == "default":
+        config_root, clients_root, openai_root_path = CONFIG_ROOT, MCP_CLIENTS_ROOT, OPENAI_ROOT
+        api_key_file, config_file = OPENAI_API_KEY_FILE, OPENAI_CONFIG_FILE
+    else:
+        from .paths import app_config_root as current_app_config_root, mcp_clients_root as current_mcp_clients_root, openai_api_key_file as current_openai_api_key_file, openai_config_file as current_openai_config_file, openai_root as current_openai_root
+        config_root = current_app_config_root()
+        clients_root = current_mcp_clients_root()
+        openai_root_path = current_openai_root()
+        api_key_file = current_openai_api_key_file()
+        config_file = current_openai_config_file()
+    config_content = OPENAI_CONFIG_TEMPLATE.format(tunnel_id=validated_tunnel_id)
 
     try:
-        _ensure_private_directory(CONFIG_ROOT)
-        _ensure_private_directory(MCP_CLIENTS_ROOT)
-        _ensure_private_directory(OPENAI_ROOT)
+        _ensure_private_directory(config_root)
+        _ensure_private_directory(clients_root)
+        _ensure_private_directory(openai_root_path)
 
         _atomic_write(
-            OPENAI_API_KEY_FILE,
+            api_key_file,
             f"{validated_api_key}\n",
             mode=0o600,
         )
         _atomic_write(
-            OPENAI_CONFIG_FILE,
+            config_file,
             config_content,
             mode=0o600,
         )

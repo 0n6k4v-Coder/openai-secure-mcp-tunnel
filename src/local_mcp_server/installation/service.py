@@ -71,14 +71,21 @@ class InstallationError(RuntimeError):
     """Raised when an installation request is invalid or fails."""
 
 
+def _installation_state_file() -> Path:
+    if os.environ.get("MCP_RUNTIME", "default") == "default":
+        return INSTALLATION_STATE_FILE
+    return installation_state_file().expanduser().resolve()
+
+
 def _ensure_state_directory() -> None:
+    state_file = _installation_state_file()
     try:
-        INSTALLATION_STATE_FILE.parent.mkdir(
+        state_file.parent.mkdir(
             parents=True,
             exist_ok=True,
             mode=0o700,
         )
-        mode = stat.S_IMODE(INSTALLATION_STATE_FILE.parent.stat().st_mode)
+        mode = stat.S_IMODE(state_file.parent.stat().st_mode)
     except OSError as exc:
         raise InstallationError(
             "Installation state directory could not be prepared."
@@ -94,11 +101,12 @@ def _ensure_state_directory() -> None:
 def _load_state() -> dict[str, dict[str, object]]:
     _ensure_state_directory()
 
-    if not INSTALLATION_STATE_FILE.exists():
+    state_file = _installation_state_file()
+    if not state_file.exists():
         return {}
 
     try:
-        value = json.loads(INSTALLATION_STATE_FILE.read_text(encoding="utf-8"))
+        value = json.loads(state_file.read_text(encoding="utf-8"))
     except (OSError, json.JSONDecodeError) as exc:
         raise InstallationError(
             "Installation approval state could not be read."
@@ -113,9 +121,8 @@ def _load_state() -> dict[str, dict[str, object]]:
 def _save_state(state: dict[str, dict[str, object]]) -> None:
     _ensure_state_directory()
 
-    temporary = INSTALLATION_STATE_FILE.with_suffix(
-        INSTALLATION_STATE_FILE.suffix + ".tmp"
-    )
+    state_file = _installation_state_file()
+    temporary = state_file.with_suffix(state_file.suffix + ".tmp")
 
     temporary.write_text(
         json.dumps(
@@ -128,8 +135,8 @@ def _save_state(state: dict[str, dict[str, object]]) -> None:
     )
 
     os.chmod(temporary, 0o600)
-    os.replace(temporary, INSTALLATION_STATE_FILE)
-    os.chmod(INSTALLATION_STATE_FILE, 0o600)
+    os.replace(temporary, state_file)
+    os.chmod(state_file, 0o600)
 
 
 def _validate_sandbox_name(name: str) -> str:

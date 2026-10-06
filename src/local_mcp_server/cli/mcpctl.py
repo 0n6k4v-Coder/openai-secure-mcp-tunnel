@@ -23,6 +23,8 @@ from . import lifecycle
 from .main import _print_table
 from .main import main as local_mcp_server_main
 from . import workspace_broker
+from ..runtime.registry import RuntimeRegistryError, create_runtime, delete_runtime, list_runtimes, load_runtime
+from ..runtime.templates import runtime_template
 
 EXIT_OK = 0
 EXIT_ERROR = 2
@@ -890,6 +892,39 @@ def _uninstall(*, confirmed: bool, purge: bool = False) -> int:
     return EXIT_OK
 
 
+def _runtime_command(args: argparse.Namespace) -> int:
+    try:
+        if args.runtime_action == "list":
+            profiles = list_runtimes()
+            payload = [profile.to_dict() for profile in profiles]
+            if args.json_output:
+                print(json.dumps(payload, indent=2))
+            else:
+                for profile in profiles:
+                    print(f"{profile.name:<20} {profile.compose_project_name:<48} {profile.openshell_workspace}")
+            return EXIT_OK
+        if args.runtime_action == "create":
+            profile = create_runtime(args.name, args.description)
+            print(json.dumps(profile.to_dict(), indent=2) if args.json_output else f"Runtime {profile.name!r} created.")
+            return EXIT_OK
+        if args.runtime_action == "show":
+            profile = load_runtime(args.name)
+            payload = runtime_template(profile.name, profile.description) if profile.name != "default" else {"schema_version": 1, "runtime": profile.to_dict(), "isolation": {"configuration": "legacy XDG application configuration", "state": "legacy XDG application state", "compose_project": profile.compose_project_name, "openshell_workspace": profile.openshell_workspace}}
+            print(json.dumps(payload, indent=2) if args.json_output else f"Runtime: {profile.name}\nCompose project: {profile.compose_project_name}\nOpenShell workspace: {profile.openshell_workspace}\nDescription: {profile.description}")
+            return EXIT_OK
+        if args.runtime_action == "delete":
+            if not args.confirmed:
+                print("Refusing to delete a runtime without --yes.", file=sys.stderr)
+                return EXIT_ERROR
+            delete_runtime(args.name)
+            print(f"Runtime {args.name!r} deleted. Runtime data was preserved.")
+            return EXIT_OK
+        raise ValueError("Unsupported runtime command.")
+    except RuntimeRegistryError as exc:
+        print(f"ERROR: {exc}", file=sys.stderr)
+        return EXIT_ERROR
+
+
 def _build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         prog="mcpctl",
@@ -900,6 +935,25 @@ def _build_parser() -> argparse.ArgumentParser:
         dest="command",
         required=True,
     )
+
+    runtime = commands.add_parser("runtime", help="Manage isolated runtime profiles.")
+    runtime_commands = runtime.add_subparsers(dest="runtime_action", required=True)
+    runtime_list = runtime_commands.add_parser("list", help="List registered runtimes.")
+    runtime_list.add_argument("--json", dest="json_output", action="store_true")
+    runtime_list.set_defaults(handler=_runtime_command)
+    runtime_create = runtime_commands.add_parser("create", help="Create an isolated runtime profile.")
+    runtime_create.add_argument("name")
+    runtime_create.add_argument("--description", default="")
+    runtime_create.add_argument("--json", dest="json_output", action="store_true")
+    runtime_create.set_defaults(handler=_runtime_command)
+    runtime_show = runtime_commands.add_parser("show", help="Show runtime configuration and paths.")
+    runtime_show.add_argument("name")
+    runtime_show.add_argument("--json", dest="json_output", action="store_true")
+    runtime_show.set_defaults(handler=_runtime_command)
+    runtime_delete = runtime_commands.add_parser("delete", help="Remove a runtime registry entry; preserve its data.")
+    runtime_delete.add_argument("name")
+    runtime_delete.add_argument("--yes", action="store_true", dest="confirmed")
+    runtime_delete.set_defaults(handler=_runtime_command)
 
     commands.add_parser(
         "start",
@@ -1459,6 +1513,9 @@ def main(
     args = parser.parse_args(argv)
 
     try:
+        if args.command == "runtime":
+            return args.handler(args)
+
         if args.command in {"start", "stop", "restart"}:
             return _delegate_local_cli(args.command, [])
 

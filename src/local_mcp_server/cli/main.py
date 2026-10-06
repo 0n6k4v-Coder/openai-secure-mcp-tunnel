@@ -77,17 +77,16 @@ def _require_file(path: Path, description: str) -> None:
 
 
 def _compose_command(*args: str) -> list[str]:
+    from ..runtime.context import get_runtime_context
+    context = get_runtime_context()
     _require_file(COMPOSE_FILE, "Compose file")
-
-    command = [
-        "docker",
-        "compose",
-        "--file",
-        str(COMPOSE_FILE),
-    ]
-
-    if ENV_FILE.is_file():
-        command.extend(["--env-file", str(ENV_FILE)])
+    command = ["docker", "compose", "--file", str(COMPOSE_FILE)]
+    if not context.is_default:
+        command.extend(["--project-name", context.profile.compose_project_name])
+    runtime_env_file = context.config_root / ".env"
+    selected_env_file = runtime_env_file if not context.is_default and runtime_env_file.is_file() else ENV_FILE
+    if selected_env_file.is_file():
+        command.extend(["--env-file", str(selected_env_file)])
 
     command.extend(args)
     return command
@@ -99,11 +98,14 @@ def _run_passthrough(
     cwd: Path = PROJECT_ROOT,
     env: dict[str, str] | None = None,
 ) -> int:
+    from ..runtime.context import get_runtime_context
+    context = get_runtime_context()
+    child_env = env if env is not None or context.is_default else context.child_environment()
     try:
         completed = subprocess.run(
             list(command),
             cwd=cwd,
-            env=env,
+            env=child_env,
             check=False,
         )
     except FileNotFoundError as exc:
@@ -120,11 +122,14 @@ def _run_capture(
     cwd: Path = PROJECT_ROOT,
     env: dict[str, str] | None = None,
 ) -> subprocess.CompletedProcess[str]:
+    from ..runtime.context import get_runtime_context
+    context = get_runtime_context()
+    child_env = env if env is not None or context.is_default else context.child_environment()
     try:
         return subprocess.run(
             list(command),
             cwd=cwd,
-            env=env,
+            env=child_env,
             check=False,
             capture_output=True,
             text=True,

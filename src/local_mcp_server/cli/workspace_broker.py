@@ -179,10 +179,15 @@ def _volume_name(
 def _run_command(
     command: list[str],
 ) -> subprocess.CompletedProcess[str]:
+    from ..runtime.context import get_runtime_context
+
+    context = get_runtime_context()
+    child_env = context.child_environment() if not context.is_default else None
     try:
         return subprocess.run(
             command,
             check=False,
+            env=child_env,
             stdout=subprocess.PIPE,
             stderr=subprocess.PIPE,
             text=True,

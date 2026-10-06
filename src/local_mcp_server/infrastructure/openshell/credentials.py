@@ -31,7 +31,12 @@ def _command_exists(command: str) -> None:
 
 
 def _gateway_endpoint() -> str:
-    raw = os.environ.get(GATEWAY_ENDPOINT_ENV, DEFAULT_GATEWAY_ENDPOINT).strip()
+    from ...runtime.context import get_runtime_context
+    context = get_runtime_context()
+    default_endpoint = DEFAULT_GATEWAY_ENDPOINT
+    if not context.is_default:
+        default_endpoint = os.environ.get("OPENSHELL_RUNTIME_GATEWAY", f"https://127.0.0.1:{context.profile.openshell_port}")
+    raw = os.environ.get(GATEWAY_ENDPOINT_ENV, default_endpoint).strip()
 
     if not raw:
         raise CredentialError(f"{GATEWAY_ENDPOINT_ENV} must not be empty.")

@@ -8,10 +8,12 @@ class OpenShellConnectionError(RuntimeError):
 
 
 def active_client() -> SandboxClient:
+    from ...runtime.context import get_runtime_context
+    runtime = get_runtime_context()
     try:
         return SandboxClient.from_active_cluster()
     except Exception as exc:
         raise OpenShellConnectionError(
-            f"Could not connect to the configured OpenShell gateway: "
-            f"{type(exc).__name__}: {exc}"
+            f"Could not connect to the configured OpenShell gateway for runtime "
+            f"{runtime.profile.name!r}: {type(exc).__name__}: {exc}"
         ) from exc

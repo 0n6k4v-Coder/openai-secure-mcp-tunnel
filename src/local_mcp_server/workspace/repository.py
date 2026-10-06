@@ -19,7 +19,7 @@ def _default_grants_file() -> Path:
         "/var/lib/local-mcp-server/workspace-grants/workspace-grants.json"
     )
 
-    if container_path.parent.exists():
+    if os.environ.get("MCP_RUNTIME", "default") == "default" and container_path.parent.exists():
         return container_path.resolve()
 
     return workspace_grants_file().resolve()

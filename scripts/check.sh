@@ -12,7 +12,7 @@ echo "==> Running Ruff"
 uv run --locked ruff check src tests
 
 echo "==> Running unit tests"
-uv run --locked pytest tests/unit
+uv run --locked pytest tests/unit tests/e2e/cli/test_mcpctl_runtime.py
 
 echo "==> Validating Compose configuration"
 CHECK_CONFIG_DIR="$(mktemp -d)"

@@ -36,11 +36,13 @@ def xdg_state_home() -> Path:
 
 
 def app_config_root() -> Path:
-    return xdg_config_home() / APPLICATION_NAME
+    from ..runtime.context import get_runtime_context
+    return get_runtime_context().config_root
 
 
 def app_state_root() -> Path:
-    return xdg_state_home() / APPLICATION_NAME
+    from ..runtime.context import get_runtime_context
+    return get_runtime_context().state_root
 
 
 def mcp_clients_root() -> Path:

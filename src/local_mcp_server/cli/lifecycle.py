@@ -39,6 +39,51 @@ class LifecycleError(RuntimeError):
     """Raised when application lifecycle management cannot proceed."""
 
 
+def _configured_port(name: str, default: int) -> int:
+    """Read and validate a host-published port from the runtime environment."""
+    raw_value = os.environ.get(name)
+    if raw_value is None or not raw_value.strip():
+        if os.environ.get("MCP_RUNTIME", "default") != "default":
+            from ..runtime.context import get_runtime_context
+            profile = get_runtime_context().profile
+            runtime_ports = {
+                "MCP_PORT": profile.mcp_port,
+                "OPENSHELL_PORT": profile.openshell_port,
+                "OPENSHELL_HEALTH_PORT": profile.openshell_health_port,
+            }
+            return runtime_ports.get(name, default)
+        return default
+
+    try:
+        port = int(raw_value)
+    except ValueError as exc:
+        raise LifecycleError(
+            f"{name} must be an integer port between 1 and 65535."
+        ) from exc
+
+    if not 1 <= port <= 65535:
+        raise LifecycleError(
+            f"{name} must be an integer port between 1 and 65535."
+        )
+
+    return port
+
+
+def _gateway_health_url() -> str:
+    return f"http://127.0.0.1:{_configured_port('OPENSHELL_HEALTH_PORT', 8081)}/readyz"
+
+
+def _mcp_health_url() -> str:
+    return f"http://127.0.0.1:{_configured_port('MCP_PORT', 8000)}/healthz"
+
+
+def _health_request(url: str) -> urllib.request.Request:
+    # The MCP health route deliberately allows its fixed internal service Host.
+    # The published host port can differ between development and production.
+    headers = {"Host": "127.0.0.1:8000"} if url.endswith("/healthz") else {}
+    return urllib.request.Request(url, method="GET", headers=headers)
+
+
 @dataclass(frozen=True)
 class MCPClientDefinition:
     key: str
@@ -392,10 +437,7 @@ def _http_healthy(
 ) -> bool:
     """Return whether an HTTP readiness endpoint responds with HTTP 200."""
     try:
-        request = urllib.request.Request(
-            url,
-            method="GET",
-        )
+        request = _health_request(url)
 
         with urllib.request.urlopen(
             request,
@@ -420,10 +462,7 @@ def _wait_for_http(
 
     while time.monotonic() < deadline:
         try:
-            request = urllib.request.Request(
-                url,
-                method="GET",
-            )
+            request = _health_request(url)
 
             with urllib.request.urlopen(
                 request,
@@ -481,10 +520,10 @@ def start_core_services() -> None:
         raise LifecycleError("Failed to start OpenShell Gateway and MCP Server.")
 
     _wait_for_service_running("openshell-gateway")
-    _wait_for_http(GATEWAY_HEALTH_URL)
+    _wait_for_http(_gateway_health_url())
 
     _wait_for_service_running("mcp-server")
-    _wait_for_http(MCP_HEALTH_URL)
+    _wait_for_http(_mcp_health_url())
 
 
 def start_tunnel_client() -> None:
@@ -625,7 +664,7 @@ def get_status(
     if gateway.running:
         gateway = replace(
             gateway,
-            health=("healthy" if _http_healthy(GATEWAY_HEALTH_URL) else "unhealthy"),
+            health=("healthy" if _http_healthy(_gateway_health_url()) else "unhealthy"),
         )
 
     mcp_server = _service_status(
