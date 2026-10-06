@@ -536,7 +536,7 @@ def _cleanup(*, json_output: bool = False) -> int:
     print()
     print("Preserved: containers, networks, Docker images and volumes,")
     print("workspace grants, host workspaces, credentials, and runtime data.")
-    print("No resources were removed or modified.")
+    print("No files or resources were removed or modified.")
     return EXIT_OK
 
 
