@@ -728,6 +728,18 @@ def test_credential_create_missing_metadata_requires_tty(
         cli._credential_create(None, "generic", "GITHUB_TOKEN", True)
 
 
+def test_credential_create_non_tty_requires_terminal_for_secret(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    class NonTTY:
+        def isatty(self) -> bool:
+            return False
+
+    monkeypatch.setattr(cli.sys, "stdin", NonTTY())
+    with pytest.raises(ValueError, match="terminal for hidden secret input"):
+        cli._credential_create("github", "generic", "GITHUB_TOKEN", True)
+
+
 def test_credential_create_delegates(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:

@@ -584,12 +584,15 @@ def _credential_create(
     """Create a credential, prompting for omitted metadata only in a terminal."""
     interactive = sys.stdin.isatty()
 
-    if not interactive and (
-        name is None or provider_type is None or credential_key is None
-    ):
+    if not interactive:
+        if name is None or provider_type is None or credential_key is None:
+            raise ValueError(
+                "credential create needs name, --type, and --key when stdin is "
+                "not a terminal; run in a terminal to be prompted."
+            )
         raise ValueError(
-            "credential create needs name, --type, and --key when stdin is not "
-            "a terminal; run in a terminal to be prompted."
+            "credential create requires a terminal for hidden secret input; "
+            "secrets cannot be supplied as command-line arguments."
         )
 
     if name is None:
