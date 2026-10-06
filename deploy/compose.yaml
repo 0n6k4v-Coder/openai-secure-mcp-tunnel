@@ -135,9 +135,6 @@ services:
       WORKSPACE_GRANTS_FILE: /var/lib/local-mcp-server/workspace-grants/workspace-grants.json
       WORKSPACE_GRANTS_READ_ONLY: "true"
 
-      INSTALLATION_STATE_FILE: /var/lib/local-mcp-server/state/installations.json
-      INSTALLATION_TIMEOUT_SECONDS: ${INSTALLATION_TIMEOUT_SECONDS:-300}
-
       LOG_LEVEL: ${LOG_LEVEL:-INFO}
 
       OPENSHELL_SYSTEM_GATEWAY_DIR: /config

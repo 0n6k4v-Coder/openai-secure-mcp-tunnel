@@ -269,16 +269,6 @@ Gateway: /var/lib/local-mcp-server/config
 
 `MCP_CONFIG_DIR` therefore identifies Gateway/OpenShell state; it is not the storage location for MCP client credentials.
 
-### MCP installation state
-
-The MCP server stores approval-gated installation state in:
-
-```text
-/var/lib/local-mcp-server/installations.json
-```
-
-This is backed by the host path configured by `MCP_INSTALLATION_STATE_FILE` and mounted read/write into the MCP container.
-
 ### Workspace grants
 
 The host workspace broker stores authorization records in:
@@ -324,11 +314,6 @@ src/local_mcp_server/
 │   ├── service.py             # sandbox application facade
 │   └── tools.py               # sandbox MCP tools
 │
-├── installation/              # installation domain
-│   ├── domain.py              # installation request state
-│   ├── service.py             # approval + installation orchestration
-│   └── tools.py               # installation MCP tools
-│
 ├── credentials/               # credential domain
 │   └── service.py             # credential application facade
 │
@@ -360,7 +345,6 @@ src/local_mcp_server/
                      ┌──────────────────────┐
                      │      MCP tools       │
                      │ workspace / sandbox  │
-                     │ installation / ...   │
                      └──────────┬───────────┘
                                 │
                                 ▼
@@ -383,7 +367,7 @@ src/local_mcp_server/
 
 The structure is intentionally domain-first: everything a developer needs for one business capability is discoverable under that capability's directory.
 
-- workspace/, sandbox/, installation/, and future domains such as news/ own their domain-specific tools, services, models, and persistence interfaces.
+- workspace/, sandbox/, and future domains such as news/ own their domain-specific tools, services, models, and persistence interfaces.
 - tools.py in a domain is the MCP adapter for that domain; it should stay thin and delegate to service.py.
 - service.py owns application/use-case orchestration for that domain.
 - domain.py contains infrastructure-independent business state and validation where the domain needs it.
@@ -393,34 +377,6 @@ The structure is intentionally domain-first: everything a developer needs for on
 - server/ owns transport/process concerns, while cli/ owns operator-facing interfaces.
 
 When a new business capability is added, it should normally start as a new top-level domain directory rather than scattering files across application/, domain/, and mcp/. For example, a future news/ domain can begin with only the files it actually needs (service.py, tools.py, and optionally domain.py or repository.py) and grow incrementally.
-
-## Installation execution flow
-
-Software installation is intentionally separate from generic sandbox command execution.
-
-```text
-MCP request
-   │
-   ▼
-create_installation_request
-   │
-   ├── validate package-manager command
-   ├── persist pending request
-   ▼
-approve_installation
-   │
-   ▼
-execute_installation
-   │
-   ├── consume one approved request
-   ├── revalidate command
-   ├── OpenShell SandboxClient.exec()
-   └── persist completed/failed state
-```
-
-The installation command validator only permits approved package-manager entrypoints and requires the corresponding install/add/require operation. It rejects shell chaining and other shell metacharacter syntax before execution.
-
-Generic `execute_sandbox` remains the lower-level sandbox command API. Installation requests must use the approval-gated installation path instead.
 
 ## Credential flow
 
@@ -484,7 +440,6 @@ It handles Compose/OpenShell/credential operations and exposes workspace authori
 | `${XDG_CONFIG_HOME:-$HOME/.config}/local-mcp-server/mcp-clients/openai/config.yaml` | User-local OpenAI MCP tunnel client configuration |\n| `${XDG_CONFIG_HOME:-$HOME/.config}/local-mcp-server/mcp-clients/openai/credentials` | User-local OpenAI control-plane API key consumed as a Docker secret |\n| `.secrets/control-plane-api-key` | Docker Compose secret consumed by `tunnel-client` |
 | `XDG_CONFIG_HOME` | User-local MCP client configuration root; defaults to `$HOME/.config` |\n| `MCP_CONFIG_DIR` | Gateway persistent OpenShell state/config directory |
 | `WORKSPACE_GRANTS_DIR` | Trusted workspace authorization database |
-| `MCP_INSTALLATION_STATE_FILE` | Installation approval/execution state |
 | `SANDBOX_IMAGE` | OpenShell sandbox workload image |
 | `SANDBOX_DEFAULT_CPU` / `SANDBOX_DEFAULT_MEMORY` | Default per-sandbox resource limits |
 
@@ -499,6 +454,6 @@ The following are intentional boundaries of the current design:
 5. **Host workspace authorization is performed through `mcpctl workspace`, not by model-supplied host paths.**
 6. **The MCP container reads workspace grants but cannot mutate them.**
 7. **Sandbox workloads receive an authorized workspace mount rather than arbitrary host filesystem paths.**
-8. **Generic command execution is sandbox-scoped; installation uses a separate approval-gated path.**
+8. **Generic command execution is sandbox-scoped and governed by OpenShell policy.**
 9. **MCP application code does not directly invoke Docker.**
 10. **Sandbox containers are OpenShell-managed workloads, not Compose services.**

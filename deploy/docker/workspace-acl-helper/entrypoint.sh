@@ -47,6 +47,11 @@ if [ "$host_uid" = "0" ]; then
     exit 2
 fi
 
+if [ "$host_uid" = "$sandbox_uid" ]; then
+    echo "host UID and sandbox UID must differ to enforce workspace authority" >&2
+    exit 2
+fi
+
 root=/workspace
 
 if [ ! -d "$root" ]; then
@@ -183,6 +188,48 @@ if [ "$operation" = "provision-sandbox-acl" ]; then
             \) -prune -o \
             -type f \
             -exec setfacl -m "u:$host_uid:rwX" {} +
+    fi
+
+    # Git metadata is handled separately from ordinary workspace files.
+    # Never follow a .git symlink: it may point outside the authorized root.
+    if [ -L "$root/.git" ]; then
+        echo "workspace .git must not be a symbolic link" >&2
+        exit 1
+    fi
+
+    if [ -d "$root/.git" ]; then
+        # Strip owner permissions when Sandbox owns an object. For other
+        # ownership, deny the Sandbox explicitly and grant the Host access.
+        find -P "$root/.git" -xdev -type d -uid "$sandbox_uid" \
+            -exec setfacl -m "u::---,u:$host_uid:rwx" {} +
+
+        find -P "$root/.git" -xdev -type d ! -uid "$sandbox_uid" \
+            -exec setfacl -m "u:$sandbox_uid:---,u:$host_uid:rwx" {} +
+
+        # Inherited ACLs keep newly created metadata Host-accessible and
+        # prevent Sandbox access; inaccessible directories prevent Sandbox
+        # from creating entries in the first place.
+        find -P "$root/.git" -xdev -type d \
+            -exec setfacl -m "d:u:$sandbox_uid:---,d:u:$host_uid:rwx" {} +
+
+        find -P "$root/.git" -xdev -type f -uid "$sandbox_uid" \
+            -exec setfacl -m "u::---,u:$host_uid:rwX" {} +
+
+        find -P "$root/.git" -xdev -type f ! -uid "$sandbox_uid" \
+            -exec setfacl -m "u:$sandbox_uid:---,u:$host_uid:rwX" {} +
+
+    elif [ -f "$root/.git" ]; then
+        # Git worktrees may use a .git pointer file. Restrict only the
+        # pointer within this workspace; never traverse its target.
+        if [ "$(stat -c '%u' "$root/.git")" = "$sandbox_uid" ]; then
+            setfacl -m "u::---,u:$host_uid:rwX" "$root/.git"
+        else
+            setfacl -m "u:$sandbox_uid:---,u:$host_uid:rwX" "$root/.git"
+        fi
+
+    elif [ -e "$root/.git" ]; then
+        echo "workspace .git must be a regular file or directory" >&2
+        exit 1
     fi
 
     exit 0

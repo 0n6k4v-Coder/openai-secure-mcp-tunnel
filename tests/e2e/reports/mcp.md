@@ -2,7 +2,7 @@
 
 ## 1. Purpose
 
-Validate the MCP server's externally observable behavior through a real MCP client and the running server. Cover protocol negotiation, tool discovery, input schemas, tool execution, error handling, security boundaries, workspace file operations, sandbox lifecycle operations, installation requests, Chrome DevTools commands, health checks, and request logging.
+Validate the MCP server's externally observable behavior through a real MCP client and the running server. Cover protocol negotiation, tool discovery, input schemas, tool execution, error handling, security boundaries, workspace file operations, sandbox lifecycle operations, Chrome DevTools commands, health checks, and request logging.
 
 The test suite must:
 
@@ -12,7 +12,7 @@ The test suite must:
 - Exercise success paths and expected failures.
 - Verify that destructive operations target only dedicated test resources.
 - Verify that workspace file operations cannot escape the selected sandbox workspace.
-- Verify that installation and browser commands execute only within the intended sandbox.
+- Verify that sandbox and browser commands execute only within the intended sandbox.
 - Avoid logging or exposing credentials, secret values, or unrelated workspace data.
 - Clean up resources even when an assertion or operation fails.
 - Record test outcomes from actual execution, not assumptions.
@@ -73,12 +73,12 @@ The current source registers `GET /healthz`. The response includes `status`, `se
 
 ## 5. Tool Registry and Discovery
 
-The current registration code registers 23 tools: one system-information tool, eleven sandbox tools, nine workspace tools, one installation tool, and one Chrome DevTools tool.
+The current registration code registers 22 tools: one system-information tool, eleven sandbox tools, nine workspace tools, and one Chrome DevTools tool.
 
 | ID | Test | Expected Result | Status |
 |---|---|---|---|
 | MCP-REG-001 | List all registered tools | Returns the complete expected tool set | 🟠 Blocked |
-| MCP-REG-002 | Verify exact tool count | Registry contains 23 tools | 🟠 Blocked |
+| MCP-REG-002 | Verify exact tool count | Registry contains 22 tools | 🟠 Blocked |
 | MCP-REG-003 | Verify tool names | Every registered tool has the expected exact name | 🟠 Blocked |
 | MCP-REG-004 | Verify tool names are unique | No duplicate tool names are returned | 🟠 Blocked |
 | MCP-REG-005 | Verify tool descriptions | Each tool has a useful description matching its implemented behavior | 🟠 Blocked |
@@ -278,29 +278,6 @@ Workspace file operations target `/workspace/project` inside the selected OpenSh
 | MCP-WS-064 | Verify unknown workspace IDs are not exposed as valid grants | Only recognized authorized grants are returned | ⚪ Not implemented |
 | MCP-WS-065 | Verify host filesystem isolation | The MCP container does not independently inspect arbitrary host paths when resolving/listing grants | ⚪ Not implemented |
 
-## 9. Installation Tool
-
-Current signature: `request_tool_installation(sandbox_name, tool_name, version, source, install_command, reason)`. The implementation creates an installation request, approves it through the service layer, executes it in the requested sandbox, and translates `InstallationError` into an MCP `ToolError`.
-
-Because this tool can install software and execute a command, tests must use a disposable sandbox and approved, harmless test inputs only.
-
-| ID | Test | Expected Result | Status |
-|---|---|---|---|
-| MCP-INSTALL-001 | Call with valid test metadata and an approved installation | Installation request is processed and execution result is returned | ⚪ Not implemented |
-| MCP-INSTALL-002 | Omit each required argument in turn | Tool schema or call validation rejects incomplete input | ⚪ Not implemented |
-| MCP-INSTALL-003 | Supply an unsupported tool name or version | Appropriate validation rejects unsupported input | ⚪ Not implemented |
-| MCP-INSTALL-004 | Supply an unapproved installation command | Request is rejected and no command executes | ⚪ Not implemented |
-| MCP-INSTALL-005 | Attempt an arbitrary command such as `true` without approval | Returns an MCP error result, consistent with the existing integration security test | ⚪ Not implemented |
-| MCP-INSTALL-006 | Use a nonexistent sandbox | Returns a clear error and does not execute on the host | ⚪ Not implemented |
-| MCP-INSTALL-007 | Use an invalid installation source | Validation fails safely | ⚪ Not implemented |
-| MCP-INSTALL-008 | Supply a reason with special characters | Input is handled without corrupting the request or execution boundary | ⚪ Not implemented |
-| MCP-INSTALL-009 | Cause installation validation to fail | `InstallationError` becomes an MCP tool error | ⚪ Not implemented |
-| MCP-INSTALL-010 | Cause installation execution to fail | MCP client receives a tool error, not a false success | ⚪ Not implemented |
-| MCP-INSTALL-011 | Verify command execution location | Installation executes only inside the named OpenShell sandbox | ⚪ Not implemented |
-| MCP-INSTALL-012 | Inspect output and logs for secrets | Test secrets are not exposed in unintended output or logs | ⚪ Not implemented |
-| MCP-INSTALL-013 | Verify approval semantics | Destructive installation calls require the intended client/host approval behavior | ⚪ Not implemented |
-| MCP-INSTALL-014 | Verify cleanup after installation tests | Disposable resources are cleaned up or their state is recorded | ⚪ Not implemented |
-
 ## 10. Chrome DevTools Tool
 
 Current signature: `execute_chrome_devtools_command(sandbox_name, command, arguments=None)`. The implementation delegates to the Chrome DevTools service. Its tool annotations mark the operation destructive and open-world. The caller cannot select or override the Chrome connection endpoint.
@@ -349,7 +326,6 @@ Current signature: `execute_chrome_devtools_command(sandbox_name, command, argum
 | MCP-SEC-005 | Attempt to authorize or use a nonexistent host workspace | No invalid workspace capability is created or used | ⚪ Not implemented |
 | MCP-SEC-006 | Attempt to use a revoked or unknown workspace ID | Operation fails and does not create an unintended binding | ⚪ Not implemented |
 | MCP-SEC-007 | Attempt to execute a host command through sandbox tools | Command remains confined to the requested sandbox | ⚪ Not implemented |
-| MCP-SEC-008 | Attempt to install a tool using an unapproved command | Installation is rejected and the command is not executed | ⚪ Not implemented |
 | MCP-SEC-009 | Attempt to redirect DevTools to an arbitrary endpoint | Caller cannot override the managed Chrome endpoint | ⚪ Not implemented |
 | MCP-SEC-010 | Submit requests with a disallowed Host header | Transport security rejects the request | ⚪ Not implemented |
 | MCP-SEC-011 | Inspect errors for environment secrets | Errors do not reveal API keys or unrelated credential contents | ⚪ Not implemented |
@@ -390,7 +366,6 @@ These tests validate end-to-end behavior across multiple tools. Use unique test 
 | MCP-FLOW-005 | Authorize host workspace, create host-backed sandbox, inspect binding | Sandbox is bound only to the authorized workspace | ⚪ Not implemented |
 | MCP-FLOW-006 | Attempt to use a nonexistent host workspace during creation | Sandbox creation fails safely | ⚪ Not implemented |
 | MCP-FLOW-007 | Create a browser sandbox and execute a DevTools command | Browser tool operates against the intended sandbox | ⚪ Not implemented |
-| MCP-FLOW-008 | Request an unapproved installation and then make a harmless system-info call | Installation is rejected and the MCP server remains usable | ⚪ Not implemented |
 | MCP-FLOW-009 | Cause a tool failure and call a different read-only tool afterward | A tool error does not unnecessarily take down the server | ⚪ Not implemented |
 | MCP-FLOW-010 | Execute multiple independent tool calls against separate test sandboxes | Results and mutations remain isolated between sandboxes | ⚪ Not implemented |
 | MCP-FLOW-011 | Run a multi-step workflow with a failure in the middle | Failure is accurately reported and previously created resources are cleaned up | ⚪ Not implemented |
@@ -406,7 +381,6 @@ The repository currently has `tests/integration/test_mcp_server.py`. These integ
 | `test_mcp_negotiates_current_protocol` | Protocol version, server identity, and tool capability | Running server; `RUN_MCP_INTEGRATION=1` |
 | `test_mcp_exposes_current_tool_surface` | Exact registered tool set | Running server; `RUN_MCP_INTEGRATION=1` |
 | `test_mcp_tool_call_round_trip` | Successful `get_system_info` call | Running server; `RUN_MCP_INTEGRATION=1` |
-| `test_installation_tool_rejects_unapproved_command` | Rejection of an unapproved installation command | Running server; `RUN_MCP_INTEGRATION=1` |
 
 These tests should remain useful as integration checks. The E2E suite should add the broader tool-by-tool and workflow coverage above rather than duplicate these checks without additional value.
 
@@ -418,7 +392,6 @@ These tests should remain useful as integration checks. The E2E suite should add
 - Never use real API keys, credentials, or private user files as test inputs.
 - Register cleanup immediately after creating a sandbox, workspace file, directory, or other resource.
 - Use harmless commands for command-execution tests.
-- Test installation approval and rejection without installing untrusted packages.
 - Avoid browser actions that affect accounts, external websites, or persistent user sessions.
 - Capture stdout, stderr, MCP result content, and relevant server logs when diagnosing failures, while redacting secrets.
 - Ensure a test failure cannot leave an unexpected sandbox or test file behind.
@@ -432,7 +405,6 @@ These tests should remain useful as integration checks. The E2E suite should add
 3. Run tool registry and read-only tool tests.
 4. Run workspace file tests in a disposable sandbox.
 5. Run sandbox lifecycle tests with guaranteed cleanup.
-6. Run installation rejection tests before any approved installation test.
 7. Run Chrome DevTools tests against a dedicated browser sandbox.
 8. Run security-boundary tests.
 9. Run cross-tool workflows.

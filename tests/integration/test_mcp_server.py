@@ -31,7 +31,6 @@ EXPECTED_TOOLS = {
     "delete_workspace_file",
     "delete_workspace_directory",
     "list_authorized_host_workspaces",
-    "request_tool_installation",
     "execute_chrome_devtools_command",
 }
 
@@ -125,19 +124,10 @@ def test_mcp_tool_call_round_trip(
 
 
 @pytest.mark.integration
-def test_installation_tool_rejects_unapproved_command(
+def test_mcp_hides_package_installation_but_keeps_sandbox_execution(
     mcp_client: MCPIntegrationClient,
 ) -> None:
-    result = mcp_client.call_tool_expect_error(
-        "request_tool_installation",
-        {
-            "sandbox_name": "integration-security-check",
-            "tool_name": "test-tool",
-            "version": "1.0.0",
-            "source": "integration-test",
-            "install_command": "true",
-            "reason": "Integration test must not execute arbitrary commands.",
-        },
-    )
-
-    assert result.is_error is True
+    result = mcp_client.run(lambda client: client.list_tools())
+    names = {tool.name for tool in result.tools}
+    assert "request_tool_installation" not in names
+    assert "execute_sandbox_command" in names

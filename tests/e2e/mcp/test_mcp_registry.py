@@ -37,17 +37,6 @@ EXPECTED_ARGUMENTS: dict[str, tuple[set[str], set[str]]] = {
     "delete_workspace_file": ({"sandbox_name", "relative_path"}, set()),
     "delete_workspace_directory": ({"sandbox_name", "relative_path"}, set()),
     "list_authorized_host_workspaces": (set(), set()),
-    "request_tool_installation": (
-        {
-            "sandbox_name",
-            "tool_name",
-            "version",
-            "source",
-            "install_command",
-            "reason",
-        },
-        set(),
-    ),
     "execute_chrome_devtools_command": (
         {"sandbox_name", "command"},
         {"arguments"},
@@ -82,7 +71,6 @@ EXPECTED_DESCRIPTION_FRAGMENTS = {
     "delete_workspace_file": "delete a regular file",
     "delete_workspace_directory": "delete a directory tree",
     "list_authorized_host_workspaces": "list human-authorized host workspace grants",
-    "request_tool_installation": "install an approved software tool",
     "execute_chrome_devtools_command": "execute a chrome devtools cli command",
 }
 
@@ -110,7 +98,6 @@ EXPECTED_ANNOTATIONS: dict[str, tuple[bool, bool, bool, bool]] = {
     "delete_workspace_file": (False, True, False, False),
     "delete_workspace_directory": (False, True, False, False),
     "list_authorized_host_workspaces": (True, False, True, False),
-    "request_tool_installation": (False, True, False, False),
     "execute_chrome_devtools_command": (False, True, False, True),
 }
 
@@ -135,7 +122,7 @@ def test_MCP_REG_001_list_all_registered_tools(mcp_client) -> None:
 
 @pytest.mark.integration
 def test_MCP_REG_002_verify_exact_tool_count(mcp_client) -> None:
-    assert len(_list_tools(mcp_client)) == 23
+    assert len(_list_tools(mcp_client)) == 22
 
 
 @pytest.mark.integration
@@ -271,3 +258,10 @@ def test_MCP_REG_012_verify_unsupported_capabilities(mcp_client) -> None:
         assert unsupported not in advertised, (
             f"Server advertises unsupported capability {unsupported!r}"
         )
+
+
+@pytest.mark.integration
+def test_MCP_REG_013_package_installation_tool_is_not_exposed(mcp_client) -> None:
+    names = {tool.name for tool in _list_tools(mcp_client)}
+    assert "request_tool_installation" not in names
+    assert "execute_sandbox_command" in names
