@@ -795,7 +795,8 @@ def _uninstall(*, confirmed: bool, purge: bool = False) -> int:
                 file=sys.stderr,
             )
             print(
-                "Inspect failed paths before retrying; do not assume the app is intact.",
+                "Inspect failed paths before retrying; do not assume the "
+                "application is intact.",
                 file=sys.stderr,
             )
             return EXIT_ERROR
