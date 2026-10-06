@@ -1014,7 +1014,7 @@ def test_uninstall_purge_dry_run_explains_scope_and_external_resources(
     assert "Custom Compose paths outside application roots are not deleted." in output
     assert "MCP_GATEWAY_CONFIG_FILE override" in output
     assert "PRESERVE / REVIEW ONLY" in output
-    assert "not certified as removed by this application-root purge" in output
+    assert "certified as removed by this application-root purge." in output
     assert not config_home.exists()
     assert not state_home.exists()
 
