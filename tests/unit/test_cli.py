@@ -993,4 +993,5 @@ def test_started_stack_reports_verified_readiness(
     result = cli._verify_started_stack("START")
 
     assert result == expected_code
-    assert expected_result in capsys.readouterr().out + capsys.readouterr().err
+    captured = capsys.readouterr()
+    assert expected_result in captured.out + captured.err
