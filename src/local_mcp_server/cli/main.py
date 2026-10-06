@@ -48,6 +48,8 @@ from ..credentials.service import (  # noqa: E402
     update_credential,
 )
 
+from ..packages.manager import PackageManagerError  # noqa: E402
+
 from ..sandbox.service import (  # noqa: E402
     SandboxError,
     create_sandbox,
@@ -336,18 +338,30 @@ def _logs(
 def _sandbox_list(json_output: bool) -> int:
     data = _parse_json(list_sandboxes())
 
-    if json_output:
-        _print_json(data)
-        return EXIT_OK
-
     if not isinstance(data, list):
         raise RuntimeError("OpenShell returned an invalid sandbox list.")
 
     rows: list[list[str]] = []
+    from ..packages.manager import show_packages
 
     for sandbox in data:
         if not isinstance(sandbox, dict):
             continue
+        try:
+            package_summary = show_packages(str(sandbox.get("name", "")).strip())
+            package_ecosystems = package_summary.get("ecosystems", [])
+            package_config_status = "CONFIGURED" if package_ecosystems else "NONE"
+            install_statuses = [
+                str(item.get("installation_status", "UNKNOWN"))
+                for item in package_ecosystems
+                if isinstance(item, dict)
+            ]
+            installation_status = ", ".join(install_statuses) if install_statuses else "NONE"
+            sandbox["package_state"] = package_summary
+        except Exception:
+            package_config_status = "UNKNOWN"
+            installation_status = "UNKNOWN"
+            sandbox["package_state"] = {"status": "UNKNOWN"}
 
         rows.append(
             [
@@ -356,11 +370,17 @@ def _sandbox_list(json_output: bool) -> int:
                 str(sandbox.get("profile", "default")),
                 str(sandbox.get("host_workspace_id", "")),
                 str(sandbox.get("id", "")),
+                package_config_status,
+                installation_status,
             ]
         )
 
+    if json_output:
+        _print_json(data)
+        return EXIT_OK
+
     _print_table(
-        ["NAME", "STATUS", "PROFILE", "HOST WORKSPACE ID", "ID"],
+        ["NAME", "STATUS", "PROFILE", "HOST WORKSPACE ID", "ID", "PACKAGE CONFIG", "INSTALLATION"],
         rows,
     )
 
@@ -373,6 +393,12 @@ def _sandbox_status(name: str, json_output: bool) -> int:
     if not isinstance(data, dict):
         raise RuntimeError("OpenShell returned invalid sandbox metadata.")
 
+    from ..packages.manager import show_packages
+    try:
+        data["package_state"] = show_packages(name)
+    except Exception:
+        data["package_state"] = {"status": "UNKNOWN"}
+
     if json_output:
         _print_json(data)
         return EXIT_OK
@@ -382,6 +408,22 @@ def _sandbox_status(name: str, json_output: bool) -> int:
     print(f"Profile:             {data.get('profile', 'default')}")
     print(f"OpenShell workspace: {data.get('workspace', '')}")
     print(f"ID:                  {data.get('id', '')}")
+    from ..packages.manager import show_packages
+    try:
+        package_state = show_packages(name)
+    except Exception:
+        package_state = {"package_state_root": "UNKNOWN", "ecosystems": None}
+    print(f"Package state root:   {package_state.get('package_state_root', 'UNKNOWN')}")
+    ecosystems = package_state.get("ecosystems", [])
+    if ecosystems is None:
+        print("Package status:       UNKNOWN (inspection failed)")
+    elif ecosystems:
+        print("Package ecosystems:   " + ", ".join(str(item.get("ecosystem")) for item in ecosystems if isinstance(item, dict)))
+        for item in ecosystems:
+            if isinstance(item, dict):
+                print(f"  {item.get('ecosystem')}: manifest={item.get('manifest_status')} lock={item.get('lock_status')} install={item.get('installation_status')}")
+    else:
+        print("Package configuration: NONE")
 
     browser = data.get("browser")
     if isinstance(browser, dict):
@@ -402,6 +444,7 @@ def _sandbox_create(
     standalone: bool,
     json_output: bool,
     profile: str = "default",
+    package_ecosystem: str | None = None,
 ) -> int:
     if standalone and workspace_id is not None:
         raise ValueError("sandbox create cannot use --workspace with --standalone.")
@@ -412,6 +455,15 @@ def _sandbox_create(
         )
 
     validate_name(name)
+    if package_ecosystem is not None:
+        from ..packages.manager import get_adapter
+        adapter = get_adapter(package_ecosystem)
+        if profile != adapter.network_profile:
+            raise PackageManagerError(
+                f"Ecosystem {package_ecosystem!r} requires sandbox profile "
+                f"{adapter.network_profile!r}; selected profile is {profile!r}.",
+                exit_code=4,
+            )
     from . import lifecycle
 
     required_image = (
@@ -436,11 +488,30 @@ def _sandbox_create(
     if not isinstance(data, dict):
         raise RuntimeError("OpenShell returned invalid sandbox metadata.")
 
+    if package_ecosystem is not None:
+        from ..packages.manager import initialize_sandbox_packages, validate_sandbox_capabilities
+        try:
+            validate_sandbox_capabilities(name, package_ecosystem, profile)
+            package_result = initialize_sandbox_packages(name, package_ecosystem)
+        except Exception as package_error:
+            try:
+                delete_sandbox(name)
+            except Exception as cleanup_error:
+                raise RuntimeError(
+                    f"Package setup failed ({type(package_error).__name__}) and sandbox cleanup "
+                    f"also failed ({type(cleanup_error).__name__}); sandbox state requires inspection."
+                ) from package_error
+            raise
+        data["package_configuration"] = {"ecosystem": package_ecosystem, "status": "INITIALIZED", "installed": False, "manifest": str(package_result.manifest)}
+
     if json_output:
         _print_json(data)
         return EXIT_OK
 
     print("Sandbox created.")
+    if package_ecosystem is not None:
+        print(f"Package configuration: INITIALIZED ({package_ecosystem})")
+        print("Package installation:  NOT PERFORMED")
     print(f"Name:                {data.get('name', name)}")
     print(f"Status:              {_status_value(data)}")
     print(f"Profile:             {data.get('profile', profile)}")
@@ -455,17 +526,31 @@ def _sandbox_create(
     return EXIT_OK
 
 
-def _sandbox_delete(name: str, json_output: bool) -> int:
+def _sandbox_delete(name: str, json_output: bool, purge_packages: bool = False, confirmed: bool = False) -> int:
+    if not confirmed:
+        raise ValueError("sandbox delete requires --yes.")
     data = _parse_json(delete_sandbox(name))
 
     if not isinstance(data, dict):
         raise RuntimeError("OpenShell returned invalid deletion metadata.")
 
+    from ..packages.manager import delete_package_state
+    try:
+        package_result = delete_package_state(name, purge=purge_packages)
+    except Exception as exc:
+        print("ERROR: Sandbox was deleted, but package-state cleanup failed.", file=sys.stderr)
+        print(f"Resource: sandbox {name}; operation: package-state cleanup", file=sys.stderr)
+        print(f"Reason: {type(exc).__name__}: {exc}", file=sys.stderr)
+        print("State: sandbox deletion completed; package state was not verified as removed.", file=sys.stderr)
+        print("Next step: inspect the managed package-state path before retrying.", file=sys.stderr)
+        return EXIT_ERROR
+    data["package_state"] = package_result
     if json_output:
         _print_json(data)
         return EXIT_OK
 
     print(f"Sandbox deleted: {data.get('name', name)}")
+    print(f"Package state: {package_result.get('package_state', 'UNKNOWN')}")
     return EXIT_OK
 
 
@@ -737,6 +822,7 @@ def _build_parser() -> argparse.ArgumentParser:
         choices=["default", "browser"],
         default="default",
     )
+    create.add_argument("--packages", dest="package_ecosystem", help="Initialize package configuration for a registered ecosystem; do not install packages.")
     create.add_argument("--json", dest="json_output", action="store_true")
     create.set_defaults(handler=_sandbox_create)
 
@@ -801,6 +887,8 @@ def _build_parser() -> argparse.ArgumentParser:
 
     delete = sandbox_commands.add_parser("delete", help="Delete a sandbox.")
     delete.add_argument("name")
+    delete.add_argument("--yes", action="store_true", dest="confirmed", help="Confirm sandbox deletion.")
+    delete.add_argument("--purge-packages", action="store_true", help="Explicitly remove managed package manifests and lockfiles.")
     delete.add_argument("--json", dest="json_output", action="store_true")
     delete.set_defaults(handler=_sandbox_delete)
 
@@ -902,6 +990,15 @@ def main(argv: Sequence[str] | None = None) -> int:
             return args.handler(args.json_output)
 
         if args.command == "sandbox" and args.sandbox_command == "create":
+            if args.package_ecosystem is not None:
+                return args.handler(
+                    args.name,
+                    args.workspace_id,
+                    args.standalone,
+                    args.json_output,
+                    args.profile,
+                    args.package_ecosystem,
+                )
             if args.profile == "default":
                 return args.handler(
                     args.name,
@@ -909,7 +1006,6 @@ def main(argv: Sequence[str] | None = None) -> int:
                     args.standalone,
                     args.json_output,
                 )
-
             return args.handler(
                 args.name,
                 args.workspace_id,
@@ -921,11 +1017,11 @@ def main(argv: Sequence[str] | None = None) -> int:
         if args.command == "sandbox" and args.sandbox_command == "list":
             return args.handler(args.json_output)
 
-        if args.command == "sandbox" and args.sandbox_command in {
-            "status",
-            "delete",
-        }:
+        if args.command == "sandbox" and args.sandbox_command == "status":
             return args.handler(args.name, args.json_output)
+
+        if args.command == "sandbox" and args.sandbox_command == "delete":
+            return args.handler(args.name, args.json_output, args.purge_packages, args.confirmed)
 
         if args.command == "sandbox" and args.sandbox_command == "recreate":
             return args.handler(args.name, args.confirmed)
@@ -964,6 +1060,10 @@ def main(argv: Sequence[str] | None = None) -> int:
             return args.handler()
 
         return args.handler()
+
+    except PackageManagerError as exc:
+        print(f"ERROR: {exc}", file=sys.stderr)
+        return exc.exit_code
 
     except (
         OSError,

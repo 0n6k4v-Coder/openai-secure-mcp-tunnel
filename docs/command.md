@@ -449,6 +449,33 @@ These values can be changed through the project's environment configuration.
 
 ---
 
+### Package management CLI
+
+Package configuration is stored under the effective `MCP_STATE_DIR`; when unset,
+the default is `${XDG_STATE_HOME:-$HOME/.local/state}/local-mcp-server/mcp`.
+The initial registry enables npm only, on the default sandbox profile's existing
+npm registry network policy. Package creation does not implicitly install.
+
+```bash
+uv run mcpctl sandbox create my-sandbox --standalone --packages npm
+uv run mcpctl sandbox packages list my-sandbox
+uv run mcpctl sandbox packages add my-sandbox express@^5 --ecosystem npm
+uv run mcpctl sandbox packages remove my-sandbox express --ecosystem npm
+uv run mcpctl sandbox packages lock my-sandbox --ecosystem npm
+uv run mcpctl sandbox packages install my-sandbox --ecosystem npm --yes
+uv run mcpctl sandbox packages show my-sandbox
+uv run mcpctl sandbox packages reset my-sandbox --ecosystem npm --yes
+uv run mcpctl runtime show
+uv run mcpctl sandbox delete my-sandbox --yes
+uv run mcpctl sandbox delete my-sandbox --yes --purge-packages
+```
+
+Deletion preserves manifests and lockfiles by default. `--purge-packages` removes
+only registered ecosystem package state; unregistered entries are preserved.
+npm resolution and installation disable lifecycle scripts. See
+[package-management.md](package-management.md) for state semantics, security
+constraints, and recovery guidance.
+
 ## 7. MCP Server
 
 ### Check the MCP server container

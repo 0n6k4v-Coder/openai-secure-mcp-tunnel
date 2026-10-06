@@ -84,6 +84,10 @@ def delete_recreate_environment(tmp_path: Path) -> dict[str, str]:
     )
     environment["MCPCTL_E2E_SERVICE_CALLS"] = str(tmp_path / "service-calls.jsonl")
     environment["MCPCTL_E2E_SERVICE_MODE"] = "success"
+    environment["XDG_CONFIG_HOME"] = str(tmp_path / "xdg-config")
+    environment["XDG_STATE_HOME"] = str(tmp_path / "xdg-state")
+    Path(environment["XDG_CONFIG_HOME"]).mkdir(parents=True)
+    Path(environment["XDG_STATE_HOME"]).mkdir(parents=True)
     environment["PYTHONDONTWRITEBYTECODE"] = "1"
     environment["NO_COLOR"] = "1"
     return environment
@@ -122,7 +126,7 @@ def test_cli_sbx_060_delete_calls_service_and_reports_success(
 ) -> None:
     result = _run(
         mcpctl_executable,
-        ["sandbox", "delete", "e2e-delete"],
+        ["sandbox", "delete", "e2e-delete", "--yes"],
         delete_recreate_environment,
     )
     assert result.returncode == 0, result.stderr
@@ -137,11 +141,19 @@ def test_cli_sbx_061_delete_json_is_valid_and_forwards_flag(
 ) -> None:
     result = _run(
         mcpctl_executable,
-        ["sandbox", "delete", "e2e-delete-json", "--json"],
+        ["sandbox", "delete", "e2e-delete-json", "--yes", "--json"],
         delete_recreate_environment,
     )
     assert result.returncode == 0, result.stderr
-    assert json.loads(result.stdout) == {"name": "e2e-delete-json", "deleted": True}
+    assert json.loads(result.stdout) == {
+        "name": "e2e-delete-json",
+        "deleted": True,
+        "package_state": {
+            "sandbox": "e2e-delete-json",
+            "package_state": "NONE",
+            "removed": False,
+        },
+    }
     assert _calls(delete_recreate_environment) == [
         {"operation": "delete", "name": "e2e-delete-json"}
     ]
@@ -165,7 +177,7 @@ def test_cli_sbx_063_delete_missing_reports_failure(
     delete_recreate_environment["MCPCTL_E2E_SERVICE_MODE"] = "delete-missing"
     result = _run(
         mcpctl_executable,
-        ["sandbox", "delete", "e2e-missing"],
+        ["sandbox", "delete", "e2e-missing", "--yes"],
         delete_recreate_environment,
     )
     assert result.returncode != 0
