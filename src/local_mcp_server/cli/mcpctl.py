@@ -558,11 +558,6 @@ def _purge_inventory() -> list[tuple[str, Path, str]]:
         ),
         ("Application state root", app_state_root, "REMOVE"),
         (
-            "Installation state",
-            app_state_root / "mcp" / "installations.json",
-            "REMOVE",
-        ),
-        (
             "Workspace grant records",
             app_state_root / "mcp" / "workspace-grants" / "workspace-grants.json",
             "REMOVE",
