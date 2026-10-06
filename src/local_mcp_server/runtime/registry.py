@@ -87,6 +87,10 @@ def load_runtime(name: str) -> RuntimeProfile:
 
 
 def create_runtime(name: str, description: str = "") -> RuntimeProfile:
+    if name == "production":
+        raise RuntimeRegistryError(
+            "Production is the built-in 'default' runtime; do not create a separate production runtime."
+        )
     try:
         profile = RuntimeProfile.named(name, description)
     except ValueError as exc:

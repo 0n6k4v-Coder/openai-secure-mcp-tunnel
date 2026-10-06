@@ -75,9 +75,13 @@ tunnel-client
 
 OpenShell creates and manages sandbox containers through its Docker compute driver. Sandbox containers are created on demand and are not long-running Docker Compose services.
 
-The project supports separate sandbox profiles.
+The built-in application runtime `default` is the production runtime and preserves the established Compose project, ports, and legacy configuration/state paths. Do not create a separate application runtime named `production`.
 
-The `default` profile is used for normal development and command execution.
+Optional named application runtimes (for example, `development`) are isolated from the default runtime. Select one in its terminal with `export MCP_RUNTIME=development`; omit the variable to use production. See [runtime and cleanup architecture](docs/profile-architecture.md).
+
+The project also supports separate sandbox profiles.
+
+The `default` sandbox profile is used for normal development and command execution.
 
 The `browser` profile provides an isolated Chrome runtime and Chrome DevTools MCP daemon. Browser lifecycle is owned by the OpenShell browser sandbox lifecycle.
 

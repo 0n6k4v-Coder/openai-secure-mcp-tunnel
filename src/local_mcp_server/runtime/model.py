@@ -51,7 +51,7 @@ class RuntimeProfile:
             name="default",
             compose_project_name="openai-secure-mcp-tunnel",
             openshell_workspace="default",
-            description="Default shared runtime (legacy paths).",
+            description="Production runtime (default; legacy paths).",
             mcp_port=8000,
             openshell_port=8080,
             openshell_health_port=8081,

@@ -17,7 +17,9 @@ from local_mcp_server.runtime.registry import (
 def test_default_runtime_is_always_available(monkeypatch, tmp_path: Path) -> None:
     monkeypatch.setenv("XDG_CONFIG_HOME", str(tmp_path))
     assert [profile.name for profile in list_runtimes()] == ["default"]
-    assert load_runtime("default").openshell_workspace == "default"
+    default = load_runtime("default")
+    assert default.openshell_workspace == "default"
+    assert default.description == "Production runtime (default; legacy paths)."
 
 
 def test_create_load_and_delete_runtime(monkeypatch, tmp_path: Path) -> None:
@@ -38,6 +40,13 @@ def test_invalid_or_reserved_runtime_name_is_rejected(
     monkeypatch.setenv("XDG_CONFIG_HOME", str(tmp_path))
     with pytest.raises(RuntimeRegistryError):
         create_runtime(name)
+
+
+def test_production_is_the_builtin_default_runtime(monkeypatch, tmp_path: Path) -> None:
+    monkeypatch.setenv("XDG_CONFIG_HOME", str(tmp_path))
+    with pytest.raises(RuntimeRegistryError, match="built-in.*default"):
+        create_runtime("production")
+    assert [profile.name for profile in list_runtimes()] == ["default"]
 
 
 def test_registry_symlink_is_rejected(monkeypatch, tmp_path: Path) -> None:

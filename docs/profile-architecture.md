@@ -1,12 +1,31 @@
 # Application lifecycle and retained data
 
-The application has one central Docker Compose runtime. Application lifecycle commands
-operate on that shared runtime; they do not create isolated application-level profiles.
+## Application runtimes
 
-## Runtime and sandbox profiles
+The built-in `default` runtime is the production runtime. It preserves the
+established Compose project name (`openai-secure-mcp-tunnel`), ports, and legacy
+XDG configuration/state paths. Do not create a separate runtime named
+`production`.
 
-The Compose deployment remains the single source of truth for the application services:
-`openshell-gateway`, `mcp-server`, and `tunnel-client`.
+Named runtimes such as `development` are optional isolated environments. Select
+one per terminal with `export MCP_RUNTIME=development`; omit `MCP_RUNTIME` or
+set it to `default` to operate the production runtime. Each named runtime has its
+own Compose project, ports, configuration/state roots, and OpenShell workspace
+name. This application-level isolation is separate from sandbox profiles.
+
+If a previous version already registered a named `production` runtime, stop it
+before removing its registry entry:
+
+```bash
+MCP_RUNTIME=production mcpctl stop
+mcpctl runtime delete production --yes
+```
+
+This removes only the registry entry, not the old runtime's files, credentials,
+or Docker resources. Review and clean up those resources separately; do not run
+the legacy production stack and the built-in default stack at the same time.
+
+## Sandbox profiles
 
 Sandbox profiles are a separate OpenShell feature and remain supported:
 
@@ -14,8 +33,8 @@ Sandbox profiles are a separate OpenShell feature and remain supported:
 - `browser` provides the isolated Chrome runtime and Chrome DevTools MCP daemon.
 
 Use `mcpctl sandbox create NAME --workspace WORKSPACE_ID --profile default` or
-`mcpctl sandbox create NAME --workspace WORKSPACE_ID --profile browser` to select a
-sandbox profile. These sandbox profiles are not application-level configuration profiles.
+`mcpctl sandbox create NAME --workspace WORKSPACE_ID --profile browser` to select
+a sandbox profile.
 
 ## Cleanup and uninstall
 
