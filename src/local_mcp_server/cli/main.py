@@ -990,13 +990,28 @@ def main(argv: Sequence[str] | None = None) -> int:
             return args.handler(args.json_output)
 
         if args.command == "sandbox" and args.sandbox_command == "create":
+            if args.package_ecosystem is not None:
+                return args.handler(
+                    args.name,
+                    args.workspace_id,
+                    args.standalone,
+                    args.json_output,
+                    args.profile,
+                    args.package_ecosystem,
+                )
+            if args.profile == "default":
+                return args.handler(
+                    args.name,
+                    args.workspace_id,
+                    args.standalone,
+                    args.json_output,
+                )
             return args.handler(
                 args.name,
                 args.workspace_id,
                 args.standalone,
                 args.json_output,
                 args.profile,
-                args.package_ecosystem,
             )
 
         if args.command == "sandbox" and args.sandbox_command == "list":
