@@ -339,6 +339,10 @@ def test_acl_helper_uses_narrow_docker_invocation(
         "_run_command",
         fake_run,
     )
+    monkeypatch.setattr(
+        "local_mcp_server.cli.lifecycle.verify_local_images",
+        lambda required_variables=None: None,
+    )
 
     broker._run_acl_helper(
         tmp_path,
@@ -400,6 +404,10 @@ def test_remove_sandbox_acl_with_helper_uses_narrow_docker_invocation(
         broker,
         "_run_command",
         fake_run,
+    )
+    monkeypatch.setattr(
+        "local_mcp_server.cli.lifecycle.verify_local_images",
+        lambda required_variables=None: None,
     )
 
     broker._remove_sandbox_acl_with_helper(
