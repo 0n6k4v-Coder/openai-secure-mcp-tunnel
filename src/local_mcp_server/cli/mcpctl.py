@@ -29,7 +29,7 @@ from ..runtime.templates import runtime_template
 EXIT_OK = 0
 EXIT_ERROR = 2
 
-SETUP_STEP_COUNT = 6
+SETUP_STEP_COUNT = 7
 
 
 def _prompt_choice(title: str, options: list[str]) -> int:

@@ -193,7 +193,7 @@ def _status_value(record: dict[str, object]) -> str:
 
 def _verify_started_stack(action: str) -> int:
     from . import lifecycle
-    from ..infrastructure.openshell.tls import get_openshell_tls_status
+    from ..infrastructure.openshell.tls import get_status as get_openshell_tls_status
 
     status = lifecycle.get_status(get_openshell_tls_status())
     lifecycle.print_status(status)

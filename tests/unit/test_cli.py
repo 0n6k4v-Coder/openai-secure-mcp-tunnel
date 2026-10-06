@@ -986,7 +986,7 @@ def test_started_stack_reports_verified_readiness(
     )
     monkeypatch.setattr(lifecycle, "print_status", lambda current: None)
     monkeypatch.setattr(
-        "local_mcp_server.infrastructure.openshell.tls.get_openshell_tls_status",
+        "local_mcp_server.infrastructure.openshell.tls.get_status",
         lambda: object(),
     )
 
