@@ -111,7 +111,7 @@ def test_package_state_rejects_symlinked_ecosystem_directory(
     root = state / "sandboxes/sandbox-one/packages"
     root.mkdir(parents=True)
     (root / "npm").symlink_to(external, target_is_directory=True)
-    with pytest.raises(manager.PackageManagerError, match="outside|symlink"):
+    with pytest.raises(manager.PackageManagerError, match="escapes|outside|symlink"):
         manager.initialize_sandbox_packages("sandbox-one", "npm")
 
 
