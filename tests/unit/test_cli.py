@@ -955,3 +955,42 @@ def test_main_help(
     assert "restart" in output
     assert "status" in output
     assert "logs" in output
+
+
+
+@pytest.mark.parametrize(
+    ("infrastructure_ready", "ready", "expected_result", "expected_code"),
+    [
+        (True, True, "RESULT: START READY", 0),
+        (True, False, "RESULT: START DEGRADED", 0),
+        (False, False, "RESULT: START FAILED", 2),
+    ],
+)
+def test_started_stack_reports_verified_readiness(
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+    infrastructure_ready: bool,
+    ready: bool,
+    expected_result: str,
+    expected_code: int,
+) -> None:
+    from types import SimpleNamespace
+
+    from local_mcp_server.cli import lifecycle
+
+    status = SimpleNamespace(infrastructure_ready=infrastructure_ready, ready=ready)
+    monkeypatch.setattr(
+        lifecycle,
+        "get_status",
+        lambda tls_status: status,
+    )
+    monkeypatch.setattr(lifecycle, "print_status", lambda current: None)
+    monkeypatch.setattr(
+        "local_mcp_server.infrastructure.openshell.tls.get_openshell_tls_status",
+        lambda: object(),
+    )
+
+    result = cli._verify_started_stack("START")
+
+    assert result == expected_code
+    assert expected_result in capsys.readouterr().out + capsys.readouterr().err

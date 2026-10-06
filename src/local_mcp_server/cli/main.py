@@ -191,6 +191,26 @@ def _status_value(record: dict[str, object]) -> str:
     return "UNKNOWN"
 
 
+def _verify_started_stack(action: str) -> int:
+    from . import lifecycle
+    from ..infrastructure.openshell.tls import get_openshell_tls_status
+
+    status = lifecycle.get_status(get_openshell_tls_status())
+    lifecycle.print_status(status)
+    print()
+    if not status.infrastructure_ready:
+        print(f"RESULT: {action} FAILED — CORE SERVICES NOT READY", file=sys.stderr)
+        print("Next: mcpctl logs openshell-gateway", file=sys.stderr)
+        print("      mcpctl logs mcp-server", file=sys.stderr)
+        return EXIT_ERROR
+    if status.ready:
+        print(f"RESULT: {action} READY")
+    else:
+        print(f"RESULT: {action} DEGRADED — CORE SERVICES READY")
+        print("Next: mcpctl config mcp-client")
+    return EXIT_OK
+
+
 def _start() -> int:
     _command_exists("docker")
     from . import lifecycle
@@ -206,12 +226,10 @@ def _start() -> int:
             "--detach",
         )
     )
-    if result == EXIT_OK:
-        print("RESULT: START REQUEST COMPLETED")
-        print("Next: mcpctl status")
-    else:
+    if result != EXIT_OK:
         print(f"RESULT: START FAILED (exit code {result})", file=sys.stderr)
-    return result
+        return result
+    return _verify_started_stack("START")
 
 
 def _stop() -> int:
@@ -242,12 +260,10 @@ def _restart() -> int:
             "--detach",
         )
     )
-    if result == EXIT_OK:
-        print("RESULT: RESTART REQUEST COMPLETED")
-        print("Next: mcpctl status")
-    else:
+    if result != EXIT_OK:
         print(f"RESULT: RESTART FAILED (exit code {result})", file=sys.stderr)
-    return result
+        return result
+    return _verify_started_stack("RESTART")
 
 
 
