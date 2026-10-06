@@ -42,7 +42,7 @@ class RuntimeContext:
             environment["OPENSHELL_PORT"] = str(self.profile.openshell_port)
             environment["OPENSHELL_HEALTH_PORT"] = str(self.profile.openshell_health_port)
             environment["OPENSHELL_CLI_GATEWAY"] = f"https://127.0.0.1:{self.profile.openshell_port}"
-            environment["MCP_CONFIG_DIR"] = str(self.config_root / "config")
+            environment["MCP_CONFIG_DIR"] = str(self.state_root / "config")
             environment["MCP_STATE_DIR"] = str(self.state_root / "mcp")
             environment["WORKSPACE_GRANTS_DIR"] = str(self.state_root / "mcp" / "workspace-grants")
             environment["MCP_TLS_DIR"] = str(self.state_root / "openshell" / "tls")
