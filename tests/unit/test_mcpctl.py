@@ -951,6 +951,9 @@ def test_uninstall_purge_blocks_when_compose_services_are_running(
     assert mcpctl.main(["uninstall", "--yes", "--purge"]) == mcpctl.EXIT_ERROR
     output = capsys.readouterr()
     assert "PREFLIGHT FAILED" in output.err
+    assert "UNINSTALL BLOCKED" in output.err
+    assert "NO APPLICATION DATA REMOVED BY THIS ATTEMPT" in output.err
+    assert "[RUNNING] mcp-server" in output.err
     assert "mcpctl stop" in output.err
     assert app_config.is_dir()
     assert app_state.is_dir()
@@ -980,10 +983,63 @@ def test_uninstall_purge_reports_partial_failure_and_verifies_successful_root(
     monkeypatch.setattr(mcpctl.shutil, "rmtree", fail_state_root)
     assert mcpctl.main(["uninstall", "--yes", "--purge"]) == mcpctl.EXIT_ERROR
     output = capsys.readouterr()
-    assert "REMOVED (verified absent)" in output.out
+    assert "Removed and verified absent" in output.out
     assert "PARTIAL FAILURE" in output.err
-    assert "RECOVERY:" in output.err
-    assert "sudo chown -R" in output.err
+    assert "RECOVERY CHECKLIST:" in output.err
+    assert "Inspect the exact failing path" in output.err
+    assert "sudo chown -R" not in output.err
     assert str(app_state) in output.err
     assert not app_config.exists()
     assert app_state.is_dir()
+
+
+
+def test_uninstall_purge_dry_run_explains_scope_and_external_resources(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    config_home = tmp_path / "config"
+    state_home = tmp_path / "state"
+    monkeypatch.setattr(mcpctl, "xdg_config_home", lambda: config_home)
+    monkeypatch.setattr(mcpctl, "xdg_state_home", lambda: state_home)
+    monkeypatch.setattr(mcpctl.shutil, "which", lambda _: None)
+    external_compose_file = tmp_path / "custom" / "gateway.toml"
+    monkeypatch.setenv("MCP_GATEWAY_CONFIG_FILE", str(external_compose_file))
+
+    assert mcpctl.main(["uninstall", "--purge"]) == mcpctl.EXIT_OK
+    output = capsys.readouterr().out
+    assert "APPLICATION PURGE" in output
+    assert "DRY RUN COMPLETE" in output
+    assert "Custom Compose paths outside application roots are not deleted." in output
+    assert "MCP_GATEWAY_CONFIG_FILE override" in output
+    assert "PRESERVE / REVIEW ONLY" in output
+    assert "sandbox, ACL, or Docker resource cleanup" in output
+    assert not config_home.exists()
+    assert not state_home.exists()
+
+
+def test_uninstall_purge_success_reports_verified_roots_and_scope_limit(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    config_home = tmp_path / "config"
+    state_home = tmp_path / "state"
+    app_config = config_home / "local-mcp-server"
+    app_state = state_home / "local-mcp-server"
+    app_config.mkdir(parents=True)
+    app_state.mkdir(parents=True)
+    monkeypatch.setattr(mcpctl, "xdg_config_home", lambda: config_home)
+    monkeypatch.setattr(mcpctl, "xdg_state_home", lambda: state_home)
+    monkeypatch.setattr(mcpctl.shutil, "which", lambda _: None)
+
+    assert mcpctl.main(["uninstall", "--yes", "--purge"]) == mcpctl.EXIT_OK
+    output = capsys.readouterr().out
+    assert "PHASE 1/3 — PRECHECK" in output
+    assert "PHASE 2/3 — REMOVE APPLICATION ROOTS" in output
+    assert "PHASE 3/3 — VERIFY" in output
+    assert "RESULT: APPLICATION DATA PURGED" in output
+    assert "does not certify sandbox, ACL, or Docker resource cleanup" in output
+    assert not app_config.exists()
+    assert not app_state.exists()
