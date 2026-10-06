@@ -101,6 +101,19 @@ def _validate_credential_key(key: str) -> str:
 
 def _openshell_command(*args: str) -> list[str]:
     _command_exists("openshell")
+
+    # For the default installation, target the registered gateway by name.
+    # Passing --gateway-endpoint bypasses gateway metadata and makes OpenShell
+    # look for mTLS files in a URL-derived directory (for example,
+    # gateways/https___127.0.0.1_8080/mtls) instead of gateways/local/mtls.
+    from ...runtime.context import get_runtime_context
+
+    context = get_runtime_context()
+    if context.is_default and GATEWAY_ENDPOINT_ENV not in os.environ:
+        return ["openshell", "--gateway", "local", *args]
+
+    # Named runtimes and explicit endpoint overrides use their dedicated
+    # loopback endpoint.
     return ["openshell", "--gateway-endpoint", _gateway_endpoint(), *args]
 
 
