@@ -65,10 +65,6 @@ def mcp_state_root() -> Path:
     return app_state_root() / "mcp"
 
 
-def installation_state_file() -> Path:
-    return mcp_state_root() / "installations.json"
-
-
 def workspace_grants_root() -> Path:
     return mcp_state_root() / "workspace-grants"
 
