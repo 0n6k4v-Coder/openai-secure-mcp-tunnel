@@ -1219,18 +1219,22 @@ def _build_parser() -> argparse.ArgumentParser:
         help="Create a persistent credential provider.",
     )
 
-    credential_create.add_argument("name")
+    credential_create.add_argument(
+        "name",
+        nargs="?",
+        help="Credential provider name (prompted when omitted in a terminal).",
+    )
 
     credential_create.add_argument(
         "--type",
-        required=True,
         dest="provider_type",
+        help="Provider type (prompted when omitted in a terminal).",
     )
 
     credential_create.add_argument(
         "--key",
-        required=True,
         dest="credential_key",
+        help="Environment variable name for the secret (prompted when omitted).",
     )
 
     credential_create.add_argument(
@@ -1459,14 +1463,13 @@ def _credential_arguments(
         ]
 
     if command == "create":
-        arguments = [
-            "create",
-            args.name,
-            "--type",
-            args.provider_type,
-            "--key",
-            args.credential_key,
-        ]
+        arguments = ["create"]
+        if args.name is not None:
+            arguments.append(args.name)
+        if args.provider_type is not None:
+            arguments.extend(["--type", args.provider_type])
+        if args.credential_key is not None:
+            arguments.extend(["--key", args.credential_key])
 
     elif command == "update":
         arguments = [

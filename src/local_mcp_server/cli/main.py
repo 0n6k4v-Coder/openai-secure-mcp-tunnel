@@ -576,13 +576,53 @@ def _openshell_command(*args: str) -> list[str]:
 
 
 def _credential_create(
-    name: str,
-    provider_type: str,
-    credential_key: str,
+    name: str | None,
+    provider_type: str | None,
+    credential_key: str | None,
     confirmed: bool,
 ) -> int:
+    """Create a credential, prompting for omitted metadata only in a terminal."""
+    interactive = sys.stdin.isatty()
+
+    if not interactive and (
+        name is None or provider_type is None or credential_key is None
+    ):
+        raise ValueError(
+            "credential create needs name, --type, and --key when stdin is not "
+            "a terminal; run in a terminal to be prompted."
+        )
+
+    if name is None:
+        name = input("Credential name: ").strip()
+    if provider_type is None:
+        provider_type = input("Provider type [generic]: ").strip() or "generic"
+    if credential_key is None:
+        credential_key = input("Environment variable key (e.g. GITHUB_TOKEN): ").strip()
+
+    # Validate metadata before prompting for the secret, so mistakes do not
+    # cause users to enter a secret that will never be stored.
+    from ..infrastructure.openshell.credentials import (
+        _validate_credential_key,
+        _validate_provider_name,
+        _validate_provider_type,
+    )
+
+    name = _validate_provider_name(name)
+    provider_type = _validate_provider_type(provider_type)
+    credential_key = _validate_credential_key(credential_key)
+
     if not confirmed:
-        raise ValueError("credential create requires --yes.")
+        if not interactive:
+            raise ValueError(
+                "credential create requires --yes when stdin is not a terminal."
+            )
+        answer = input(
+            f"Create credential '{name}' (type: {provider_type}, key: "
+            f"{credential_key})? [y/N]: "
+        ).strip().lower()
+        if answer not in {"y", "yes"}:
+            print("Cancelled. No credential was created.")
+            return EXIT_OK
 
     return create_credential(name, provider_type, credential_key)
 
@@ -783,9 +823,9 @@ def _build_parser() -> argparse.ArgumentParser:
         "create",
         help="Create a persistent credential provider.",
     )
-    credential_create.add_argument("name")
-    credential_create.add_argument("--type", required=True, dest="provider_type")
-    credential_create.add_argument("--key", required=True, dest="credential_key")
+    credential_create.add_argument("name", nargs="?")
+    credential_create.add_argument("--type", dest="provider_type")
+    credential_create.add_argument("--key", dest="credential_key")
     credential_create.add_argument("--yes", action="store_true", dest="confirmed")
     credential_create.set_defaults(handler=_credential_create)
 
