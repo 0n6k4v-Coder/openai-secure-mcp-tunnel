@@ -6,6 +6,7 @@ import getpass
 import json
 import os
 import shutil
+import shlex
 import sys
 from collections.abc import Sequence
 from pathlib import Path
@@ -695,6 +696,23 @@ def _uninstall(*, confirmed: bool, purge: bool = False) -> int:
                     results.append((root, "REMOVED (verified absent)"))
             except OSError as exc:
                 results.append((root, f"FAILED ({type(exc).__name__}: {exc})"))
+                if isinstance(exc, PermissionError):
+                    print(
+                        "RECOVERY: after stopping services and verifying that "
+                        "this path contains no nested mounts, repair ownership "
+                        "and retry:",
+                        file=sys.stderr,
+                    )
+                    print(
+                        "  sudo chown -R -- \"$(id -u):$(id -g)\" "
+                        + shlex.quote(str(root)),
+                        file=sys.stderr,
+                    )
+                    print(
+                        "Do not run this against a path containing mounted or "
+                        "shared data.",
+                        file=sys.stderr,
+                    )
 
         print()
         print("Uninstall result")
