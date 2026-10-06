@@ -936,6 +936,25 @@ def _build_parser() -> argparse.ArgumentParser:
         required=True,
     )
 
+    runtime = commands.add_parser("runtime", help="Manage isolated runtime profiles.")
+    runtime_commands = runtime.add_subparsers(dest="runtime_action", required=True)
+    runtime_list = runtime_commands.add_parser("list", help="List registered runtimes.")
+    runtime_list.add_argument("--json", dest="json_output", action="store_true")
+    runtime_list.set_defaults(handler=_runtime_command)
+    runtime_create = runtime_commands.add_parser("create", help="Create an isolated runtime profile.")
+    runtime_create.add_argument("name")
+    runtime_create.add_argument("--description", default="")
+    runtime_create.add_argument("--json", dest="json_output", action="store_true")
+    runtime_create.set_defaults(handler=_runtime_command)
+    runtime_show = runtime_commands.add_parser("show", help="Show runtime configuration and paths.")
+    runtime_show.add_argument("name")
+    runtime_show.add_argument("--json", dest="json_output", action="store_true")
+    runtime_show.set_defaults(handler=_runtime_command)
+    runtime_delete = runtime_commands.add_parser("delete", help="Remove a runtime registry entry; preserve its data.")
+    runtime_delete.add_argument("name")
+    runtime_delete.add_argument("--yes", action="store_true", dest="confirmed")
+    runtime_delete.set_defaults(handler=_runtime_command)
+
     commands.add_parser(
         "start",
         help="Build and start the Compose stack.",
@@ -1494,6 +1513,9 @@ def main(
     args = parser.parse_args(argv)
 
     try:
+        if args.command == "runtime":
+            return args.handler(args)
+
         if args.command in {"start", "stop", "restart"}:
             return _delegate_local_cli(args.command, [])
 
