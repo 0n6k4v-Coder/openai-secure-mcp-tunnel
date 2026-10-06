@@ -743,6 +743,11 @@ def test_credential_create_non_tty_requires_terminal_for_secret(
 def test_credential_create_delegates(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
+    class TTY:
+        def isatty(self) -> bool:
+            return True
+
+    monkeypatch.setattr(cli.sys, "stdin", TTY())
     captured: dict[str, object] = {}
 
     def fake_create(name: str, provider_type: str, credential_key: str) -> int:

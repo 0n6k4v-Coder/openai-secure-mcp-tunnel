@@ -590,6 +590,10 @@ def _credential_create(
                 "credential create needs name, --type, and --key when stdin is "
                 "not a terminal; run in a terminal to be prompted."
             )
+        if not confirmed:
+            raise ValueError(
+                "credential create requires --yes when stdin is not a terminal."
+            )
         raise ValueError(
             "credential create requires a terminal for hidden secret input; "
             "secrets cannot be supplied as command-line arguments."
