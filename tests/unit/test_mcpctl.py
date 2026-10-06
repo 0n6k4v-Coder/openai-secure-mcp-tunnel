@@ -678,6 +678,11 @@ def test_setup_configures_mcp_client_before_starting_services(
     )
     monkeypatch.setattr(
         mcpctl.lifecycle,
+        "ensure_local_images",
+        lambda: events.append("ensure_local_images"),
+    )
+    monkeypatch.setattr(
+        mcpctl.lifecycle,
         "start_core_services",
         lambda: events.append("start_core_services"),
     )
@@ -722,6 +727,7 @@ def test_setup_configures_mcp_client_before_starting_services(
         "setup_tls",
         "config_mcp_client:True",
         "validate_compose",
+        "ensure_local_images",
         "start_core_services",
         "reconcile_tunnel_client",
         "verify:True",
