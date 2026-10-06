@@ -70,7 +70,8 @@ def _xdg_config_home() -> Path:
 
 
 def tls_root() -> Path:
-    return _xdg_state_home() / "local-mcp-server" / "openshell" / "tls"
+    from ...config.paths import app_state_root
+    return app_state_root() / "openshell" / "tls"
 
 
 def _openshell_cli_mtls_root() -> Path:

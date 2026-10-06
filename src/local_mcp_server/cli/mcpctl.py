@@ -23,6 +23,8 @@ from . import lifecycle
 from .main import _print_table
 from .main import main as local_mcp_server_main
 from . import workspace_broker
+from ..runtime.registry import RuntimeRegistryError, create_runtime, delete_runtime, list_runtimes, load_runtime
+from ..runtime.templates import runtime_template
 
 EXIT_OK = 0
 EXIT_ERROR = 2
@@ -888,6 +890,39 @@ def _uninstall(*, confirmed: bool, purge: bool = False) -> int:
         return EXIT_ERROR
     print("RESULT: LEGACY PROFILE CLEANUP COMPLETE")
     return EXIT_OK
+
+
+def _runtime_command(args: argparse.Namespace) -> int:
+    try:
+        if args.runtime_action == "list":
+            profiles = list_runtimes()
+            payload = [profile.to_dict() for profile in profiles]
+            if args.json_output:
+                print(json.dumps(payload, indent=2))
+            else:
+                for profile in profiles:
+                    print(f"{profile.name:<20} {profile.compose_project_name:<48} {profile.openshell_workspace}")
+            return EXIT_OK
+        if args.runtime_action == "create":
+            profile = create_runtime(args.name, args.description)
+            print(json.dumps(profile.to_dict(), indent=2) if args.json_output else f"Runtime {profile.name!r} created.")
+            return EXIT_OK
+        if args.runtime_action == "show":
+            profile = load_runtime(args.name)
+            payload = runtime_template(profile.name, profile.description) if profile.name != "default" else {"schema_version": 1, "runtime": profile.to_dict(), "isolation": {"configuration": "legacy XDG application configuration", "state": "legacy XDG application state", "compose_project": profile.compose_project_name, "openshell_workspace": profile.openshell_workspace}}
+            print(json.dumps(payload, indent=2) if args.json_output else f"Runtime: {profile.name}\nCompose project: {profile.compose_project_name}\nOpenShell workspace: {profile.openshell_workspace}\nDescription: {profile.description}")
+            return EXIT_OK
+        if args.runtime_action == "delete":
+            if not args.confirmed:
+                print("Refusing to delete a runtime without --yes.", file=sys.stderr)
+                return EXIT_ERROR
+            delete_runtime(args.name)
+            print(f"Runtime {args.name!r} deleted. Runtime data was preserved.")
+            return EXIT_OK
+        raise ValueError("Unsupported runtime command.")
+    except RuntimeRegistryError as exc:
+        print(f"ERROR: {exc}", file=sys.stderr)
+        return EXIT_ERROR
 
 
 def _build_parser() -> argparse.ArgumentParser:
