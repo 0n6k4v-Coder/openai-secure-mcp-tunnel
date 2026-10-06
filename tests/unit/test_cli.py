@@ -90,6 +90,10 @@ def test_sandbox_create_uses_workspace(
     monkeypatch: pytest.MonkeyPatch,
     capsys: pytest.CaptureFixture[str],
 ) -> None:
+    monkeypatch.setattr(
+        "local_mcp_server.cli.lifecycle.verify_local_images",
+        lambda required_variables=None: None,
+    )
     captured: dict[str, object] = {}
 
     def fake_create_sandbox(
@@ -137,6 +141,10 @@ def test_sandbox_create_standalone(
     monkeypatch: pytest.MonkeyPatch,
     capsys: pytest.CaptureFixture[str],
 ) -> None:
+    monkeypatch.setattr(
+        "local_mcp_server.cli.lifecycle.verify_local_images",
+        lambda required_variables=None: None,
+    )
     captured: dict[str, object] = {}
 
     def fake_create_sandbox(
@@ -218,6 +226,10 @@ def test_sandbox_create_json(
     monkeypatch: pytest.MonkeyPatch,
     capsys: pytest.CaptureFixture[str],
 ) -> None:
+    monkeypatch.setattr(
+        "local_mcp_server.cli.lifecycle.verify_local_images",
+        lambda required_variables=None: None,
+    )
     monkeypatch.setattr(
         cli,
         "create_sandbox",

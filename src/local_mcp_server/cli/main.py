@@ -395,6 +395,14 @@ def _sandbox_create(
             "sandbox create requires either --workspace WORKSPACE_ID or --standalone."
         )
 
+    validate_name(name)
+    from . import lifecycle
+
+    required_image = (
+        "BROWSER_SANDBOX_IMAGE" if profile == "browser" else "SANDBOX_IMAGE"
+    )
+    lifecycle.verify_local_images((required_image,))
+
     if profile == "default":
         created = create_sandbox(
             name=name,
