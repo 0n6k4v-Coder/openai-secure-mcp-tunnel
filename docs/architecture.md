@@ -345,7 +345,6 @@ src/local_mcp_server/
                      ┌──────────────────────┐
                      │      MCP tools       │
                      │ workspace / sandbox  │
-                     │ installation / ...   │
                      └──────────┬───────────┘
                                 │
                                 ▼
