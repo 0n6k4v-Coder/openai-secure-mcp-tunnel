@@ -391,7 +391,7 @@ def _configured_image_value(variable: str, default: str) -> str:
             key, raw_value = stripped.split("=", 1)
             if key.strip() != variable:
                 continue
-            value = raw_value.strip().strip("\\"").strip("'")
+            value = raw_value.strip().strip('"').strip("'")
             if value:
                 return value
     return default
