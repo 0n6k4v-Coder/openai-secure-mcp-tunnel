@@ -5,7 +5,6 @@ from builtins import input
 import getpass
 import json
 import os
-import shlex
 import shutil
 import sys
 from collections.abc import Sequence
