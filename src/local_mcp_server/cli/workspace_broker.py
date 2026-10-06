@@ -766,7 +766,8 @@ def main(
             ]
             widths = [
                 max(len(headers[index]), *(len(row[index]) for row in rows))
-                if rows else len(headers[index])
+                if rows
+                else len(headers[index])
                 for index in range(len(headers))
             ]
             print("  ".join(headers[i].ljust(widths[i]) for i in range(len(headers))))

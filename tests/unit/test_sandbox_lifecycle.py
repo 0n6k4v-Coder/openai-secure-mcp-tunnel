@@ -197,17 +197,19 @@ def test_browser_status_reports_devtools_readiness(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     monkeypatch.setattr(
-        sandbox, "execute_sandbox_argv",
+        sandbox,
+        "execute_sandbox_argv",
         lambda name, argv, *, timeout_seconds: {
             "stdout": "chrome-devtools-mcp daemon is running.\n"
-                      "pid=123 socket=/tmp/chrome-devtools-mcp-10001.sock",
-            "stderr": "", "return_code": 0,
+            "pid=123 socket=/tmp/chrome-devtools-mcp-10001.sock",
+            "stderr": "",
+            "return_code": 0,
         },
     )
     assert sandbox._browser_devtools_readiness("browser-1") == {
         "state": "ready",
         "detail": "chrome-devtools-mcp daemon is running.\n"
-                  "pid=123 socket=/tmp/chrome-devtools-mcp-10001.sock",
+        "pid=123 socket=/tmp/chrome-devtools-mcp-10001.sock",
     }
 
 
@@ -215,10 +217,12 @@ def test_browser_status_reports_not_ready_devtools(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     monkeypatch.setattr(
-        sandbox, "execute_sandbox_argv",
+        sandbox,
+        "execute_sandbox_argv",
         lambda name, argv, *, timeout_seconds: {
             "stdout": "chrome-devtools-mcp daemon is not running.",
-            "stderr": "", "return_code": 0,
+            "stderr": "",
+            "return_code": 0,
         },
     )
     assert sandbox._browser_devtools_readiness("browser-1") == {

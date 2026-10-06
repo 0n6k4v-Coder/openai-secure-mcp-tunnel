@@ -89,8 +89,7 @@ def sandbox_e2e_environment(
     )
     if (
         not docker_context
-        or re.search(r"(?:e2e|test)", docker_context, re.IGNORECASE)
-        is None
+        or re.search(r"(?:e2e|test)", docker_context, re.IGNORECASE) is None
         or "prod" in docker_context.lower()
     ):
         pytest.skip(
@@ -110,9 +109,7 @@ def sandbox_e2e_environment(
 
     config_home = Path(config_value).expanduser()
     if not config_home.is_absolute():
-        pytest.skip(
-            "BLOCKED: MCPCTL_E2E_OPENSHELL_CONFIG_HOME must be absolute."
-        )
+        pytest.skip("BLOCKED: MCPCTL_E2E_OPENSHELL_CONFIG_HOME must be absolute.")
 
     config_home = config_home.resolve()
     default_config_home = (Path.home() / ".config").resolve()
@@ -124,8 +121,7 @@ def sandbox_e2e_environment(
         )
 
     if (
-        re.search(r"(?:e2e|test)", config_home.name, re.IGNORECASE)
-        is None
+        re.search(r"(?:e2e|test)", config_home.name, re.IGNORECASE) is None
         or "prod" in str(config_home).lower()
     ):
         pytest.skip(
@@ -160,8 +156,7 @@ def sandbox_e2e_environment(
         )
     except (OSError, subprocess.TimeoutExpired):
         pytest.skip(
-            "BLOCKED: Docker is unavailable or the test context "
-            "could not be inspected."
+            "BLOCKED: Docker is unavailable or the test context could not be inspected."
         )
 
     if context_result.returncode != 0:
@@ -339,10 +334,7 @@ def _create_and_verify(
             if expected_workspace_id is None:
                 assert "host_workspace_id" not in created_payload
             else:
-                assert (
-                    created_payload.get("host_workspace_id")
-                    == expected_workspace_id
-                )
+                assert created_payload.get("host_workspace_id") == expected_workspace_id
         else:
             assert "Sandbox created." in result.stdout
             assert f"Name:                {name}" in result.stdout
@@ -352,10 +344,7 @@ def _create_and_verify(
                 assert expected_text in result.stdout
 
             if expected_workspace_id is not None:
-                assert (
-                    f"Host workspace ID:   {expected_workspace_id}"
-                    in result.stdout
-                )
+                assert f"Host workspace ID:   {expected_workspace_id}" in result.stdout
 
         status = _sandbox_status(
             executable,
@@ -372,10 +361,7 @@ def _create_and_verify(
             assert isinstance(workspace, dict)
             assert workspace.get("type") == "sandbox"
         else:
-            assert (
-                status.get("host_workspace_id")
-                == expected_workspace_id
-            )
+            assert status.get("host_workspace_id") == expected_workspace_id
 
             host_workspace = status.get("host_workspace")
             assert isinstance(host_workspace, dict)

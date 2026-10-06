@@ -35,24 +35,24 @@ The current source configures the server identity as `local-computer`, version `
 
 | ID | Test | Expected Result | Status |
 |---|---|---|---|
-| MCP-TRANSPORT-001 | Connect to the configured `/mcp` endpoint | An MCP client establishes a valid session/transport connection | 🟢 Pass |
-| MCP-TRANSPORT-002 | Initialize the MCP client | Server initialization succeeds and returns valid protocol metadata | 🟢 Pass |
-| MCP-TRANSPORT-003 | Verify server identity | Server name is `local-computer` and version is `0.1.0` | 🟢 Pass |
-| MCP-TRANSPORT-004 | Verify negotiated protocol version | Client and server negotiate a supported protocol version | 🟢 Pass |
-| MCP-TRANSPORT-005 | Verify server capabilities | Tool capability is advertised | 🟢 Pass |
-| MCP-TRANSPORT-006 | Send a valid tool-list request | Server returns a valid MCP tool-list response | 🟢 Pass |
-| MCP-TRANSPORT-007 | Send a valid tool-call request | Server returns a protocol-valid tool result | 🟢 Pass |
-| MCP-TRANSPORT-008 | Send a malformed protocol request | Server rejects it without crashing or returning a false success | 🟢 Pass |
-| MCP-TRANSPORT-009 | Send a request with an unsupported method | Server returns a protocol-appropriate error | 🟢 Pass |
-| MCP-TRANSPORT-010 | Send an invalid tool-call envelope | Server returns a protocol error or tool error appropriate to the invalid request | 🟢 Pass |
-| MCP-TRANSPORT-011 | Send a request with an invalid JSON body | Request is rejected without terminating the service | 🟢 Pass |
-| MCP-TRANSPORT-012 | Send a request exceeding the configured body-size limit | Request is rejected safely | 🟢 Pass |
-| MCP-TRANSPORT-013 | Connect using the configured allowed host | Request passes host validation | 🟢 Pass |
-| MCP-TRANSPORT-014 | Connect with an unapproved Host header | Request is rejected by transport security | 🟢 Pass |
-| MCP-TRANSPORT-015 | Exercise DNS-rebinding protection | Disallowed host/origin patterns are rejected according to the transport implementation | 🟢 Pass |
-| MCP-TRANSPORT-016 | Send multiple sequential requests | Server remains available and returns valid responses | 🟢 Pass |
-| MCP-TRANSPORT-017 | Send independent requests concurrently | Responses remain valid and request handling does not corrupt shared state | 🟢 Pass |
-| MCP-TRANSPORT-018 | Verify stateless HTTP behavior | Client requests do not rely on an undocumented persistent server-side session | 🟢 Pass |
+| MCP-TRANSPORT-001 | Connect to the configured `/mcp` endpoint | An MCP client establishes a valid session/transport connection | 🟠 Blocked |
+| MCP-TRANSPORT-002 | Initialize the MCP client | Server initialization succeeds and returns valid protocol metadata | 🟠 Blocked |
+| MCP-TRANSPORT-003 | Verify server identity | Server name is `local-computer` and version is `0.1.0` | 🟠 Blocked |
+| MCP-TRANSPORT-004 | Verify negotiated protocol version | Client and server negotiate a supported protocol version | 🟠 Blocked |
+| MCP-TRANSPORT-005 | Verify server capabilities | Tool capability is advertised | 🟠 Blocked |
+| MCP-TRANSPORT-006 | Send a valid tool-list request | Server returns a valid MCP tool-list response | 🟠 Blocked |
+| MCP-TRANSPORT-007 | Send a valid tool-call request | Server returns a protocol-valid tool result | 🟠 Blocked |
+| MCP-TRANSPORT-008 | Send a malformed protocol request | Server rejects it without crashing or returning a false success | 🟠 Blocked |
+| MCP-TRANSPORT-009 | Send a request with an unsupported method | Server returns a protocol-appropriate error | 🟠 Blocked |
+| MCP-TRANSPORT-010 | Send an invalid tool-call envelope | Server returns a protocol error or tool error appropriate to the invalid request | 🟠 Blocked |
+| MCP-TRANSPORT-011 | Send a request with an invalid JSON body | Request is rejected without terminating the service | 🟠 Blocked |
+| MCP-TRANSPORT-012 | Send a request exceeding the configured body-size limit | Request is rejected safely | 🟠 Blocked |
+| MCP-TRANSPORT-013 | Connect using the configured allowed host | Request passes host validation | 🟠 Blocked |
+| MCP-TRANSPORT-014 | Connect with an unapproved Host header | Request is rejected by transport security | 🟠 Blocked |
+| MCP-TRANSPORT-015 | Exercise DNS-rebinding protection | Disallowed host/origin patterns are rejected according to the transport implementation | 🟠 Blocked |
+| MCP-TRANSPORT-016 | Send multiple sequential requests | Server remains available and returns valid responses | 🟠 Blocked |
+| MCP-TRANSPORT-017 | Send independent requests concurrently | Responses remain valid and request handling does not corrupt shared state | 🟠 Blocked |
+| MCP-TRANSPORT-018 | Verify stateless HTTP behavior | Client requests do not rely on an undocumented persistent server-side session | 🟠 Blocked |
 | MCP-TRANSPORT-019 | Restart the server and reconnect | A new client can initialize and use the server after restart | 🟠 Blocked |
 | MCP-TRANSPORT-020 | Verify transport error handling during server unavailability | Client receives a connection failure rather than a false successful result | 🟢 Pass |
 
@@ -62,14 +62,14 @@ The current source registers `GET /healthz`. The response includes `status`, `se
 
 | ID | Test | Expected Result | Status |
 |---|---|---|---|
-| MCP-HEALTH-001 | `GET /healthz` | Returns HTTP 200 when the service is available | 🟢 Pass |
-| MCP-HEALTH-002 | Validate health response JSON | Response is valid JSON and contains the expected fields | 🟢 Pass |
-| MCP-HEALTH-003 | Validate health status | `status` equals `ok` | 🟢 Pass |
-| MCP-HEALTH-004 | Validate service identity | `service` is `local-computer` and `version` is `0.1.0` | 🟢 Pass |
-| MCP-HEALTH-005 | Validate instance metadata | `instance_id` is non-empty and `pid` is a valid process identifier | 🟢 Pass |
-| MCP-HEALTH-006 | Repeated health requests | Endpoint remains responsive across repeated requests | 🟢 Pass |
-| MCP-HEALTH-007 | Health request with the configured Host header | Request succeeds when the host is allowed | 🟢 Pass |
-| MCP-HEALTH-008 | Health request with a disallowed Host header | Request is rejected according to transport host validation | 🟢 Pass |
+| MCP-HEALTH-001 | `GET /healthz` | Returns HTTP 200 when the service is available | 🟠 Blocked |
+| MCP-HEALTH-002 | Validate health response JSON | Response is valid JSON and contains the expected fields | 🟠 Blocked |
+| MCP-HEALTH-003 | Validate health status | `status` equals `ok` | 🟠 Blocked |
+| MCP-HEALTH-004 | Validate service identity | `service` is `local-computer` and `version` is `0.1.0` | 🟠 Blocked |
+| MCP-HEALTH-005 | Validate instance metadata | `instance_id` is non-empty and `pid` is a valid process identifier | 🟠 Blocked |
+| MCP-HEALTH-006 | Repeated health requests | Endpoint remains responsive across repeated requests | 🟠 Blocked |
+| MCP-HEALTH-007 | Health request with the configured Host header | Request succeeds when the host is allowed | 🟠 Blocked |
+| MCP-HEALTH-008 | Health request with a disallowed Host header | Request is rejected according to transport host validation | 🟠 Blocked |
 
 ## 5. Tool Registry and Discovery
 
@@ -77,18 +77,18 @@ The current registration code registers 23 tools: one system-information tool, e
 
 | ID | Test | Expected Result | Status |
 |---|---|---|---|
-| MCP-REG-001 | List all registered tools | Returns the complete expected tool set | 🟢 Pass |
-| MCP-REG-002 | Verify exact tool count | Registry contains 23 tools | 🟢 Pass |
-| MCP-REG-003 | Verify tool names | Every registered tool has the expected exact name | 🟢 Pass |
-| MCP-REG-004 | Verify tool names are unique | No duplicate tool names are returned | 🟢 Pass |
-| MCP-REG-005 | Verify tool descriptions | Each tool has a useful description matching its implemented behavior | 🟢 Pass |
-| MCP-REG-006 | Verify input schemas | Each tool advertises a valid JSON-compatible input schema | 🟢 Pass |
-| MCP-REG-007 | Verify required arguments | Required schema fields match the callable signature | 🟢 Pass |
-| MCP-REG-008 | Verify optional arguments and defaults | Optional fields and defaults match the implementation | 🟢 Pass |
-| MCP-REG-009 | Verify tool annotations | Read-only, destructive, idempotent, and open-world hints match the intended behavior | 🟢 Pass |
-| MCP-REG-010 | Verify registry stability | Repeated list-tools requests return the same tool names for an unchanged server build | 🟢 Pass |
-| MCP-REG-011 | Call an unknown tool name | Server returns an MCP tool/protocol error and does not execute another tool | 🟢 Pass |
-| MCP-REG-012 | Verify unsupported capabilities | Server does not claim unsupported resources, prompts, or other capabilities | 🟢 Pass |
+| MCP-REG-001 | List all registered tools | Returns the complete expected tool set | 🟠 Blocked |
+| MCP-REG-002 | Verify exact tool count | Registry contains 23 tools | 🟠 Blocked |
+| MCP-REG-003 | Verify tool names | Every registered tool has the expected exact name | 🟠 Blocked |
+| MCP-REG-004 | Verify tool names are unique | No duplicate tool names are returned | 🟠 Blocked |
+| MCP-REG-005 | Verify tool descriptions | Each tool has a useful description matching its implemented behavior | 🟠 Blocked |
+| MCP-REG-006 | Verify input schemas | Each tool advertises a valid JSON-compatible input schema | 🟠 Blocked |
+| MCP-REG-007 | Verify required arguments | Required schema fields match the callable signature | 🟠 Blocked |
+| MCP-REG-008 | Verify optional arguments and defaults | Optional fields and defaults match the implementation | 🟠 Blocked |
+| MCP-REG-009 | Verify tool annotations | Read-only, destructive, idempotent, and open-world hints match the intended behavior | 🟠 Blocked |
+| MCP-REG-010 | Verify registry stability | Repeated list-tools requests return the same tool names for an unchanged server build | 🟠 Blocked |
+| MCP-REG-011 | Call an unknown tool name | Server returns an MCP tool/protocol error and does not execute another tool | 🟠 Blocked |
+| MCP-REG-012 | Verify unsupported capabilities | Server does not claim unsupported resources, prompts, or other capabilities | 🟠 Blocked |
 
 ## 6. `get_system_info`
 
@@ -96,12 +96,12 @@ Current signature: `get_system_info() -> dict[str, str]`. It returns the operati
 
 | ID | Test | Expected Result | Status |
 |---|---|---|---|
-| MCP-SYS-001 | Call `get_system_info` with no arguments | Returns system information successfully | 🟢 Pass |
-| MCP-SYS-002 | Validate response fields | Includes `operating_system`, `platform`, `python_version`, and `python_implementation` | 🟢 Pass |
-| MCP-SYS-003 | Validate response value types | All documented values are strings | 🟢 Pass |
-| MCP-SYS-004 | Validate non-empty values | Required environment information is populated | 🟢 Pass |
-| MCP-SYS-005 | Supply an unexpected argument | Invalid input is rejected according to the tool schema | 🟢 Pass |
-| MCP-SYS-006 | Repeat the call | Calls succeed without mutating server or sandbox state | 🟢 Pass |
+| MCP-SYS-001 | Call `get_system_info` with no arguments | Returns system information successfully | 🟠 Blocked |
+| MCP-SYS-002 | Validate response fields | Includes `operating_system`, `platform`, `python_version`, and `python_implementation` | 🟠 Blocked |
+| MCP-SYS-003 | Validate response value types | All documented values are strings | 🟠 Blocked |
+| MCP-SYS-004 | Validate non-empty values | Required environment information is populated | 🟠 Blocked |
+| MCP-SYS-005 | Supply an unexpected argument | Invalid input is rejected according to the tool schema | 🟠 Blocked |
+| MCP-SYS-006 | Repeat the call | Calls succeed without mutating server or sandbox state | 🟠 Blocked |
 
 ## 7. Sandbox Lifecycle Tools
 
@@ -125,67 +125,67 @@ Tests involving actual sandbox creation, deletion, restart, or command execution
 
 | ID | Test | Expected Result | Status |
 |---|---|---|---|
-| MCP-SBX-001 | Create a sandbox with a valid name and default profile | Sandbox creation succeeds and returns the service result | 🟢 Pass |
-| MCP-SBX-002 | Create a sandbox using the `default` profile | Default profile is selected | 🟢 Pass |
+| MCP-SBX-001 | Create a sandbox with a valid name and default profile | Sandbox creation succeeds and returns the service result | 🟠 Blocked |
+| MCP-SBX-002 | Create a sandbox using the `default` profile | Default profile is selected | 🟠 Blocked |
 | MCP-SBX-003 | Create a sandbox using the `browser` profile | Browser profile is selected | 🟠 Blocked |
-| MCP-SBX-004 | Create a standalone sandbox by omitting `host_workspace_id` | Sandbox uses sandbox-local workspace storage | 🟢 Pass |
+| MCP-SBX-004 | Create a standalone sandbox by omitting `host_workspace_id` | Sandbox uses sandbox-local workspace storage | 🟠 Blocked |
 | MCP-SBX-005 | Create a sandbox using a valid authorized host workspace ID | Sandbox uses the authorized workspace binding | 🟠 Blocked |
-| MCP-SBX-006 | Create a sandbox with an unknown workspace ID | Request fails without creating an unintended sandbox | 🟢 Pass |
-| MCP-SBX-007 | Create a sandbox with an unsupported profile | Profile validation rejects the request | 🟢 Pass |
-| MCP-SBX-008 | Create a sandbox with a missing or invalid name | Request fails clearly without creating a resource | 🟢 Pass |
-| MCP-SBX-009 | Create a sandbox with an existing name | Duplicate-name behavior is handled without corrupting the existing sandbox | 🟢 Pass |
-| MCP-SBX-010 | List sandboxes | Returns the sandbox service's list result | 🟢 Pass |
+| MCP-SBX-006 | Create a sandbox with an unknown workspace ID | Request fails without creating an unintended sandbox | 🟠 Blocked |
+| MCP-SBX-007 | Create a sandbox with an unsupported profile | Profile validation rejects the request | 🟠 Blocked |
+| MCP-SBX-008 | Create a sandbox with a missing or invalid name | Request fails clearly without creating a resource | 🟠 Blocked |
+| MCP-SBX-009 | Create a sandbox with an existing name | Duplicate-name behavior is handled without corrupting the existing sandbox | 🟠 Blocked |
+| MCP-SBX-010 | List sandboxes | Returns the sandbox service's list result | 🟠 Blocked |
 | MCP-SBX-011 | List sandboxes in an empty test environment | Returns a valid empty result | 🟠 Blocked |
-| MCP-SBX-012 | Create then list a sandbox | Newly created sandbox appears in the list | 🟢 Pass |
-| MCP-SBX-013 | Validate create/list result handling | Successful results are returned without false success on service errors | 🟢 Pass |
+| MCP-SBX-012 | Create then list a sandbox | Newly created sandbox appears in the list | 🟠 Blocked |
+| MCP-SBX-013 | Validate create/list result handling | Successful results are returned without false success on service errors | 🟠 Blocked |
 
 ### 7.2 Status and Logs
 
 | ID | Test | Expected Result | Status |
 |---|---|---|---|
-| MCP-SBX-020 | Query status for an existing sandbox | Returns the current sandbox status | ⚪ Not implemented |
+| MCP-SBX-020 | Query status for an existing sandbox | Returns the current sandbox status | 🟠 Blocked |
 | MCP-SBX-021 | Query status for a missing sandbox | Returns a clear error | 🟠 Blocked |
-| MCP-SBX-022 | Validate status response content | Response accurately reflects the service result | ⚪ Not implemented |
-| MCP-SBX-023 | Get logs with the default `since` value | Uses the default duration of `5m` | ⚪ Not implemented |
-| MCP-SBX-024 | Get logs with a supported duration such as `1h` or `30s` | Requested duration reaches the service unchanged | ⚪ Not implemented |
-| MCP-SBX-025 | Get logs for a missing sandbox | Returns a clear failure | ⚪ Not implemented |
-| MCP-SBX-026 | Get logs using an invalid duration | Invalid values are rejected by the appropriate validation/service layer | ⚪ Not implemented |
-| MCP-SBX-027 | Validate log output handling | Returned log content is preserved and failures are not reported as success | ⚪ Not implemented |
+| MCP-SBX-022 | Validate status response content | Response accurately reflects the service result | 🟠 Blocked |
+| MCP-SBX-023 | Get logs with the default `since` value | Uses the default duration of `5m` | 🟠 Blocked |
+| MCP-SBX-024 | Get logs with a supported duration such as `1h` or `30s` | Requested duration reaches the service unchanged | 🟠 Blocked |
+| MCP-SBX-025 | Get logs for a missing sandbox | Returns a clear failure | 🟠 Blocked |
+| MCP-SBX-026 | Get logs using an invalid duration | Invalid values are rejected by the appropriate validation/service layer | 🟠 Blocked |
+| MCP-SBX-027 | Validate log output handling | Returned log content is preserved and failures are not reported as success | 🟠 Blocked |
 
 ### 7.3 Start, Stop, Restart, Repair, Recreate, and Delete
 
 | ID | Test | Expected Result | Status |
 |---|---|---|---|
-| MCP-SBX-030 | Start a stopped sandbox | Sandbox transitions to a usable running state | ⚪ Not implemented |
-| MCP-SBX-031 | Start a missing sandbox | Returns a clear failure | ⚪ Not implemented |
-| MCP-SBX-032 | Stop a running sandbox | Sandbox stops while retaining state | ⚪ Not implemented |
-| MCP-SBX-033 | Stop a missing sandbox | Returns a clear failure | ⚪ Not implemented |
-| MCP-SBX-034 | Restart an existing sandbox | Sandbox is restarted and becomes usable | ⚪ Not implemented |
-| MCP-SBX-035 | Restart a missing sandbox | Returns a clear failure | ⚪ Not implemented |
-| MCP-SBX-036 | Repair a recoverable sandbox | Recovery is attempted and the resulting state is accurate | ⚪ Not implemented |
-| MCP-SBX-037 | Repair an unrecoverable sandbox | Reports failure without claiming successful recovery | ⚪ Not implemented |
-| MCP-SBX-038 | Recreate a host-backed sandbox | Recreated sandbox preserves the intended workspace binding and profile | ⚪ Not implemented |
-| MCP-SBX-039 | Recreate a standalone sandbox | Recreated sandbox retains standalone mode and profile | ⚪ Not implemented |
-| MCP-SBX-040 | Recreate a missing sandbox | Returns a clear failure | ⚪ Not implemented |
-| MCP-SBX-041 | Delete an existing test sandbox | Sandbox is deleted | ⚪ Not implemented |
-| MCP-SBX-042 | Delete a missing sandbox | Returns a clear failure | ⚪ Not implemented |
+| MCP-SBX-030 | Start a stopped sandbox | Sandbox transitions to a usable running state | 🟠 Blocked |
+| MCP-SBX-031 | Start a missing sandbox | Returns a clear failure | 🟠 Blocked |
+| MCP-SBX-032 | Stop a running sandbox | Sandbox stops while retaining state | 🟠 Blocked |
+| MCP-SBX-033 | Stop a missing sandbox | Returns a clear failure | 🟠 Blocked |
+| MCP-SBX-034 | Restart an existing sandbox | Sandbox is restarted and becomes usable | 🟠 Blocked |
+| MCP-SBX-035 | Restart a missing sandbox | Returns a clear failure | 🟠 Blocked |
+| MCP-SBX-036 | Repair a recoverable sandbox | Recovery is attempted and the resulting state is accurate | 🟠 Blocked |
+| MCP-SBX-037 | Repair an unrecoverable sandbox | Reports failure without claiming successful recovery | 🟠 Blocked |
+| MCP-SBX-038 | Recreate a host-backed sandbox | Recreated sandbox preserves the intended workspace binding and profile | 🟠 Blocked |
+| MCP-SBX-039 | Recreate a standalone sandbox | Recreated sandbox retains standalone mode and profile | 🟠 Blocked |
+| MCP-SBX-040 | Recreate a missing sandbox | Returns a clear failure | 🟠 Blocked |
+| MCP-SBX-041 | Delete an existing test sandbox | Sandbox is deleted | 🟠 Blocked |
+| MCP-SBX-042 | Delete a missing sandbox | Returns a clear failure | 🟠 Blocked |
 | MCP-SBX-043 | Verify deletion after delete succeeds | Sandbox no longer appears as an existing resource | 🟠 Blocked |
-| MCP-SBX-044 | Interrupt or fail a lifecycle operation | Reports the actual outcome and permits safe recovery | ⚪ Not implemented |
-| MCP-SBX-045 | Verify lifecycle isolation | Operations affect only the named test sandbox | ⚪ Not implemented |
+| MCP-SBX-044 | Interrupt or fail a lifecycle operation | Reports the actual outcome and permits safe recovery | 🟠 Blocked |
+| MCP-SBX-045 | Verify lifecycle isolation | Operations affect only the named test sandbox | 🟠 Blocked |
 | MCP-SBX-046 | Verify cleanup after a failed lifecycle test | Test-created sandboxes are removed or their retained state is explicitly reported | 🟠 Blocked |
 
 ### 7.4 Execute Commands
 
 | ID | Test | Expected Result | Status |
 |---|---|---|---|
-| MCP-SBX-050 | Execute a harmless command in an existing sandbox | Command runs inside the specified sandbox | 🟢 Pass |
-| MCP-SBX-051 | Execute a command that returns output | Output is returned accurately | 🟢 Pass |
-| MCP-SBX-052 | Execute a command that exits non-zero | Failure is accurately reported and not represented as success | 🟢 Pass |
-| MCP-SBX-053 | Execute a command with spaces and shell-special characters in its command string | Input is handled according to the underlying command execution contract without accidental host execution | 🟢 Pass |
-| MCP-SBX-054 | Execute a command in a missing sandbox | Returns a clear failure | 🟢 Pass |
-| MCP-SBX-055 | Omit required `name` or `command` | Input validation rejects the call | 🟢 Pass |
-| MCP-SBX-056 | Verify command execution boundary | Command executes in the requested sandbox, not on the MCP server host | 🟢 Pass |
-| MCP-SBX-057 | Verify output/error handling for a command failure | Diagnostic information is preserved without leaking unrelated secrets | 🟢 Pass |
+| MCP-SBX-050 | Execute a harmless command in an existing sandbox | Command runs inside the specified sandbox | 🟠 Blocked |
+| MCP-SBX-051 | Execute a command that returns output | Output is returned accurately | 🟠 Blocked |
+| MCP-SBX-052 | Execute a command that exits non-zero | Failure is accurately reported and not represented as success | 🟠 Blocked |
+| MCP-SBX-053 | Execute a command with spaces and shell-special characters in its command string | Input is handled according to the underlying command execution contract without accidental host execution | 🟠 Blocked |
+| MCP-SBX-054 | Execute a command in a missing sandbox | Returns a clear failure | 🟠 Blocked |
+| MCP-SBX-055 | Omit required `name` or `command` | Input validation rejects the call | 🟠 Blocked |
+| MCP-SBX-056 | Verify command execution boundary | Command executes in the requested sandbox, not on the MCP server host | 🟠 Blocked |
+| MCP-SBX-057 | Verify output/error handling for a command failure | Diagnostic information is preserved without leaking unrelated secrets | 🟠 Blocked |
 
 ## 8. Workspace File Tools
 

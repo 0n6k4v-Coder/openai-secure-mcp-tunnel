@@ -49,7 +49,9 @@ def make_request_logging_middleware(mcp, instance_id: str):
             try:
                 tools_for_validation = await mcp.list_tools()
             except Exception:
-                logger.exception("Unable to inspect MCP tool schemas for argument validation")
+                logger.exception(
+                    "Unable to inspect MCP tool schemas for argument validation"
+                )
                 raise
             tool = next(
                 (item for item in tools_for_validation if item.name == tool_name),
@@ -57,7 +59,9 @@ def make_request_logging_middleware(mcp, instance_id: str):
             )
             if tool is not None:
                 schema = tool.input_schema
-                properties = schema.get("properties", {}) if isinstance(schema, Mapping) else {}
+                properties = (
+                    schema.get("properties", {}) if isinstance(schema, Mapping) else {}
+                )
                 if isinstance(properties, Mapping):
                     unexpected = sorted(set(arguments) - set(properties))
                     if unexpected:

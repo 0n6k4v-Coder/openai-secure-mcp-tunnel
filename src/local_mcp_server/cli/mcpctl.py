@@ -606,8 +606,7 @@ def _uninstall(*, confirmed: bool, purge: bool = False) -> int:
             f"[{_path_status(app_config_root)}]"
         )
         print(
-            f"Application state root: {app_state_root} "
-            f"[{_path_status(app_state_root)}]"
+            f"Application state root: {app_state_root} [{_path_status(app_state_root)}]"
         )
         print()
         for label, path, action in inventory:

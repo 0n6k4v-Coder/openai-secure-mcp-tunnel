@@ -17,7 +17,9 @@ def test_build_mcpctl_completion_parser_contains_unified_commands() -> None:
 
     assert parser.prog == "mcpctl"
     commands = next(
-        action for action in parser._actions if isinstance(action, argparse._SubParsersAction)
+        action
+        for action in parser._actions
+        if isinstance(action, argparse._SubParsersAction)
     )
     assert {
         "start",
@@ -96,7 +98,8 @@ def test_dynamic_completers_are_attached() -> None:
     assert workspace_action.completer is completion._workspace_id_completer
 
     credential_key_action = next(
-        action for action in credential_create._actions
+        action
+        for action in credential_create._actions
         if "--key" in action.option_strings
     )
     assert credential_key_action.completer is EnvironCompleter

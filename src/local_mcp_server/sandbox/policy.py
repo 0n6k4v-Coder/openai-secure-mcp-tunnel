@@ -36,9 +36,7 @@ MAX_SANDBOX_NAME_LENGTH = 19
 
 SandboxProfile = Literal["default", "browser"]
 
-_SANDBOX_NAME = re.compile(
-    rf"^[a-z0-9][a-z0-9-]{{0,{MAX_SANDBOX_NAME_LENGTH - 1}}}$"
-)
+_SANDBOX_NAME = re.compile(rf"^[a-z0-9][a-z0-9-]{{0,{MAX_SANDBOX_NAME_LENGTH - 1}}}$")
 
 _CPU_QUANTITY = re.compile(r"^(?:\d+(?:\.\d+)?|\d+m)$")
 

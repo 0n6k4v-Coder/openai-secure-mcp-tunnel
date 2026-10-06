@@ -15,9 +15,7 @@ EXPECTED_FIELDS = {
 def test_MCP_SYS_001_call_get_system_info_without_arguments(
     mcp_client,
 ) -> None:
-    result = mcp_client.run(
-        lambda client: client.call_tool("get_system_info")
-    )
+    result = mcp_client.run(lambda client: client.call_tool("get_system_info"))
 
     assert result.is_error is False, (
         "Calling get_system_info without arguments should succeed; "
@@ -52,8 +50,7 @@ def test_MCP_SYS_003_validate_response_value_types(mcp_client) -> None:
 
     for field in EXPECTED_FIELDS:
         assert isinstance(result[field], str), (
-            f"{field} must be a string, received "
-            f"{type(result[field]).__name__}"
+            f"{field} must be a string, received {type(result[field]).__name__}"
         )
 
 
@@ -86,17 +83,13 @@ def test_MCP_SYS_005_reject_unexpected_argument(mcp_client) -> None:
     )
 
     assert result.is_error is True, (
-        "get_system_info accepted an unexpected argument; "
-        f"received {result!r}"
+        f"get_system_info accepted an unexpected argument; received {result!r}"
     )
 
 
 @pytest.mark.integration
 def test_MCP_SYS_006_repeat_call_without_state_mutation(mcp_client) -> None:
-    results = [
-        mcp_client.call_tool("get_system_info")
-        for _ in range(3)
-    ]
+    results = [mcp_client.call_tool("get_system_info") for _ in range(3)]
 
     assert all(isinstance(result, dict) for result in results), (
         "Every get_system_info call should return a dictionary"

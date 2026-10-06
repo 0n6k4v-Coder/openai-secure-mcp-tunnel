@@ -122,11 +122,7 @@ def sandbox_cli_environment(tmp_path: Path) -> dict[str, str]:
         [
             str(shim_dir),
             str(PROJECT_ROOT / "src"),
-            *(
-                [environment["PYTHONPATH"]]
-                if environment.get("PYTHONPATH")
-                else []
-            ),
+            *([environment["PYTHONPATH"]] if environment.get("PYTHONPATH") else []),
         ]
     )
     environment["PYTHONDONTWRITEBYTECODE"] = "1"
@@ -179,9 +175,7 @@ def test_cli_sbx_020_list_delegates_and_displays_collection(
     )
 
     assert result.returncode == 0, (
-        f"Sandbox list failed.\n"
-        f"stdout: {result.stdout}\n"
-        f"stderr: {result.stderr}"
+        f"Sandbox list failed.\nstdout: {result.stdout}\nstderr: {result.stderr}"
     )
     assert "NAME" in result.stdout
     assert "STATUS" in result.stdout
@@ -235,9 +229,7 @@ def test_cli_sbx_023_status_displays_named_sandbox(
     )
 
     assert result.returncode == 0, (
-        f"Sandbox status failed.\n"
-        f"stdout: {result.stdout}\n"
-        f"stderr: {result.stderr}"
+        f"Sandbox status failed.\nstdout: {result.stdout}\nstderr: {result.stderr}"
     )
     assert "Name:                e2e-status-fixture" in result.stdout
     assert "Status:              Ready" in result.stdout
@@ -256,9 +248,7 @@ def test_cli_sbx_024_status_json_returns_valid_object(
     )
 
     assert result.returncode == 0, (
-        f"Sandbox status JSON failed.\n"
-        f"stdout: {result.stdout}\n"
-        f"stderr: {result.stderr}"
+        f"Sandbox status JSON failed.\nstdout: {result.stdout}\nstderr: {result.stderr}"
     )
 
     payload = json.loads(result.stdout)
@@ -325,9 +315,7 @@ def test_cli_sbx_028_status_json_schema(
     )
 
     assert result.returncode == 0, (
-        f"Sandbox status JSON failed.\n"
-        f"stdout: {result.stdout}\n"
-        f"stderr: {result.stderr}"
+        f"Sandbox status JSON failed.\nstdout: {result.stdout}\nstderr: {result.stderr}"
     )
 
     payload = json.loads(result.stdout)

@@ -638,7 +638,6 @@ def test_revoke_workspace_grant_uses_privileged_sandbox_acl_helper(
     assert observed["host_gid"] == 2004
 
 
-
 def test_public_grant_excludes_infrastructure_details() -> None:
     public = broker._public_grant(
         "ws_example",
