@@ -18,7 +18,9 @@ OPENAI_API_KEY_FILE="${XDG_CONFIG_HOME}/local-mcp-server/mcp-clients/openai/cred
 [[ "$(stat -c '%a' "${OPENAI_API_KEY_FILE}")" == "600" ]] || { echo "ERROR: CONTROL_PLANE_API_KEY permissions must be 600." >&2; exit 1; }
 
 echo "==> Checking MCP server health"
-curl --fail --silent --show-error "http://127.0.0.1:${MCP_PORT}/healthz"
+curl --fail --silent --show-error \
+    --header 'Host: 127.0.0.1:8000' \
+    "http://127.0.0.1:${MCP_PORT}/healthz"
 echo
 
 echo "==> Checking MCP endpoint"
