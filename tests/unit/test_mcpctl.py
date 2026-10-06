@@ -643,6 +643,7 @@ def test_mcpctl_parser_contains_expected_commands() -> None:
         "config",
         "cleanup",
         "uninstall",
+        "runtime",
     }
 
 
