@@ -2395,3 +2395,32 @@ mcpctl workspace list --verbose --json
 ```
 
 Verbose output includes internal identifiers and infrastructure metadata such as host UID/GID and Docker volume name. Treat this output as operational detail and avoid sharing it unnecessarily.
+
+
+## Interactive credential creation
+
+Create an OpenShell credential provider with prompts for any omitted metadata:
+
+```bash
+uv run mcpctl credential create
+```
+
+You can also supply some or all metadata. Values already supplied are not prompted
+again:
+
+```bash
+uv run mcpctl credential create github
+uv run mcpctl credential create --type generic --key GITHUB_TOKEN
+uv run mcpctl credential create github --type generic --key GITHUB_TOKEN --yes
+```
+
+When run in a terminal, omitted fields are prompted for and creation requires an
+explicit `y` confirmation unless `--yes` is provided. The default provider type
+is `generic`. The `--key` value is the **environment variable name**, not the
+secret itself. The secret is entered twice through hidden input and is passed to
+OpenShell through the child process environment; it is never accepted as a
+command-line argument.
+
+When stdin is not a terminal, supply all metadata and `--yes`; secret entry still
+requires a terminal because secrets are deliberately not accepted as command-line
+arguments. If you decline the final confirmation, no provider is created.

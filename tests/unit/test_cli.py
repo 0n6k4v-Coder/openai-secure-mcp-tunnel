@@ -670,9 +670,84 @@ def test_credential_mutations_require_confirmation(
         getattr(cli, helper)(*args)
 
 
+def test_credential_create_prompts_for_missing_metadata(
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    class TTY:
+        def isatty(self) -> bool:
+            return True
+
+    answers = iter(["github", "generic", "GITHUB_TOKEN", "y"])
+    monkeypatch.setattr(cli.sys, "stdin", TTY())
+    monkeypatch.setattr("builtins.input", lambda prompt="": next(answers))
+    captured: dict[str, str] = {}
+
+    def fake_create(name: str, provider_type: str, credential_key: str) -> int:
+        captured.update(name=name, provider_type=provider_type, credential_key=credential_key)
+        return 0
+
+    monkeypatch.setattr(cli, "create_credential", fake_create)
+    assert cli._credential_create(None, None, None, False) == cli.EXIT_OK
+    assert captured == {
+        "name": "github",
+        "provider_type": "generic",
+        "credential_key": "GITHUB_TOKEN",
+    }
+    assert "Cancelled" not in capsys.readouterr().out
+
+
+def test_credential_create_decline_does_not_create(
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    class TTY:
+        def isatty(self) -> bool:
+            return True
+
+    monkeypatch.setattr(cli.sys, "stdin", TTY())
+    monkeypatch.setattr("builtins.input", lambda prompt="": "n")
+    monkeypatch.setattr(
+        cli,
+        "create_credential",
+        lambda *args: pytest.fail("must not create after decline"),
+    )
+    assert cli._credential_create("github", "generic", "GITHUB_TOKEN", False) == cli.EXIT_OK
+    assert "No credential was created" in capsys.readouterr().out
+
+
+def test_credential_create_missing_metadata_requires_tty(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    class NonTTY:
+        def isatty(self) -> bool:
+            return False
+
+    monkeypatch.setattr(cli.sys, "stdin", NonTTY())
+    with pytest.raises(ValueError, match="stdin is not a terminal"):
+        cli._credential_create(None, "generic", "GITHUB_TOKEN", True)
+
+
+def test_credential_create_non_tty_requires_terminal_for_secret(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    class NonTTY:
+        def isatty(self) -> bool:
+            return False
+
+    monkeypatch.setattr(cli.sys, "stdin", NonTTY())
+    with pytest.raises(ValueError, match="terminal for hidden secret input"):
+        cli._credential_create("github", "generic", "GITHUB_TOKEN", True)
+
+
 def test_credential_create_delegates(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
+    class TTY:
+        def isatty(self) -> bool:
+            return True
+
+    monkeypatch.setattr(cli.sys, "stdin", TTY())
     captured: dict[str, object] = {}
 
     def fake_create(name: str, provider_type: str, credential_key: str) -> int:
