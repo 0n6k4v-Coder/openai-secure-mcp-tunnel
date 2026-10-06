@@ -113,8 +113,8 @@ def test_create_credential_does_not_put_secret_in_argv(
 
     assert captured["command"] == [
         "openshell",
-        "--gateway-endpoint",
-        "https://127.0.0.1:8080",
+        "--gateway",
+        "local",
         "provider",
         "create",
         "--name",
@@ -173,8 +173,8 @@ def test_update_credential_uses_environment_not_arguments(
 
     assert captured["command"] == [
         "openshell",
-        "--gateway-endpoint",
-        "https://127.0.0.1:8080",
+        "--gateway",
+        "local",
         "provider",
         "update",
         "my-openai",
@@ -216,8 +216,8 @@ def test_grant_credential_uses_provider_attach(
 
     assert captured["command"] == [
         "openshell",
-        "--gateway-endpoint",
-        "https://127.0.0.1:8080",
+        "--gateway",
+        "local",
         "sandbox",
         "provider",
         "attach",
@@ -261,8 +261,8 @@ def test_revoke_credential_uses_provider_detach(
 
     assert captured["command"] == [
         "openshell",
-        "--gateway-endpoint",
-        "https://127.0.0.1:8080",
+        "--gateway",
+        "local",
         "sandbox",
         "provider",
         "detach",
