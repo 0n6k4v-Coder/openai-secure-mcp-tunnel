@@ -253,7 +253,8 @@ def _ensure_private_directory(path: Path) -> None:
         ) from exc
 
     if mode & 0o077:
-        raise LifecycleError(            f"Runtime directory {path} must not be accessible "
+        raise LifecycleError(
+            f"Runtime directory {path} must not be accessible "
             f"by group or other users; current mode is {mode:04o}."
         )
 
@@ -466,7 +467,8 @@ def _wait_for_http(
         except (
             OSError,
             urllib.error.URLError,
-        ) as exc:            last_error = str(exc)
+        ) as exc:
+            last_error = str(exc)
 
         time.sleep(DEFAULT_POLL_INTERVAL_SECONDS)
 
@@ -685,6 +687,7 @@ def get_status(
                 runtime=runtime,
             )
         )
+
     return LifecycleStatus(
         tls=tls,
         mcp_clients=tuple(client_statuses),
