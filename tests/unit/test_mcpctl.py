@@ -982,5 +982,8 @@ def test_uninstall_purge_reports_partial_failure_and_verifies_successful_root(
     output = capsys.readouterr()
     assert "REMOVED (verified absent)" in output.out
     assert "PARTIAL FAILURE" in output.err
+    assert "RECOVERY:" in output.err
+    assert "sudo chown -R" in output.err
+    assert str(app_state) in output.err
     assert not app_config.exists()
     assert app_state.is_dir()
