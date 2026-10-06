@@ -678,6 +678,11 @@ def test_setup_configures_mcp_client_before_starting_services(
     )
     monkeypatch.setattr(
         mcpctl.lifecycle,
+        "ensure_local_images",
+        lambda: events.append("ensure_local_images"),
+    )
+    monkeypatch.setattr(
+        mcpctl.lifecycle,
         "start_core_services",
         lambda: events.append("start_core_services"),
     )
@@ -722,6 +727,7 @@ def test_setup_configures_mcp_client_before_starting_services(
         "setup_tls",
         "config_mcp_client:True",
         "validate_compose",
+        "ensure_local_images",
         "start_core_services",
         "reconcile_tunnel_client",
         "verify:True",
@@ -1044,3 +1050,19 @@ def test_uninstall_purge_success_reports_verified_roots_and_scope_limit(
     assert "does not certify sandbox, ACL, or Docker resource cleanup" in output
     assert not app_config.exists()
     assert not app_state.exists()
+
+
+
+def test_mcpctl_sandbox_list_json_flag_is_forwarded() -> None:
+    parser = mcpctl._build_parser()
+    args = parser.parse_args(["sandbox", "list", "--json"])
+
+    assert args.json_output is True
+    assert mcpctl._sandbox_arguments(args) == ["list", "--json"]
+
+
+def test_mcpctl_credential_get_matches_underlying_provider_cli() -> None:
+    parser = mcpctl._build_parser()
+    args = parser.parse_args(["credential", "get", "openai-provider"])
+
+    assert mcpctl._credential_arguments(args) == ["get", "openai-provider"]

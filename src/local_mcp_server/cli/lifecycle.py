@@ -8,6 +8,7 @@ import urllib.error
 import urllib.request
 from dataclasses import dataclass, replace
 from pathlib import Path
+import shutil
 from typing import Callable
 
 from ..config.paths import (
@@ -18,6 +19,7 @@ from ..config.paths import (
 )
 from ..infrastructure.openshell.tls import TLSStatus
 from .main import (
+    PROJECT_ROOT,
     _command_exists,
     _compose_command,
     _run_capture,
@@ -339,6 +341,173 @@ def prepare_runtime() -> None:
         workspace_grants_file(),
         "{}\n",
     )
+
+
+
+
+@dataclass(frozen=True)
+class LocalImageStatus:
+    variable: str
+    image: str
+    state: str
+    dockerfile_dir: Path
+
+    @property
+    def available(self) -> bool:
+        return self.state == "FOUND"
+
+
+_LOCAL_IMAGE_DEFAULTS = (
+    ("SANDBOX_IMAGE", "local-mcp-openshell-sandbox:1.0.0", "openshell-sandbox"),
+    ("BROWSER_SANDBOX_IMAGE", "local-mcp-browser-sandbox:1.0.0", "browser-sandbox"),
+    ("WORKSPACE_ACL_HELPER_IMAGE", "local-mcp-workspace-acl-helper:1.0.0", "workspace-acl-helper"),
+)
+
+
+def _configured_image_value(variable: str, default: str) -> str:
+    value = os.environ.get(variable)
+    if value and value.strip():
+        return value.strip()
+
+    env_files: list[Path] = []
+    try:
+        from ..runtime.context import get_runtime_context
+
+        context_env = get_runtime_context().config_root / ".env"
+        env_files.append(context_env)
+    except (OSError, RuntimeError, ValueError):
+        pass
+    env_files.append(PROJECT_ROOT / ".env")
+
+    for env_file in env_files:
+        try:
+            lines = env_file.read_text(encoding="utf-8").splitlines()
+        except OSError:
+            continue
+        for line in lines:
+            stripped = line.strip()
+            if not stripped or stripped.startswith("#") or "=" not in stripped:
+                continue
+            key, raw_value = stripped.split("=", 1)
+            if key.strip() != variable:
+                continue
+            value = raw_value.strip().strip('"').strip("'")
+            if value:
+                return value
+    return default
+
+
+def _local_image_specs() -> tuple[tuple[str, str, Path], ...]:
+    return tuple(
+        (
+            variable,
+            _configured_image_value(variable, default),
+            PROJECT_ROOT / "deploy" / "docker" / dockerfile_dir,
+        )
+        for variable, default, dockerfile_dir in _LOCAL_IMAGE_DEFAULTS
+    )
+
+
+def get_local_image_statuses(
+    required_variables: tuple[str, ...] | None = None,
+) -> tuple[LocalImageStatus, ...]:
+    """Inspect effective local image tags without building or changing resources."""
+    specs = [
+        spec for spec in _local_image_specs()
+        if required_variables is None or spec[0] in required_variables
+    ]
+    if shutil.which("docker") is None:
+        return tuple(
+            LocalImageStatus(variable, image, "BLOCKED (DOCKER CLI MISSING)", path)
+            for variable, image, path in specs
+        )
+
+    daemon = _run_capture(["docker", "info", "--format", "{{.ServerVersion}}"])
+    if daemon.returncode != 0:
+        detail = (daemon.stderr or daemon.stdout).strip()
+        state = "BLOCKED (DOCKER DAEMON UNAVAILABLE)"
+        if detail:
+            state = "BLOCKED (DOCKER DAEMON UNAVAILABLE)"
+        return tuple(
+            LocalImageStatus(variable, image, state, path)
+            for variable, image, path in specs
+        )
+
+    statuses: list[LocalImageStatus] = []
+    for variable, image, path in specs:
+        inspected = _run_capture(["docker", "image", "inspect", image])
+        statuses.append(
+            LocalImageStatus(variable, image, "FOUND" if inspected.returncode == 0 else "MISSING", path)
+        )
+    return tuple(statuses)
+
+
+def print_local_image_statuses(statuses: tuple[LocalImageStatus, ...]) -> None:
+    from .main import _print_table
+
+    print("Custom Images")
+    _print_table(
+        ["IMAGE VARIABLE", "TAG", "STATUS"],
+        [[status.variable, status.image, status.state] for status in statuses],
+    )
+
+
+def verify_local_images(required_variables: tuple[str, ...] | None = None) -> None:
+    statuses = get_local_image_statuses(required_variables)
+    blocked = [status for status in statuses if status.state.startswith("BLOCKED")]
+    if blocked:
+        raise LifecycleError(
+            "Cannot verify local images: " + "; ".join(status.state for status in blocked)
+        )
+    missing = [status for status in statuses if not status.available]
+    if missing:
+        details = ", ".join(status.image for status in missing)
+        raise LifecycleError(
+            f"Required local image(s) missing: {details}. Run 'mcpctl setup' to build them."
+        )
+
+
+def ensure_local_images(
+    required_variables: tuple[str, ...] | None = None,
+) -> tuple[LocalImageStatus, ...]:
+    """Build missing local images and verify every requested tag after the build."""
+    specs = [
+        spec for spec in _local_image_specs()
+        if required_variables is None or spec[0] in required_variables
+    ]
+    if shutil.which("docker") is None:
+        raise LifecycleError("Docker CLI is required to build local sandbox images.")
+    daemon = _run_capture(["docker", "info", "--format", "{{.ServerVersion}}"])
+    if daemon.returncode != 0:
+        detail = (daemon.stderr or daemon.stdout).strip() or "Docker daemon is unavailable."
+        raise LifecycleError(f"Cannot build local images: {detail}")
+
+    for variable, image, dockerfile_dir in specs:
+        inspected = _run_capture(["docker", "image", "inspect", image])
+        if inspected.returncode == 0:
+            print(f"      {image}  FOUND (build skipped)")
+            continue
+        if not dockerfile_dir.is_dir():
+            raise LifecycleError(
+                f"Cannot build {image}: Docker build context not found: {dockerfile_dir}"
+            )
+        print(f"      {image}  BUILDING")
+        built = _run_capture(["docker", "build", "--tag", image, str(dockerfile_dir)])
+        if built.returncode != 0:
+            detail = (built.stderr or built.stdout).strip() or "Docker build failed."
+            raise LifecycleError(f"Build failed for {image}: {detail}")
+        verified = _run_capture(["docker", "image", "inspect", image])
+        if verified.returncode != 0:
+            raise LifecycleError(
+                f"Docker build returned success but image verification failed: {image}"
+            )
+        print(f"      {image}  BUILT AND VERIFIED")
+
+    statuses = get_local_image_statuses(required_variables)
+    missing = [status.image for status in statuses if not status.available]
+    if missing:
+        raise LifecycleError("Local image verification failed: " + ", ".join(missing))
+    return statuses
 
 
 def validate_compose() -> None:

@@ -542,3 +542,93 @@ def test_lifecycle_not_ready_when_required_client_is_unconfigured() -> None:
     assert status.infrastructure_ready is True
     assert status.required_mcp_clients_configured is False
     assert status.ready is False
+
+
+
+def test_local_image_defaults_match_documented_custom_images(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from local_mcp_server.cli import lifecycle
+
+    monkeypatch.delenv("SANDBOX_IMAGE", raising=False)
+    monkeypatch.delenv("BROWSER_SANDBOX_IMAGE", raising=False)
+    monkeypatch.delenv("WORKSPACE_ACL_HELPER_IMAGE", raising=False)
+    monkeypatch.setattr(lifecycle, "PROJECT_ROOT", Path("/project"))
+    monkeypatch.setattr(lifecycle, "_configured_image_value", lambda variable, default: default)
+
+    specs = lifecycle._local_image_specs()
+
+    assert [spec[1] for spec in specs] == [
+        "local-mcp-openshell-sandbox:1.0.0",
+        "local-mcp-browser-sandbox:1.0.0",
+        "local-mcp-workspace-acl-helper:1.0.0",
+    ]
+    assert [spec[2].name for spec in specs] == [
+        "openshell-sandbox",
+        "browser-sandbox",
+        "workspace-acl-helper",
+    ]
+
+
+def test_ensure_local_images_builds_missing_image_and_verifies_it(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    from types import SimpleNamespace
+    from local_mcp_server.cli import lifecycle
+
+    monkeypatch.setattr(lifecycle.shutil, "which", lambda command: "/usr/bin/docker")
+    monkeypatch.setattr(lifecycle, "_local_image_specs", lambda: (
+        ("SANDBOX_IMAGE", "local-mcp-openshell-sandbox:1.0.0", tmp_path),
+    ))
+    calls: list[list[str]] = []
+    inspected = False
+
+    def fake_capture(command: list[str]) -> SimpleNamespace:
+        nonlocal inspected
+        calls.append(command)
+        if command[:3] == ["docker", "info", "--format"]:
+            return SimpleNamespace(returncode=0, stdout="27.0", stderr="")
+        if command[:3] == ["docker", "image", "inspect"]:
+            if not inspected:
+                inspected = True
+                return SimpleNamespace(returncode=1, stdout="", stderr="not found")
+            return SimpleNamespace(returncode=0, stdout="[]", stderr="")
+        if command[:2] == ["docker", "build"]:
+            return SimpleNamespace(returncode=0, stdout="built", stderr="")
+        raise AssertionError(command)
+
+    monkeypatch.setattr(lifecycle, "_run_capture", fake_capture)
+
+    statuses = lifecycle.ensure_local_images()
+
+    assert len(statuses) == 1 and statuses[0].available
+    assert any(command[:2] == ["docker", "build"] for command in calls)
+    assert calls[-1][:3] == ["docker", "image", "inspect"]
+
+
+def test_ensure_local_images_surfaces_build_failure(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    from types import SimpleNamespace
+    from local_mcp_server.cli import lifecycle
+
+    monkeypatch.setattr(lifecycle.shutil, "which", lambda command: "/usr/bin/docker")
+    monkeypatch.setattr(lifecycle, "_local_image_specs", lambda: (
+        ("SANDBOX_IMAGE", "local-mcp-openshell-sandbox:1.0.0", tmp_path),
+    ))
+    monkeypatch.setattr(
+        lifecycle,
+        "_run_capture",
+        lambda command: (
+            SimpleNamespace(returncode=0, stdout="27.0", stderr="")
+            if command[:2] == ["docker", "info"]
+            else SimpleNamespace(returncode=1, stdout="", stderr="build error")
+            if command[:2] == ["docker", "image"]
+            else SimpleNamespace(returncode=1, stdout="", stderr="build error")
+        ),
+    )
+
+    with pytest.raises(lifecycle.LifecycleError, match="Build failed.*build error"):
+        lifecycle.ensure_local_images()

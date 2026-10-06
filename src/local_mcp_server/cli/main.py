@@ -191,10 +191,34 @@ def _status_value(record: dict[str, object]) -> str:
     return "UNKNOWN"
 
 
+def _verify_started_stack(action: str) -> int:
+    from . import lifecycle
+    from ..infrastructure.openshell.tls import get_status as get_openshell_tls_status
+
+    status = lifecycle.get_status(get_openshell_tls_status())
+    lifecycle.print_status(status)
+    print()
+    if not status.infrastructure_ready:
+        print(f"RESULT: {action} FAILED — CORE SERVICES NOT READY", file=sys.stderr)
+        print("Next: mcpctl logs openshell-gateway", file=sys.stderr)
+        print("      mcpctl logs mcp-server", file=sys.stderr)
+        return EXIT_ERROR
+    if status.ready:
+        print(f"RESULT: {action} READY")
+    else:
+        print(f"RESULT: {action} DEGRADED — CORE SERVICES READY")
+        print("Next: mcpctl config mcp-client")
+    return EXIT_OK
+
+
 def _start() -> int:
     _command_exists("docker")
+    from . import lifecycle
 
-    return _run_passthrough(
+    print("Starting local MCP application")
+    print("Preflight: custom images")
+    lifecycle.ensure_local_images()
+    result = _run_passthrough(
         _compose_command(
             "up",
             "--build",
@@ -202,17 +226,32 @@ def _start() -> int:
             "--detach",
         )
     )
+    if result != EXIT_OK:
+        print(f"RESULT: START FAILED (exit code {result})", file=sys.stderr)
+        return result
+    return _verify_started_stack("START")
 
 
 def _stop() -> int:
     _command_exists("docker")
-    return _run_passthrough(_compose_command("down"))
+    print("Stopping local MCP application")
+    result = _run_passthrough(_compose_command("down"))
+    if result == EXIT_OK:
+        print("RESULT: STOPPED")
+        print("Preserved: custom images, Docker volumes, workspace data, credentials, and configuration.")
+    else:
+        print(f"RESULT: STOP FAILED (exit code {result})", file=sys.stderr)
+    return result
 
 
 def _restart() -> int:
     _command_exists("docker")
+    from . import lifecycle
 
-    return _run_passthrough(
+    print("Restarting local MCP application")
+    print("Preflight: custom images")
+    lifecycle.ensure_local_images()
+    result = _run_passthrough(
         _compose_command(
             "up",
             "--build",
@@ -221,6 +260,11 @@ def _restart() -> int:
             "--detach",
         )
     )
+    if result != EXIT_OK:
+        print(f"RESULT: RESTART FAILED (exit code {result})", file=sys.stderr)
+        return result
+    return _verify_started_stack("RESTART")
+
 
 
 def _status(json_output: bool) -> int:
@@ -366,6 +410,14 @@ def _sandbox_create(
         raise ValueError(
             "sandbox create requires either --workspace WORKSPACE_ID or --standalone."
         )
+
+    validate_name(name)
+    from . import lifecycle
+
+    required_image = (
+        "BROWSER_SANDBOX_IMAGE" if profile == "browser" else "SANDBOX_IMAGE"
+    )
+    lifecycle.verify_local_images((required_image,))
 
     if profile == "default":
         created = create_sandbox(

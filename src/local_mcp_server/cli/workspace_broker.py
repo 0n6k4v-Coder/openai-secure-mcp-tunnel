@@ -319,6 +319,14 @@ def _run_acl_helper(
             f"Workspace grant host path is not a directory: {resolved_path}"
         )
 
+    from .lifecycle import _configured_image_value, verify_local_images
+
+    helper_image = _configured_image_value(
+        "WORKSPACE_ACL_HELPER_IMAGE",
+        ACL_HELPER_IMAGE,
+    )
+    verify_local_images(("WORKSPACE_ACL_HELPER_IMAGE",))
+
     completed = _run_command(
         [
             docker,
@@ -337,7 +345,7 @@ def _run_acl_helper(
             "0:0",
             "--mount",
             f"type=bind,source={resolved_path},target=/workspace",
-            ACL_HELPER_IMAGE,
+            helper_image,
             operation,
             str(SANDBOX_UID),
             str(host_uid),

@@ -29,7 +29,7 @@ from ..runtime.templates import runtime_template
 EXIT_OK = 0
 EXIT_ERROR = 2
 
-SETUP_STEP_COUNT = 6
+SETUP_STEP_COUNT = 7
 
 
 def _prompt_choice(title: str, options: list[str]) -> int:
@@ -361,6 +361,14 @@ def _setup() -> int:
 
     _print_setup_step(
         5,
+        "Custom Images",
+    )
+    lifecycle.ensure_local_images()
+
+    _print_setup_result("✓ 3/3 READY")
+
+    _print_setup_step(
+        6,
         "Core Services",
     )
 
@@ -373,7 +381,7 @@ def _setup() -> int:
     print("      MCP Server           ✓ READY")
 
     _print_setup_step(
-        6,
+        7,
         "Tunnel Client",
     )
 
@@ -410,30 +418,39 @@ def _status() -> int:
     status = lifecycle.get_status(tls_status)
 
     lifecycle.print_status(status)
+    image_statuses = lifecycle.get_local_image_statuses()
+    print()
+    lifecycle.print_local_image_statuses(image_statuses)
+    images_ready = all(status.available for status in image_statuses)
 
-    return EXIT_OK if status.ready else EXIT_ERROR
+    return EXIT_OK if status.ready and images_ready else EXIT_ERROR
 
 
 def _repair() -> int:
     print("Local MCP Server Repair")
 
     print()
-    print("[1/5] Runtime")
+    print("[1/6] Runtime")
     lifecycle.prepare_runtime()
     print("      ✓ READY")
 
     print()
-    print("[2/5] OpenShell TLS")
+    print("[2/6] OpenShell TLS")
     tls_status = repair_openshell_tls()
     print("      " + ("✓ READY" if tls_status.complete else "✗ NOT READY"))
 
     print()
-    print("[3/5] Docker Compose")
+    print("[3/6] Docker Compose")
     lifecycle.validate_compose()
     print("      ✓ VALID")
 
     print()
-    print("[4/5] Core Services")
+    print("[4/6] Custom Images")
+    lifecycle.ensure_local_images()
+    print("      ✓ REQUIRED IMAGES READY")
+
+    print()
+    print("[5/6] Core Services")
     print("      OpenShell Gateway    … STARTING")
     print("      MCP Server           … STARTING")
 
@@ -443,7 +460,7 @@ def _repair() -> int:
     print("      MCP Server           ✓ READY")
 
     print()
-    print("[5/5] Tunnel Client")
+    print("[6/6] Tunnel Client")
     lifecycle.reconcile_tunnel_client()
 
     status = lifecycle.get_status(
@@ -495,6 +512,9 @@ def _cleanup(*, json_output: bool = False) -> int:
         "workspace_grants_preserved": True,
         "host_workspaces_preserved": True,
         "docker_volumes_preserved": True,
+        "docker_images_preserved": True,
+        "containers_and_networks_modified": False,
+        "credentials_preserved": True,
         "repository_preserved": True,
         "destructive": False,
     }
@@ -514,8 +534,9 @@ def _cleanup(*, json_output: bool = False) -> int:
     else:
         print("No generated legacy profile configurations found.")
     print()
-    print("No files, workspace grants, host workspaces, Docker volumes,")
-    print("credentials, or runtime data were changed.")
+    print("Preserved: containers, networks, Docker images and volumes,")
+    print("workspace grants, host workspaces, credentials, and runtime data.")
+    print("No files or resources were removed or modified.")
     return EXIT_OK
 
 
@@ -628,7 +649,7 @@ def _uninstall(*, confirmed: bool, purge: bool = False) -> int:
         print()
         print("PRESERVED BY DESIGN")
         print("  Host workspaces and workspace files")
-        print("  Docker volumes")
+        print("  Docker volumes and custom Docker images")
         print("  Repository and repository-local CLI environment")
         print("  OpenShell CLI mTLS bundle outside the application root")
         print("Preserved host workspaces, Docker volumes, and the repository.")
@@ -1074,9 +1095,15 @@ def _build_parser() -> argparse.ArgumentParser:
         action="store_true",
     )
 
-    sandbox_commands.add_parser(
+    sandbox_list = sandbox_commands.add_parser(
         "list",
         help="List sandboxes.",
+    )
+    sandbox_list.add_argument(
+        "--json",
+        dest="json_output",
+        action="store_true",
+        help="Output sandbox inventory as JSON.",
     )
 
     sandbox_status = sandbox_commands.add_parser(
@@ -1222,12 +1249,6 @@ def _build_parser() -> argparse.ArgumentParser:
         help="Inspect one credential provider without secret values.",
     )
     credential_get.add_argument("name")
-
-    credential_get.add_argument(
-        "--key",
-        required=True,
-        dest="credential_key",
-    )
 
     credential_update = credential_commands.add_parser(
         "update",
@@ -1376,7 +1397,7 @@ def _sandbox_arguments(
         return arguments
 
     if args.sandbox_command == "list":
-        return ["list"]
+        return ["list", "--json"] if args.json_output else ["list"]
 
     if args.sandbox_command in {"status", "delete"}:
         arguments = [

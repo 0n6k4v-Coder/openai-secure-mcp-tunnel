@@ -224,6 +224,10 @@ def test_acl_helper_uses_current_host_ids(
         "_run_command",
         fake_run,
     )
+    monkeypatch.setattr(
+        "local_mcp_server.cli.lifecycle.verify_local_images",
+        lambda required_variables=None: None,
+    )
 
     broker._run_acl_helper(
         tmp_path,
@@ -335,6 +339,10 @@ def test_acl_helper_uses_narrow_docker_invocation(
         "_run_command",
         fake_run,
     )
+    monkeypatch.setattr(
+        "local_mcp_server.cli.lifecycle.verify_local_images",
+        lambda required_variables=None: None,
+    )
 
     broker._run_acl_helper(
         tmp_path,
@@ -396,6 +404,10 @@ def test_remove_sandbox_acl_with_helper_uses_narrow_docker_invocation(
         broker,
         "_run_command",
         fake_run,
+    )
+    monkeypatch.setattr(
+        "local_mcp_server.cli.lifecycle.verify_local_images",
+        lambda required_variables=None: None,
     )
 
     broker._remove_sandbox_acl_with_helper(
@@ -727,3 +739,29 @@ def test_list_grants_verbose_includes_internal_fields(
     assert result[0]["host_uid"] == 1000
     assert result[0]["host_gid"] == 1000
     assert result[0]["volume_name"] == "mcp-ws-example"
+
+
+
+def test_acl_helper_missing_image_fails_before_run(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(broker.shutil, "which", lambda name: "/usr/bin/docker")
+    monkeypatch.setattr(
+        "local_mcp_server.cli.lifecycle.verify_local_images",
+        lambda required_variables=None: (_ for _ in ()).throw(
+            RuntimeError("Required local image missing")
+        ),
+    )
+    commands: list[list[str]] = []
+    monkeypatch.setattr(broker, "_run_command", lambda command: commands.append(command))
+
+    with pytest.raises(RuntimeError, match="Required local image missing"):
+        broker._run_acl_helper(
+            tmp_path,
+            operation="provision-sandbox-acl",
+            host_uid=2001,
+            host_gid=2002,
+        )
+
+    assert commands == []

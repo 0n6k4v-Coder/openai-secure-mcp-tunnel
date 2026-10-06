@@ -90,6 +90,10 @@ def test_sandbox_create_uses_workspace(
     monkeypatch: pytest.MonkeyPatch,
     capsys: pytest.CaptureFixture[str],
 ) -> None:
+    monkeypatch.setattr(
+        "local_mcp_server.cli.lifecycle.verify_local_images",
+        lambda required_variables=None: None,
+    )
     captured: dict[str, object] = {}
 
     def fake_create_sandbox(
@@ -137,6 +141,10 @@ def test_sandbox_create_standalone(
     monkeypatch: pytest.MonkeyPatch,
     capsys: pytest.CaptureFixture[str],
 ) -> None:
+    monkeypatch.setattr(
+        "local_mcp_server.cli.lifecycle.verify_local_images",
+        lambda required_variables=None: None,
+    )
     captured: dict[str, object] = {}
 
     def fake_create_sandbox(
@@ -218,6 +226,10 @@ def test_sandbox_create_json(
     monkeypatch: pytest.MonkeyPatch,
     capsys: pytest.CaptureFixture[str],
 ) -> None:
+    monkeypatch.setattr(
+        "local_mcp_server.cli.lifecycle.verify_local_images",
+        lambda required_variables=None: None,
+    )
     monkeypatch.setattr(
         cli,
         "create_sandbox",
@@ -943,3 +955,43 @@ def test_main_help(
     assert "restart" in output
     assert "status" in output
     assert "logs" in output
+
+
+
+@pytest.mark.parametrize(
+    ("infrastructure_ready", "ready", "expected_result", "expected_code"),
+    [
+        (True, True, "RESULT: START READY", 0),
+        (True, False, "RESULT: START DEGRADED", 0),
+        (False, False, "RESULT: START FAILED", 2),
+    ],
+)
+def test_started_stack_reports_verified_readiness(
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+    infrastructure_ready: bool,
+    ready: bool,
+    expected_result: str,
+    expected_code: int,
+) -> None:
+    from types import SimpleNamespace
+
+    from local_mcp_server.cli import lifecycle
+
+    status = SimpleNamespace(infrastructure_ready=infrastructure_ready, ready=ready)
+    monkeypatch.setattr(
+        lifecycle,
+        "get_status",
+        lambda tls_status: status,
+    )
+    monkeypatch.setattr(lifecycle, "print_status", lambda current: None)
+    monkeypatch.setattr(
+        "local_mcp_server.infrastructure.openshell.tls.get_status",
+        lambda: object(),
+    )
+
+    result = cli._verify_started_stack("START")
+
+    assert result == expected_code
+    captured = capsys.readouterr()
+    assert expected_result in captured.out + captured.err

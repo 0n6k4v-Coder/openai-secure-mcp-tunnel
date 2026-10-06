@@ -56,3 +56,41 @@ def test_named_runtime_selects_its_own_cli_gateway(monkeypatch, tmp_path: Path) 
     monkeypatch.setenv("MCP_RUNTIME", "gateway-check")
     profile = get_runtime_context().profile
     assert _gateway_endpoint() == f"https://127.0.0.1:{profile.openshell_port}"
+
+def test_default_credential_commands_use_registered_local_gateway(
+    monkeypatch, tmp_path: Path
+) -> None:
+    from local_mcp_server.infrastructure.openshell import credentials
+
+    monkeypatch.setenv("XDG_CONFIG_HOME", str(tmp_path / "config"))
+    monkeypatch.delenv("MCP_RUNTIME", raising=False)
+    monkeypatch.delenv("OPENSHELL_CLI_GATEWAY", raising=False)
+    monkeypatch.setattr(credentials, "_command_exists", lambda _command: None)
+
+    assert credentials._openshell_command("provider", "list") == [
+        "openshell",
+        "--gateway",
+        "local",
+        "provider",
+        "list",
+    ]
+
+
+def test_explicit_credential_endpoint_override_is_preserved(
+    monkeypatch, tmp_path: Path
+) -> None:
+    from local_mcp_server.infrastructure.openshell import credentials
+
+    monkeypatch.setenv("XDG_CONFIG_HOME", str(tmp_path / "config"))
+    monkeypatch.delenv("MCP_RUNTIME", raising=False)
+    monkeypatch.setenv("OPENSHELL_CLI_GATEWAY", "https://127.0.0.1:9443")
+    monkeypatch.setattr(credentials, "_command_exists", lambda _command: None)
+
+    assert credentials._openshell_command("provider", "list") == [
+        "openshell",
+        "--gateway-endpoint",
+        "https://127.0.0.1:9443",
+        "provider",
+        "list",
+    ]
+
