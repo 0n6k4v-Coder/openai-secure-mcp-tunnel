@@ -14,7 +14,6 @@ from typing import Callable
 from ..config.paths import (
     app_config_root,
     app_state_root,
-    installation_state_file,
     workspace_grants_file,
 )
 from ..infrastructure.openshell.tls import TLSStatus
@@ -333,10 +332,6 @@ def prepare_runtime() -> None:
     for directory in directories:
         _ensure_private_directory(directory)
 
-    _ensure_private_file(
-        installation_state_file(),
-        "{}\n",
-    )
     _ensure_private_file(
         workspace_grants_file(),
         "{}\n",
