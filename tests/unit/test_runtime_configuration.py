@@ -26,7 +26,8 @@ def test_default_environment_is_production() -> None:
     assert default == production
     assert default["COMPOSE_PROJECT_NAME"].endswith("-production")
     assert default["OPENSHELL_WORKSPACE"] == "production"
-    assert default["OPENSHELL_CLI_GATEWAY"] == "https://openshell-gateway:8080"
+    assert default["OPENSHELL_CLI_GATEWAY"] == "https://127.0.0.1:8080"
+    assert default["OPENSHELL_CONTAINER_GATEWAY"] == "https://openshell-gateway:8080"
     assert default["LOG_LEVEL"] == "INFO"
     assert default["MCP_CONFIG_DIR"].endswith("/local-mcp-server/config/production")
     assert default["MCP_STATE_DIR"].endswith("/local-mcp-server/mcp/production")
@@ -41,7 +42,8 @@ def test_development_environment_is_isolated_and_uses_container_gateway() -> Non
 
     assert development["COMPOSE_PROJECT_NAME"].endswith("-development")
     assert development["OPENSHELL_WORKSPACE"] == "development"
-    assert development["OPENSHELL_CLI_GATEWAY"] == "https://openshell-gateway:8080"
+    assert development["OPENSHELL_CLI_GATEWAY"] == "https://127.0.0.1:18080"
+    assert development["OPENSHELL_CONTAINER_GATEWAY"] == "https://openshell-gateway:8080"
     assert development["OPENSHELL_PORT"] == "18080"
     assert development["OPENSHELL_HEALTH_PORT"] == "18081"
     assert development["MCP_PORT"] == "18000"
@@ -51,3 +53,10 @@ def test_development_environment_is_isolated_and_uses_container_gateway() -> Non
         assert "/development" in development[key]
         assert "/production" not in development[key]
         assert development[key] != production[key]
+
+
+def test_compose_uses_container_gateway_variable() -> None:
+    compose = (DEPLOY / "compose.yaml").read_text(encoding="utf-8")
+
+    assert "OPENSHELL_CLI_GATEWAY: ${OPENSHELL_CONTAINER_GATEWAY:-https://openshell-gateway:8080}" in compose
+    assert "OPENSHELL_CLI_GATEWAY: ${OPENSHELL_CLI_GATEWAY" not in compose
