@@ -1095,9 +1095,15 @@ def _build_parser() -> argparse.ArgumentParser:
         action="store_true",
     )
 
-    sandbox_commands.add_parser(
+    sandbox_list = sandbox_commands.add_parser(
         "list",
         help="List sandboxes.",
+    )
+    sandbox_list.add_argument(
+        "--json",
+        dest="json_output",
+        action="store_true",
+        help="Output sandbox inventory as JSON.",
     )
 
     sandbox_status = sandbox_commands.add_parser(
@@ -1243,12 +1249,6 @@ def _build_parser() -> argparse.ArgumentParser:
         help="Inspect one credential provider without secret values.",
     )
     credential_get.add_argument("name")
-
-    credential_get.add_argument(
-        "--key",
-        required=True,
-        dest="credential_key",
-    )
 
     credential_update = credential_commands.add_parser(
         "update",
@@ -1397,7 +1397,7 @@ def _sandbox_arguments(
         return arguments
 
     if args.sandbox_command == "list":
-        return ["list"]
+        return ["list", "--json"] if args.json_output else ["list"]
 
     if args.sandbox_command in {"status", "delete"}:
         arguments = [

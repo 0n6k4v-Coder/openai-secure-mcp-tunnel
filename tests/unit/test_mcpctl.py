@@ -1050,3 +1050,19 @@ def test_uninstall_purge_success_reports_verified_roots_and_scope_limit(
     assert "does not certify sandbox, ACL, or Docker resource cleanup" in output
     assert not app_config.exists()
     assert not app_state.exists()
+
+
+
+def test_mcpctl_sandbox_list_json_flag_is_forwarded() -> None:
+    parser = mcpctl._build_parser()
+    args = parser.parse_args(["sandbox", "list", "--json"])
+
+    assert args.json_output is True
+    assert mcpctl._sandbox_arguments(args) == ["list", "--json"]
+
+
+def test_mcpctl_credential_get_matches_underlying_provider_cli() -> None:
+    parser = mcpctl._build_parser()
+    args = parser.parse_args(["credential", "get", "openai-provider"])
+
+    assert mcpctl._credential_arguments(args) == ["get", "openai-provider"]
