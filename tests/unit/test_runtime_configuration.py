@@ -60,3 +60,9 @@ def test_compose_uses_container_gateway_variable() -> None:
 
     assert "OPENSHELL_CLI_GATEWAY: ${OPENSHELL_CONTAINER_GATEWAY:-https://openshell-gateway:8080}" in compose
     assert "OPENSHELL_CLI_GATEWAY: ${OPENSHELL_CLI_GATEWAY" not in compose
+
+
+def test_smoke_test_uses_an_allowed_health_host() -> None:
+    smoke_test = (ROOT / "scripts" / "smoke-test.sh").read_text(encoding="utf-8")
+
+    assert "--header 'Host: 127.0.0.1:8000'" in smoke_test
