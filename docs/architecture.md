@@ -58,7 +58,7 @@ Sandbox containers are **not Docker Compose services** and are not addressed dir
 │             │                                                               │
 │  ┌──────────▼────────────────────────────────────────────────────────────┐  │
 │  │ Trusted host-side workspace broker                                    │  │
-│  │ `workspace-broker`                                                     │  │
+│  │ `mcpctl workspace`                                                     │  │
 │  │                                                                        │  │
 │  │ host path validation → ACL provisioning → Docker volume → grant DB    │  │
 │  └────────────────────────────────────────────────────────────────────────┘  │
@@ -146,7 +146,7 @@ Sandbox creation additionally requires an opaque `host_workspace_id`. The truste
 Trusted host operator
         │
         ▼
-workspace-broker
+mcpctl workspace
         │
         ├── canonicalize + validate host path
         ├── reject protected host paths
@@ -170,7 +170,7 @@ workspace-broker
         sandbox workspace mount
 ```
 
-`workspace-broker` is a trusted host-side CLI, not a Compose service. It has access to the host filesystem and Docker CLI because it is the authorization/provisioning boundary for host workspaces.
+`mcpctl workspace` is the trusted host-side CLI interface, not a Compose service. It delegates to the internal workspace broker implementation, which has access to the host filesystem and Docker CLI because it is the authorization/provisioning boundary for host workspaces.
 
 Inside `mcp-server`, `WORKSPACE_GRANTS_READ_ONLY=true` prevents the MCP process from modifying the grant database. The server can resolve an existing capability but cannot create a new host authorization by itself.
 
@@ -350,7 +350,7 @@ src/local_mcp_server/
 │   └── __main__.py            # python -m local_mcp_server.server
 │
 └── cli/
-    ├── main.py                # secure-mcp operator CLI
+    ├── main.py                # mcpctl operator CLI
     └── workspace_broker.py    # trusted host workspace broker
 ```
 
@@ -427,7 +427,7 @@ Generic `execute_sandbox` remains the lower-level sandbox command API. Installat
 Credential management is also kept outside the generic sandbox command path:
 
 ```text
-secure-mcp CLI
+mcpctl CLI
       │
       ▼
 infrastructure.openshell.credentials
@@ -462,14 +462,13 @@ The runtime image is non-root (`10001:10001`), read-only in Compose, drops all L
 
 ### Operator CLIs
 
-The Python package exposes:
+The Python package exposes one operator CLI entry point:
 
 ```text
-secure-mcp      → local_mcp_server.cli.main:main
-workspace-broker → local_mcp_server.cli.workspace_broker:main
+mcpctl → local_mcp_server.cli.completion:mcpctl_main
 ```
 
-The first is the operator CLI for Compose/OpenShell/credential operations. The second is the trusted host-side workspace authorization/provisioning tool.
+It handles Compose/OpenShell/credential operations and exposes workspace authorization through `mcpctl workspace`. The trusted host-side workspace authorization/provisioning implementation remains in `local_mcp_server.cli.workspace_broker`, but it is no longer registered as a separate executable.
 
 ## Configuration map
 
@@ -497,7 +496,7 @@ The following are intentional boundaries of the current design:
 2. **MCP talks to OpenShell; MCP does not own Docker sandbox lifecycle.**
 3. **Only the trusted OpenShell Gateway receives the Docker socket.**
 4. **MCP-to-Gateway control traffic uses TLS with client-certificate authentication.**
-5. **Host workspace authorization is performed by `workspace-broker`, not by model-supplied host paths.**
+5. **Host workspace authorization is performed through `mcpctl workspace`, not by model-supplied host paths.**
 6. **The MCP container reads workspace grants but cannot mutate them.**
 7. **Sandbox workloads receive an authorized workspace mount rather than arbitrary host filesystem paths.**
 8. **Generic command execution is sandbox-scoped; installation uses a separate approval-gated path.**

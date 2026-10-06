@@ -863,3 +863,64 @@ OpenShell development commands unrelated to the Docker deployment
 ```
 
 This document intentionally focuses on the commands needed to work with this repository's Docker + Python + OpenShell + MCP + Secure MCP Tunnel implementation.
+
+---
+
+## 20. `mcpctl uninstall` — Scope and safety
+
+The uninstall command has two distinct scopes. The default operation removes only
+generated legacy profile configuration directories. It does not remove the central
+application configuration or retained profile state.
+
+Preview the default operation:
+
+```bash
+mcpctl uninstall
+```
+
+Execute the default operation:
+
+```bash
+mcpctl uninstall --yes
+```
+
+Preview removal of the application configuration and state roots:
+
+```bash
+mcpctl uninstall --purge
+```
+
+Execute the application-root purge:
+
+```bash
+mcpctl uninstall --yes --purge
+```
+
+The purge reports its preflight inventory, service check, removal results, and
+post-removal verification separately. If Compose services are still running,
+stop the application and retry:
+
+```bash
+mcpctl stop
+mcpctl uninstall --yes --purge
+```
+
+The purge removes the standard application configuration and state roots under
+the effective XDG configuration and state homes. It does not automatically
+delete host workspace files, Docker volumes, the repository, the repository-local
+CLI environment, or the external OpenShell CLI mTLS bundle.
+
+Compose bind-mount overrides can point to paths outside those roots. The purge
+reports supported path overrides for review but does not delete external paths.
+Review the effective Compose configuration separately when custom env files,
+relative bind mounts, or custom deployment paths are in use.
+
+A successful application-root purge is not proof that OpenShell sandbox
+containers, host ACL entries, external mounts, or other Docker resources have
+been removed. These resources are intentionally not reported as cleaned up
+unless their cleanup and verification are implemented explicitly.
+
+Credential contents are never printed in the uninstall inventory. On partial
+failure, inspect the exact failing path, ownership, permissions, and nested
+mounts before retrying. Do not recursively change ownership or remove paths
+that may contain shared or mounted data without first verifying their scope.

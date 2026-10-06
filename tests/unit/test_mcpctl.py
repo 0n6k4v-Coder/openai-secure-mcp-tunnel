@@ -629,6 +629,11 @@ def test_mcpctl_parser_contains_expected_commands() -> None:
     action = next(action for action in parser._actions if action.dest == "command")
 
     assert set(action.choices) == {
+        "start",
+        "stop",
+        "restart",
+        "compose-status",
+        "logs",
         "setup",
         "status",
         "repair",
@@ -636,6 +641,8 @@ def test_mcpctl_parser_contains_expected_commands() -> None:
         "credential",
         "workspace",
         "config",
+        "cleanup",
+        "uninstall",
     }
 
 
@@ -719,3 +726,320 @@ def test_setup_configures_mcp_client_before_starting_services(
         "verify:True",
         "print_status:True",
     ]
+
+
+@pytest.mark.parametrize(
+    ("argv", "expected_command", "expected_arguments"),
+    [
+        (["start"], "start", []),
+        (["stop"], "stop", []),
+        (["restart"], "restart", []),
+        (["compose-status"], "status", []),
+        (["compose-status", "--json"], "status", ["--json"]),
+        (["logs"], "logs", ["--tail", "100"]),
+        (
+            ["logs", "mcp-server", "--follow", "--tail", "25"],
+            "logs",
+            ["mcp-server", "--follow", "--tail", "25"],
+        ),
+    ],
+)
+def test_compose_commands_delegate_to_shared_cli(
+    argv: list[str],
+    expected_command: str,
+    expected_arguments: list[str],
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    captured: dict[str, object] = {}
+
+    def fake_delegate(command: str, arguments: list[str]) -> int:
+        captured["command"] = command
+        captured["arguments"] = arguments
+        return 17
+
+    monkeypatch.setattr(mcpctl, "_delegate_local_cli", fake_delegate)
+
+    assert mcpctl.main(argv) == 17
+    assert captured == {
+        "command": expected_command,
+        "arguments": expected_arguments,
+    }
+
+
+def test_cleanup_is_read_only_and_reports_legacy_profile_paths(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    config_home = tmp_path / "config"
+    state_home = tmp_path / "state"
+    profile = config_home / "local-mcp-server/profiles/dev"
+    profile.mkdir(parents=True)
+    (profile / "profile.json").write_text("{}", encoding="utf-8")
+    state_profile = state_home / "local-mcp-server/profiles/dev"
+    state_profile.mkdir(parents=True)
+
+    monkeypatch.setattr(mcpctl, "xdg_config_home", lambda: config_home)
+    monkeypatch.setattr(mcpctl, "xdg_state_home", lambda: state_home)
+
+    assert mcpctl.main(["cleanup"]) == mcpctl.EXIT_OK
+    output = capsys.readouterr().out
+    assert str(profile) in output
+    assert "No files" in output
+    assert (profile / "profile.json").is_file()
+    assert state_profile.is_dir()
+
+
+def test_uninstall_defaults_to_dry_run_and_preserves_state(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    config_home = tmp_path / "config"
+    state_home = tmp_path / "state"
+    profile = config_home / "local-mcp-server/profiles/dev"
+    profile.mkdir(parents=True)
+    (profile / "profile.json").write_text("{}", encoding="utf-8")
+    state_profile = state_home / "local-mcp-server/profiles/dev"
+    state_profile.mkdir(parents=True)
+
+    monkeypatch.setattr(mcpctl, "xdg_config_home", lambda: config_home)
+    monkeypatch.setattr(mcpctl, "xdg_state_home", lambda: state_home)
+
+    assert mcpctl.main(["uninstall"]) == mcpctl.EXIT_OK
+    assert "Dry run only" in capsys.readouterr().out
+    assert profile.is_dir()
+    assert state_profile.is_dir()
+
+
+def test_uninstall_yes_removes_only_marked_profile_configuration(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    config_home = tmp_path / "config"
+    state_home = tmp_path / "state"
+    profile = config_home / "local-mcp-server/profiles/dev"
+    profile.mkdir(parents=True)
+    (profile / "profile.json").write_text("{}", encoding="utf-8")
+    unrelated = config_home / "local-mcp-server/profiles/unrelated"
+    unrelated.mkdir()
+    (unrelated / "keep.txt").write_text("keep", encoding="utf-8")
+    state_profile = state_home / "local-mcp-server/profiles/dev"
+    state_profile.mkdir(parents=True)
+    (state_profile / "state.json").write_text("keep", encoding="utf-8")
+
+    monkeypatch.setattr(mcpctl, "xdg_config_home", lambda: config_home)
+    monkeypatch.setattr(mcpctl, "xdg_state_home", lambda: state_home)
+
+    assert mcpctl.main(["uninstall", "--yes"]) == mcpctl.EXIT_OK
+    capsys.readouterr()
+    assert not profile.exists()
+    assert (unrelated / "keep.txt").is_file()
+    assert (state_profile / "state.json").read_text(encoding="utf-8") == "keep"
+
+
+def test_uninstall_purge_removes_app_config_and_state_but_preserves_external_data(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    config_home = tmp_path / "config"
+    state_home = tmp_path / "state"
+    app_config = config_home / "local-mcp-server"
+    app_state = state_home / "local-mcp-server"
+    credentials = app_config / "mcp-clients/openai/credentials"
+    workspace_grants = app_state / "mcp/workspace-grants/workspace-grants.json"
+    credentials.parent.mkdir(parents=True)
+    workspace_grants.parent.mkdir(parents=True)
+    credentials.write_text("secret", encoding="utf-8")
+    workspace_grants.write_text("{}", encoding="utf-8")
+    host_workspace = tmp_path / "host-workspace"
+    host_workspace.mkdir()
+    (host_workspace / "keep.txt").write_text("keep", encoding="utf-8")
+    repository = tmp_path / "repository"
+    repository.mkdir()
+    (repository / "README.md").write_text("keep", encoding="utf-8")
+
+    monkeypatch.setattr(mcpctl, "xdg_config_home", lambda: config_home)
+    monkeypatch.setattr(mcpctl, "xdg_state_home", lambda: state_home)
+    monkeypatch.setattr(mcpctl.shutil, "which", lambda _: None)
+
+    assert mcpctl.main(["uninstall", "--purge"]) == mcpctl.EXIT_OK
+    assert "Dry run only" in capsys.readouterr().out
+    assert credentials.is_file()
+    assert workspace_grants.is_file()
+
+    assert mcpctl.main(["uninstall", "--yes", "--purge"]) == mcpctl.EXIT_OK
+    output = capsys.readouterr().out
+    assert "Preserved host workspaces, Docker volumes, and the repository." in output
+    assert not app_config.exists()
+    assert not app_state.exists()
+    assert (host_workspace / "keep.txt").is_file()
+    assert (repository / "README.md").is_file()
+
+
+def test_cleanup_json_reports_non_destructive_actions(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    monkeypatch.setattr(mcpctl, "xdg_config_home", lambda: tmp_path / "config")
+    monkeypatch.setattr(mcpctl, "xdg_state_home", lambda: tmp_path / "state")
+
+    assert mcpctl.main(["cleanup", "--json"]) == mcpctl.EXIT_OK
+    import json
+
+    payload = json.loads(capsys.readouterr().out)
+    assert payload["destructive"] is False
+    assert payload["state_preserved"] is True
+    assert payload["workspace_grants_preserved"] is True
+
+
+def test_uninstall_purge_inventory_lists_client_files_and_preserves_external_mtls(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    config_home = tmp_path / "config"
+    state_home = tmp_path / "state"
+    app_config = config_home / "local-mcp-server"
+    app_state = state_home / "local-mcp-server"
+    credentials = app_config / "mcp-clients/openai/credentials"
+    config_file = app_config / "mcp-clients/openai/config.yaml"
+    credentials.parent.mkdir(parents=True)
+    credentials.write_text("never print this secret", encoding="utf-8")
+    config_file.write_text("config_version: 1", encoding="utf-8")
+    app_state.mkdir(parents=True)
+    external_mtls = config_home / "openshell/gateways/local/mtls/tls.key"
+    external_mtls.parent.mkdir(parents=True)
+    external_mtls.write_text("preserve me", encoding="utf-8")
+
+    monkeypatch.setattr(mcpctl, "xdg_config_home", lambda: config_home)
+    monkeypatch.setattr(mcpctl, "xdg_state_home", lambda: state_home)
+    monkeypatch.setattr(mcpctl.shutil, "which", lambda _: None)
+
+    assert mcpctl.main(["uninstall", "--purge"]) == mcpctl.EXIT_OK
+    output = capsys.readouterr().out
+    assert "OpenAI MCP config" in output
+    assert "OpenAI MCP credentials (secret contents hidden)" in output
+    assert "OUTSIDE SCOPE" in output
+    assert str(external_mtls.parent) in output
+    assert "never print this secret" not in output
+    assert credentials.is_file()
+    assert external_mtls.is_file()
+
+
+def test_uninstall_purge_blocks_when_compose_services_are_running(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    app_config = tmp_path / "config/local-mcp-server"
+    app_state = tmp_path / "state/local-mcp-server"
+    app_config.mkdir(parents=True)
+    app_state.mkdir(parents=True)
+    monkeypatch.setattr(mcpctl, "xdg_config_home", lambda: tmp_path / "config")
+    monkeypatch.setattr(mcpctl, "xdg_state_home", lambda: tmp_path / "state")
+    monkeypatch.setattr(mcpctl.shutil, "which", lambda _: "/usr/bin/docker")
+    monkeypatch.setattr(
+        mcpctl.lifecycle,
+        "_service_statuses",
+        lambda: {"mcp-server": SimpleNamespace(running=True)},
+    )
+
+    assert mcpctl.main(["uninstall", "--yes", "--purge"]) == mcpctl.EXIT_ERROR
+    output = capsys.readouterr()
+    assert "PREFLIGHT FAILED" in output.err
+    assert "UNINSTALL BLOCKED" in output.err
+    assert "NO APPLICATION DATA REMOVED BY THIS ATTEMPT" in output.err
+    assert "[RUNNING] mcp-server" in output.err
+    assert "mcpctl stop" in output.err
+    assert app_config.is_dir()
+    assert app_state.is_dir()
+
+
+def test_uninstall_purge_reports_partial_failure_and_verifies_successful_root(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    config_home = tmp_path / "config"
+    state_home = tmp_path / "state"
+    app_config = config_home / "local-mcp-server"
+    app_state = state_home / "local-mcp-server"
+    app_config.mkdir(parents=True)
+    app_state.mkdir(parents=True)
+    monkeypatch.setattr(mcpctl, "xdg_config_home", lambda: config_home)
+    monkeypatch.setattr(mcpctl, "xdg_state_home", lambda: state_home)
+    monkeypatch.setattr(mcpctl.shutil, "which", lambda _: None)
+    real_rmtree = mcpctl.shutil.rmtree
+
+    def fail_state_root(path: Path, *args: object, **kwargs: object) -> None:
+        if Path(path) == app_state:
+            raise PermissionError("test permission failure")
+        real_rmtree(path, *args, **kwargs)
+
+    monkeypatch.setattr(mcpctl.shutil, "rmtree", fail_state_root)
+    assert mcpctl.main(["uninstall", "--yes", "--purge"]) == mcpctl.EXIT_ERROR
+    output = capsys.readouterr()
+    assert "Removed and verified absent" in output.out
+    assert "PARTIAL FAILURE" in output.err
+    assert "RECOVERY CHECKLIST:" in output.err
+    assert "Inspect the exact failing path" in output.err
+    assert "sudo chown -R" not in output.err
+    assert str(app_state) in output.err
+    assert not app_config.exists()
+    assert app_state.is_dir()
+
+
+
+def test_uninstall_purge_dry_run_explains_scope_and_external_resources(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    config_home = tmp_path / "config"
+    state_home = tmp_path / "state"
+    monkeypatch.setattr(mcpctl, "xdg_config_home", lambda: config_home)
+    monkeypatch.setattr(mcpctl, "xdg_state_home", lambda: state_home)
+    monkeypatch.setattr(mcpctl.shutil, "which", lambda _: None)
+    external_compose_file = tmp_path / "custom" / "gateway.toml"
+    monkeypatch.setenv("MCP_GATEWAY_CONFIG_FILE", str(external_compose_file))
+
+    assert mcpctl.main(["uninstall", "--purge"]) == mcpctl.EXIT_OK
+    output = capsys.readouterr().out
+    assert "APPLICATION PURGE" in output
+    assert "DRY RUN COMPLETE" in output
+    assert "Custom Compose paths outside application roots are not deleted." in output
+    assert "MCP_GATEWAY_CONFIG_FILE override" in output
+    assert "PRESERVE / REVIEW ONLY" in output
+    assert "certified as removed by this application-root purge." in output
+    assert not config_home.exists()
+    assert not state_home.exists()
+
+
+def test_uninstall_purge_success_reports_verified_roots_and_scope_limit(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    config_home = tmp_path / "config"
+    state_home = tmp_path / "state"
+    app_config = config_home / "local-mcp-server"
+    app_state = state_home / "local-mcp-server"
+    app_config.mkdir(parents=True)
+    app_state.mkdir(parents=True)
+    monkeypatch.setattr(mcpctl, "xdg_config_home", lambda: config_home)
+    monkeypatch.setattr(mcpctl, "xdg_state_home", lambda: state_home)
+    monkeypatch.setattr(mcpctl.shutil, "which", lambda _: None)
+
+    assert mcpctl.main(["uninstall", "--yes", "--purge"]) == mcpctl.EXIT_OK
+    output = capsys.readouterr().out
+    assert "PHASE 1/3 — PRECHECK" in output
+    assert "PHASE 2/3 — REMOVE APPLICATION ROOTS" in output
+    assert "PHASE 3/3 — VERIFY" in output
+    assert "RESULT: APPLICATION DATA PURGED" in output
+    assert "does not certify sandbox, ACL, or Docker resource cleanup" in output
+    assert not app_config.exists()
+    assert not app_state.exists()

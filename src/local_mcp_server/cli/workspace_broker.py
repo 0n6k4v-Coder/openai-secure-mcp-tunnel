@@ -657,14 +657,30 @@ def _revoke(
     return revoke_workspace_grant(workspace_id)
 
 
-def _list_grants() -> list[dict[str, object]]:
+def _public_grant(
+    workspace_id: str,
+    grant: dict[str, object],
+) -> dict[str, object]:
+    """Return the stable, user-facing workspace representation."""
+    return {
+        "id": workspace_id,
+        "host_path": grant.get("host_path", ""),
+        "sandbox_path": grant.get("target", SANDBOX_TARGET),
+        "read_only": bool(grant.get("read_only", False)),
+    }
+
+
+def _list_grants(*, verbose: bool = False) -> list[dict[str, object]]:
     grants = _load_grants()
 
+    if verbose:
+        return [
+            {"workspace_id": workspace_id, **grant}
+            for workspace_id, grant in sorted(grants.items())
+        ]
+
     return [
-        {
-            "workspace_id": workspace_id,
-            **grant,
-        }
+        _public_grant(workspace_id, grant)
         for workspace_id, grant in sorted(grants.items())
     ]
 
@@ -694,14 +710,23 @@ def main(
         dest="json_output",
         help="Output workspace grants as JSON.",
     )
+    list_parser.add_argument(
+        "--verbose",
+        action="store_true",
+        help="Include internal workspace and infrastructure details.",
+    )
 
     args = parser.parse_args(argv)
 
     if args.command == "authorize":
         result = _authorize(args.host_path)
+        public_result = _public_grant(
+            str(result["workspace_id"]),
+            result,
+        )
         print(
             json.dumps(
-                result,
+                public_result,
                 ensure_ascii=False,
             )
         )
@@ -718,9 +743,9 @@ def main(
         return 0
 
     if args.command == "list":
-        result = _list_grants()
+        result = _list_grants(verbose=args.verbose)
 
-        if args.json_output:
+        if args.json_output or args.verbose:
             print(
                 json.dumps(
                     result,
@@ -729,12 +754,26 @@ def main(
                 )
             )
         else:
-            print(
-                json.dumps(
-                    result,
-                    ensure_ascii=False,
-                )
-            )
+            headers = ["ID", "HOST PATH", "SANDBOX PATH", "READ ONLY"]
+            rows = [
+                [
+                    str(grant.get("id", "")),
+                    str(grant.get("host_path", "")),
+                    str(grant.get("sandbox_path", SANDBOX_TARGET)),
+                    str(grant.get("read_only", False)).lower(),
+                ]
+                for grant in result
+            ]
+            widths = [
+                max(len(headers[index]), *(len(row[index]) for row in rows))
+                if rows
+                else len(headers[index])
+                for index in range(len(headers))
+            ]
+            print("  ".join(headers[i].ljust(widths[i]) for i in range(len(headers))))
+            print("  ".join("-" * width for width in widths))
+            for row in rows:
+                print("  ".join(row[i].ljust(widths[i]) for i in range(len(headers))))
 
         return 0
 

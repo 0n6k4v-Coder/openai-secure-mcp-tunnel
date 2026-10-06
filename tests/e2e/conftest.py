@@ -8,15 +8,11 @@ import pytest
 
 
 CLI_MCP_TEST_IDS = tuple(f"CLI-MCP-{number:03d}" for number in range(1, 13))
-CLI_SBX_CREATE_TEST_IDS = tuple(
-    f"CLI-SBX-{number:03d}" for number in range(1, 17)
-)
+CLI_SBX_CREATE_TEST_IDS = tuple(f"CLI-SBX-{number:03d}" for number in range(1, 17))
 CLI_SBX_LIST_STATUS_TEST_IDS = tuple(
     f"CLI-SBX-{number:03d}" for number in range(20, 30)
 )
-CLI_SBX_SHELL_EXEC_TEST_IDS = tuple(
-    f"CLI-SBX-{number:03d}" for number in range(30, 40)
-)
+CLI_SBX_SHELL_EXEC_TEST_IDS = tuple(f"CLI-SBX-{number:03d}" for number in range(30, 40))
 CLI_SBX_LOGS_LIFECYCLE_TEST_IDS = tuple(
     f"CLI-SBX-{number:03d}" for number in range(40, 55)
 )
@@ -79,14 +75,10 @@ def _status_for_reports(reports: list[pytest.TestReport]) -> str:
 def _update_cli_report(statuses: dict[str, str]) -> None:
     report_path = Path(__file__).resolve().parent / "reports" / "cli.md"
     if not report_path.is_file():
-        raise FileNotFoundError(
-            f"CLI E2E report does not exist: {report_path}"
-        )
+        raise FileNotFoundError(f"CLI E2E report does not exist: {report_path}")
 
     lines = report_path.read_text(encoding="utf-8").splitlines()
-    row_indexes: dict[str, list[int]] = {
-        test_id: [] for test_id in CLI_E2E_TEST_IDS
-    }
+    row_indexes: dict[str, list[int]] = {test_id: [] for test_id in CLI_E2E_TEST_IDS}
 
     for index, line in enumerate(lines):
         if not line.startswith("|"):
@@ -101,9 +93,7 @@ def _update_cli_report(statuses: dict[str, str]) -> None:
             row_indexes[test_id].append(index)
 
     invalid_rows = [
-        test_id
-        for test_id, indexes in row_indexes.items()
-        if len(indexes) != 1
+        test_id for test_id, indexes in row_indexes.items() if len(indexes) != 1
     ]
     if invalid_rows:
         raise ValueError(
@@ -118,9 +108,7 @@ def _update_cli_report(statuses: dict[str, str]) -> None:
 
         status = statuses[test_id]
         if status not in VALID_STATUSES:
-            raise ValueError(
-                f"Invalid status for {test_id}: {status!r}"
-            )
+            raise ValueError(f"Invalid status for {test_id}: {status!r}")
 
         row_index = row_indexes[test_id][0]
         cells = lines[row_index].split("|")
@@ -148,9 +136,7 @@ def pytest_sessionfinish(session, exitstatus):
     del exitstatus
 
     cli_items = [
-        item
-        for item in session.items
-        if _test_id(item.nodeid) in CLI_E2E_TEST_IDS
+        item for item in session.items if _test_id(item.nodeid) in CLI_E2E_TEST_IDS
     ]
     if not cli_items:
         return
@@ -162,17 +148,12 @@ def pytest_sessionfinish(session, exitstatus):
     for item in cli_items:
         test_id = _test_id(item.nodeid)
         if test_id is not None:
-            reports_by_id[test_id].extend(
-                getattr(item, "_cli_e2e_reports", [])
-            )
+            reports_by_id[test_id].extend(getattr(item, "_cli_e2e_reports", []))
 
-    collected_ids = {
-        _test_id(item.nodeid) for item in cli_items
-    }
-    full_suite_collected = (
-        len(cli_items) == len(CLI_E2E_TEST_IDS)
-        and collected_ids == set(CLI_E2E_TEST_IDS)
-    )
+    collected_ids = {_test_id(item.nodeid) for item in cli_items}
+    full_suite_collected = len(cli_items) == len(
+        CLI_E2E_TEST_IDS
+    ) and collected_ids == set(CLI_E2E_TEST_IDS)
 
     statuses = {
         test_id: _status_for_reports(reports_by_id[test_id])

@@ -10,8 +10,6 @@ import argcomplete
 from argcomplete.completers import EnvironCompleter
 
 from ..sandbox.service import list_sandboxes
-from .main import _build_parser as _build_local_parser
-from .main import main as _main
 from .mcpctl import _build_parser as _build_mcpctl_parser
 from .mcpctl import main as _mcpctl_main
 from .workspace_broker import _list_grants
@@ -51,7 +49,7 @@ def _sandbox_name_completer(*, prefix: str, **_: object) -> list[str]:
 
 def _workspace_id_completer(*, prefix: str, **_: object) -> list[str]:
     try:
-        grants = _list_grants()
+        grants = _list_grants(verbose=True)
     except Exception:
         return []
 
@@ -113,24 +111,11 @@ def _configure_environment_completers(
                 action.completer = EnvironCompleter
 
 
-def _build_completion_parser() -> argparse.ArgumentParser:
-    parser = _build_local_parser()
-    _configure_dynamic_completers(parser)
-    _configure_environment_completers(parser)
-    return parser
-
-
 def _build_mcpctl_completion_parser() -> argparse.ArgumentParser:
     parser = _build_mcpctl_parser()
     _configure_dynamic_completers(parser)
     _configure_environment_completers(parser)
     return parser
-
-
-def main(argv: list[str] | None = None) -> int:
-    parser = _build_completion_parser()
-    argcomplete.autocomplete(parser)
-    return _main(argv)
 
 
 def mcpctl_main(argv: list[str] | None = None) -> int:
@@ -140,4 +125,4 @@ def mcpctl_main(argv: list[str] | None = None) -> int:
 
 
 if __name__ == "__main__":
-    raise SystemExit(main())
+    raise SystemExit(mcpctl_main())

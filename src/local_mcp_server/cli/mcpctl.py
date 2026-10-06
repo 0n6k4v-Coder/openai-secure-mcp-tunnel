@@ -3,9 +3,14 @@ from __future__ import annotations
 import argparse
 from builtins import input
 import getpass
+import json
+import os
+import shutil
 import sys
 from collections.abc import Sequence
+from pathlib import Path
 
+from ..config.paths import APPLICATION_NAME, xdg_config_home, xdg_state_home
 from ..config.service import ConfigError, configure_openai
 from ..infrastructure.openshell.tls import (
     OpenShellTLSStatusError,
@@ -455,6 +460,436 @@ def _repair() -> int:
     return EXIT_OK
 
 
+def _legacy_profile_roots() -> tuple[Path, Path]:
+    config_root = xdg_config_home() / APPLICATION_NAME / "profiles"
+    state_root = xdg_state_home() / APPLICATION_NAME / "profiles"
+    return config_root, state_root
+
+
+def _legacy_profile_configurations() -> list[Path]:
+    config_root, _ = _legacy_profile_roots()
+
+    if not config_root.is_dir() or config_root.is_symlink():
+        return []
+
+    return [
+        child
+        for child in sorted(config_root.iterdir())
+        if child.is_dir()
+        and not child.is_symlink()
+        and (child / "profile.json").is_file()
+        and not (child / "profile.json").is_symlink()
+    ]
+
+
+def _cleanup(*, json_output: bool = False) -> int:
+    config_root, state_root = _legacy_profile_roots()
+    configurations = _legacy_profile_configurations()
+    payload = {
+        "configuration_root": str(config_root),
+        "state_root": str(state_root),
+        "generated_configurations": [str(path) for path in configurations],
+        "state_preserved": True,
+        "workspace_grants_preserved": True,
+        "host_workspaces_preserved": True,
+        "docker_volumes_preserved": True,
+        "repository_preserved": True,
+        "destructive": False,
+    }
+
+    if json_output:
+        print(json.dumps(payload, indent=2))
+        return EXIT_OK
+
+    print("Read-only legacy profile cleanup inventory")
+    print(f"Generated configuration root: {config_root}")
+    print(f"Legacy profile state root (preserved): {state_root}")
+    print()
+    if configurations:
+        print("Generated profile configurations:")
+        for path in configurations:
+            print(f"  - {path}")
+    else:
+        print("No generated legacy profile configurations found.")
+    print()
+    print("No files, workspace grants, host workspaces, Docker volumes,")
+    print("credentials, or runtime data were changed.")
+    return EXIT_OK
+
+
+def _purge_inventory() -> list[tuple[str, Path, str]]:
+    """Return a path-only inventory; never read or print credential contents."""
+    app_config_root = xdg_config_home() / APPLICATION_NAME
+    app_state_root = xdg_state_home() / APPLICATION_NAME
+    inventory: list[tuple[str, Path, str]] = [
+        ("Application configuration root", app_config_root, "REMOVE"),
+        (
+            "OpenAI MCP config",
+            app_config_root / "mcp-clients" / "openai" / "config.yaml",
+            "REMOVE",
+        ),
+        (
+            "OpenAI MCP credentials (secret contents hidden)",
+            app_config_root / "mcp-clients" / "openai" / "credentials",
+            "REMOVE",
+        ),
+        ("Application state root", app_state_root, "REMOVE"),
+        (
+            "Installation state",
+            app_state_root / "mcp" / "installations.json",
+            "REMOVE",
+        ),
+        (
+            "Workspace grant records",
+            app_state_root / "mcp" / "workspace-grants" / "workspace-grants.json",
+            "REMOVE",
+        ),
+        ("Application OpenShell TLS", app_state_root / "openshell" / "tls", "REMOVE"),
+        (
+            "OpenShell CLI mTLS bundle (outside app root; may be shared)",
+            xdg_config_home() / "openshell" / "gateways" / "local" / "mtls",
+            "PRESERVE",
+        ),
+    ]
+
+    # Compose variables can redirect bind mounts outside standard XDG roots.
+    # Report configured values for review; never delete them from this inventory.
+    for variable in (
+        "MCP_CONFIG_DIR",
+        "MCP_STATE_DIR",
+        "WORKSPACE_GRANTS_DIR",
+        "MCP_GATEWAY_CONFIG_FILE",
+        "MCP_GATEWAY_METADATA_FILE",
+    ):
+        value = os.environ.get(variable)
+        if not value:
+            continue
+        candidate = Path(value).expanduser()
+        if not candidate.is_absolute():
+            candidate = Path.cwd() / candidate
+        standard_roots = (app_config_root, app_state_root)
+        try:
+            inside_app_roots = any(
+                candidate.resolve().is_relative_to(root.resolve())
+                for root in standard_roots
+            )
+        except (OSError, RuntimeError):
+            inside_app_roots = False
+        if not inside_app_roots:
+            inventory.append(
+                (
+                    f"{variable} override (review; outside purge scope)",
+                    candidate,
+                    "PRESERVE",
+                )
+            )
+    return inventory
+
+def _path_status(path: Path) -> str:
+    if path.is_symlink():
+        return "FOUND (SYMLINK; NOT FOLLOWED)"
+    if path.exists():
+        return "FOUND"
+    return "NOT FOUND"
+
+
+def _uninstall(*, confirmed: bool, purge: bool = False) -> int:
+    config_root, state_root = _legacy_profile_roots()
+    configurations = _legacy_profile_configurations()
+    app_config_root = xdg_config_home() / APPLICATION_NAME
+    app_state_root = xdg_state_home() / APPLICATION_NAME
+
+    if purge:
+        inventory = _purge_inventory()
+        print("APPLICATION PURGE — PREFLIGHT INVENTORY")
+        print("=" * 58)
+        print("Scope: application configuration and state roots only")
+        print()
+        print("CONFIGURATION")
+        print(f"  [{_path_status(app_config_root)}] REMOVE  {app_config_root}")
+        print("STATE")
+        print(f"  [{_path_status(app_state_root)}] REMOVE  {app_state_root}")
+        print()
+        print("RESOURCE DETAILS")
+        for label, path, action in inventory:
+            if path in (app_config_root, app_state_root):
+                continue
+            status = _path_status(path)
+            if action == "REMOVE":
+                print(f"  [{status}] INCLUDED IN ROOT PURGE: {label}: {path}")
+            else:
+                print(
+                    f"  [{status}] PRESERVE / REVIEW ONLY / OUTSIDE SCOPE: "
+                    f"{label}: {path}"
+                )
+
+        print()
+        print("PRESERVED BY DESIGN")
+        print("  Host workspaces and workspace files")
+        print("  Docker volumes")
+        print("  Repository and repository-local CLI environment")
+        print("  OpenShell CLI mTLS bundle outside the application root")
+        print("Preserved host workspaces, Docker volumes, and the repository.")
+        print()
+        print("SCOPE LIMITS")
+        print("  Custom Compose paths outside application roots are not deleted.")
+        print("  Sandbox containers, host ACLs, and external resources are not")
+        print("  certified as removed by this application-root purge.")
+
+        if not confirmed:
+            print()
+            print("RESULT: DRY RUN COMPLETE")
+            print("Dry run only; no files were removed.")
+            print("No application data was removed.")
+            print(
+                "Review the inventory, then run "
+                "'mcpctl uninstall --yes --purge'."
+            )
+            return EXIT_OK
+
+        print()
+        print("PHASE 1/3 — PRECHECK")
+        # Fail closed if Docker exists but Compose state cannot be determined.
+        if shutil.which("docker") is not None:
+            try:
+                service_statuses = lifecycle._service_statuses()
+            except (OSError, RuntimeError, ValueError) as exc:
+                print("RESULT: UNINSTALL BLOCKED", file=sys.stderr)
+                print(
+                    f"  Runtime state: UNKNOWN ({type(exc).__name__}: {exc})",
+                    file=sys.stderr,
+                )
+                print(
+                    "  NO APPLICATION DATA REMOVED BY THIS ATTEMPT",
+                    file=sys.stderr,
+                )
+                print(
+                    "  Resolve Docker/Compose status, then retry.",
+                    file=sys.stderr,
+                )
+                return EXIT_ERROR
+            running = sorted(
+                name for name, status in service_statuses.items() if status.running
+            )
+            if running:
+                print(
+                    "PREFLIGHT FAILED: application services are still running: "
+                    + ", ".join(running),
+                    file=sys.stderr,
+                )
+                print("RESULT: UNINSTALL BLOCKED", file=sys.stderr)
+                print(
+                    "  Reason: application Compose services are still running.",
+                    file=sys.stderr,
+                )
+                print("  Blocking services:", file=sys.stderr)
+                for name in running:
+                    print(f"    [RUNNING] {name}", file=sys.stderr)
+                print(
+                    "  [NOT STARTED] Application configuration removal",
+                    file=sys.stderr,
+                )
+                print(
+                    "  [NOT STARTED] Application state removal",
+                    file=sys.stderr,
+                )
+                print(
+                    "  NO APPLICATION DATA REMOVED BY THIS ATTEMPT",
+                    file=sys.stderr,
+                )
+                print("  Next steps:", file=sys.stderr)
+                print("    mcpctl stop", file=sys.stderr)
+                print("    mcpctl uninstall --yes --purge", file=sys.stderr)
+                return EXIT_ERROR
+
+        # Validate every deletion root before changing either root.
+        roots = (app_config_root, app_state_root)
+        for root in roots:
+            if root.is_symlink():
+                print("RESULT: UNINSTALL BLOCKED", file=sys.stderr)
+                print(
+                    f"  Unsafe target: symlinked application root: {root}",
+                    file=sys.stderr,
+                )
+                print(
+                    "  NO APPLICATION DATA REMOVED BY THIS ATTEMPT",
+                    file=sys.stderr,
+                )
+                return EXIT_ERROR
+            if root.exists() and not root.is_dir():
+                print("RESULT: UNINSTALL BLOCKED", file=sys.stderr)
+                print(
+                    f"  Unsafe target: application root is not a directory: {root}",
+                    file=sys.stderr,
+                )
+                print(
+                    "  NO APPLICATION DATA REMOVED BY THIS ATTEMPT",
+                    file=sys.stderr,
+                )
+                return EXIT_ERROR
+
+        print("  [PASS] Compose service check")
+        print("  [PASS] Application roots are safe deletion targets")
+        print()
+        print("PHASE 2/3 — REMOVE APPLICATION ROOTS")
+
+        results: list[tuple[Path, str]] = []
+        for root in roots:
+            if not root.exists():
+                results.append((root, "ALREADY ABSENT"))
+                print(f"  [NO-OP] Already absent: {root}")
+                continue
+            try:
+                shutil.rmtree(root)
+                if root.exists() or root.is_symlink():
+                    results.append((root, "FAILED (verification: path still exists)"))
+                    print(
+                        f"  [FAIL] Removal verification: path still exists: {root}",
+                        file=sys.stderr,
+                    )
+                else:
+                    results.append((root, "REMOVED (verified absent)"))
+                    print(f"  [PASS] Removed and verified absent: {root}")
+            except OSError as exc:
+                reason = f"{type(exc).__name__}: {exc}"
+                results.append((root, f"FAILED ({reason})"))
+                print(f"  [FAIL] {root}", file=sys.stderr)
+                print(f"         {reason}", file=sys.stderr)
+                if isinstance(exc, PermissionError):
+                    print("  RECOVERY CHECKLIST:", file=sys.stderr)
+                    print(
+                        "    1. Inspect the exact failing path and ownership.",
+                        file=sys.stderr,
+                    )
+                    print(
+                        "    2. Check permissions, nested mounts, and shared data.",
+                        file=sys.stderr,
+                    )
+                    print(
+                        "    3. Resolve the cause before retrying.",
+                        file=sys.stderr,
+                    )
+                    print(
+                        "  No recursive ownership-changing command is run "
+                        "automatically.",
+                        file=sys.stderr,
+                    )
+
+        print()
+        print("PHASE 3/3 — VERIFY")
+        failed = any(status.startswith("FAILED") for _, status in results)
+        for root, status in results:
+            if status == "ALREADY ABSENT":
+                print(f"  [PASS] Target already absent: {root}")
+            elif status == "REMOVED (verified absent)":
+                print(f"  [PASS] Target absent: {root}")
+            else:
+                print(f"  [FAIL] Target not verified absent: {root}", file=sys.stderr)
+
+        if failed:
+            print()
+            print("RESULT: PARTIAL FAILURE", file=sys.stderr)
+            print(
+                "Some application data may already have been removed.",
+                file=sys.stderr,
+            )
+            print(
+                "Inspect failed paths before retrying; do not assume the "
+                "application is intact.",
+                file=sys.stderr,
+            )
+            return EXIT_ERROR
+
+        print()
+        print("RESULT: APPLICATION DATA PURGED")
+        print("Both application roots are absent or were already absent.")
+        print("External resources were preserved or left for separate review;")
+        print(
+            "this result does not certify sandbox, ACL, or Docker resource cleanup."
+        )
+        return EXIT_OK
+
+    print("LEGACY PROFILE CONFIGURATION UNINSTALL")
+    print("=" * 58)
+    print(f"Generated configuration root: {config_root}")
+    print(f"Legacy profile state root (preserved): {state_root}")
+    print()
+    if not confirmed:
+        print("MODE: DRY RUN — no filesystem changes")
+        if configurations:
+            print("Generated profile configurations that would be removed:")
+            for path in configurations:
+                print(f"  [WOULD REMOVE] {path}")
+        else:
+            print("  [NO-OP] No generated legacy profile configurations found.")
+        print()
+        print("PRESERVED: profile state, workspace grants, host workspaces,")
+        print("credentials, Docker volumes, central application configuration,")
+        print("and the repository.")
+        print("RESULT: DRY RUN COMPLETE")
+        print("Dry run only; no files were removed.")
+        print("To execute, run 'mcpctl uninstall --yes'.")
+        return EXIT_OK
+
+    print("PHASE 1/3 — DISCOVER")
+    print(
+        f"  [PASS] Inventoried {len(configurations)} "
+        "generated profile configuration(s)"
+    )
+    print()
+    print("PHASE 2/3 — REMOVE")
+    removed: list[Path] = []
+    failed: list[tuple[Path, str]] = []
+    for path in configurations:
+        # Re-check the generated marker immediately before deletion.
+        marker = path / "profile.json"
+        if (
+            path.is_symlink()
+            or not path.is_dir()
+            or marker.is_symlink()
+            or not marker.is_file()
+        ):
+            print(
+                f"  [SKIP] Marker/path changed since inventory: {path}",
+                file=sys.stderr,
+            )
+            continue
+        try:
+            shutil.rmtree(path)
+            if path.exists() or path.is_symlink():
+                failed.append((path, "verification failed; path still exists"))
+                print(
+                    f"  [FAIL] {path}: path still exists after removal",
+                    file=sys.stderr,
+                )
+            else:
+                removed.append(path)
+                print(f"  [PASS] Removed and verified absent: {path}")
+        except OSError as exc:
+            reason = f"{type(exc).__name__}: {exc}"
+            failed.append((path, reason))
+            print(f"  [FAIL] {path}: {reason}", file=sys.stderr)
+
+    print()
+    print("PHASE 3/3 — VERIFY")
+    for path in removed:
+        print(f"  [PASS] Target absent: {path}")
+    if not removed and not failed:
+        print("  [NO-OP] Nothing to remove.")
+    print("PRESERVED: profile state, workspace grants, host workspaces, credentials,")
+    print("Docker volumes, central application configuration, and repository.")
+    if failed:
+        print()
+        print("RESULT: PARTIAL FAILURE", file=sys.stderr)
+        print(
+            "Some generated profile configurations may already have been removed.",
+            file=sys.stderr,
+        )
+        return EXIT_ERROR
+    print("RESULT: LEGACY PROFILE CLEANUP COMPLETE")
+    return EXIT_OK
+
+
 def _build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         prog="mcpctl",
@@ -465,6 +900,36 @@ def _build_parser() -> argparse.ArgumentParser:
         dest="command",
         required=True,
     )
+
+    commands.add_parser(
+        "start",
+        help="Build and start the Compose stack.",
+    )
+    commands.add_parser(
+        "stop",
+        help="Stop and remove the Compose stack.",
+    )
+    commands.add_parser(
+        "restart",
+        help="Rebuild and recreate the Compose stack.",
+    )
+    compose_status = commands.add_parser(
+        "compose-status",
+        help="Show Docker Compose service status.",
+    )
+    compose_status.add_argument("--json", dest="json_output", action="store_true")
+
+    logs = commands.add_parser(
+        "logs",
+        help="Show Docker Compose service logs.",
+    )
+    logs.add_argument(
+        "service",
+        nargs="?",
+        choices=["openshell-gateway", "mcp-server", "tunnel-client"],
+    )
+    logs.add_argument("--follow", "-f", action="store_true")
+    logs.add_argument("--tail", "-n", default="100")
 
     commands.add_parser(
         "setup",
@@ -479,6 +944,39 @@ def _build_parser() -> argparse.ArgumentParser:
     commands.add_parser(
         "repair",
         help="Repair OpenShell runtime state and restart core services.",
+    )
+
+    cleanup = commands.add_parser(
+        "cleanup",
+        help="Show a read-only inventory of legacy application-profile data.",
+    )
+    cleanup.add_argument(
+        "--json",
+        dest="json_output",
+        action="store_true",
+        help="Print the cleanup inventory as JSON.",
+    )
+
+    uninstall = commands.add_parser(
+        "uninstall",
+        help="Remove generated legacy profile configuration; retained state is preserved.",
+    )
+    uninstall_confirmation = uninstall.add_mutually_exclusive_group()
+    uninstall_confirmation.add_argument(
+        "--dry-run",
+        action="store_true",
+        help="Show what would be removed without changing files (the default).",
+    )
+    uninstall_confirmation.add_argument(
+        "--yes",
+        action="store_true",
+        dest="confirmed",
+        help="Confirm the requested uninstall operation.",
+    )
+    uninstall.add_argument(
+        "--purge",
+        action="store_true",
+        help="Remove all application-owned configuration and state (requires --yes to execute).",
     )
 
     sandbox = commands.add_parser(
@@ -669,7 +1167,6 @@ def _build_parser() -> argparse.ArgumentParser:
         "get",
         help="Inspect one credential provider without secret values.",
     )
-
     credential_get.add_argument("name")
 
     credential_get.add_argument(
@@ -761,6 +1258,12 @@ def _build_parser() -> argparse.ArgumentParser:
         "--json",
         dest="json_output",
         action="store_true",
+        help="Output the public workspace schema as JSON.",
+    )
+    workspace_list.add_argument(
+        "--verbose",
+        action="store_true",
+        help="Include internal workspace and infrastructure details.",
     )
 
     config = commands.add_parser(
@@ -910,7 +1413,6 @@ def _credential_arguments(
             args.sandbox_name,
             args.credential_name,
         ]
-
     else:
         raise RuntimeError(f"Unsupported credential command: {command}")
 
@@ -942,6 +1444,8 @@ def _workspace_arguments(
 
         if args.json_output:
             arguments.append("--json")
+        if args.verbose:
+            arguments.append("--verbose")
 
         return arguments
 
@@ -955,6 +1459,22 @@ def main(
     args = parser.parse_args(argv)
 
     try:
+        if args.command in {"start", "stop", "restart"}:
+            return _delegate_local_cli(args.command, [])
+
+        if args.command == "compose-status":
+            arguments = ["--json"] if args.json_output else []
+            return _delegate_local_cli("status", arguments)
+
+        if args.command == "logs":
+            arguments = []
+            if args.service is not None:
+                arguments.append(args.service)
+            if args.follow:
+                arguments.append("--follow")
+            arguments.extend(["--tail", args.tail])
+            return _delegate_local_cli("logs", arguments)
+
         if args.command == "setup":
             return _setup()
 
@@ -963,6 +1483,12 @@ def main(
 
         if args.command == "repair":
             return _repair()
+
+        if args.command == "cleanup":
+            return _cleanup(json_output=args.json_output)
+
+        if args.command == "uninstall":
+            return _uninstall(confirmed=args.confirmed, purge=args.purge)
 
         if args.command == "config":
             if args.config_command != "mcp-client":
@@ -1004,6 +1530,7 @@ def main(
 
     except (
         ConfigError,
+        OSError,
         lifecycle.LifecycleError,
         OpenShellTLSStatusError,
         RuntimeError,

@@ -235,7 +235,6 @@ def test_sandbox_name_limit_is_enforced_before_gateway(
     assert result.is_error is True
 
 
-
 @pytest.mark.integration
 def test_browser_profile_runs_inside_open_shell(
     mcp_client: MCPIntegrationClient,

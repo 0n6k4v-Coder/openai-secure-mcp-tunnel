@@ -107,12 +107,8 @@ def sandbox_cli_environment(tmp_path: Path) -> dict[str, str]:
         directory.mkdir(parents=True, exist_ok=True)
 
     environment = os.environ.copy()
-    environment["PATH"] = os.pathsep.join(
-        [str(fake_bin), environment.get("PATH", "")]
-    )
-    environment["MCPCTL_E2E_ARGV_FILE"] = str(
-        tmp_path / "openshell-argv.jsonl"
-    )
+    environment["PATH"] = os.pathsep.join([str(fake_bin), environment.get("PATH", "")])
+    environment["MCPCTL_E2E_ARGV_FILE"] = str(tmp_path / "openshell-argv.jsonl")
     environment["MCPCTL_E2E_EXIT_CODE"] = "0"
     environment["MCPCTL_E2E_STDOUT"] = ""
     environment["MCPCTL_E2E_STDERR"] = ""
@@ -142,8 +138,7 @@ def _recorded_openshell_invocations(
     ]
     assert all(isinstance(item, list) for item in invocations)
     assert all(
-        all(isinstance(argument, str) for argument in item)
-        for item in invocations
+        all(isinstance(argument, str) for argument in item) for item in invocations
     )
     return invocations
 
@@ -399,9 +394,7 @@ def isolated_openshell_environment(
         )
     config_home = Path(config_value).expanduser()
     if not config_home.is_absolute():
-        pytest.skip(
-            "BLOCKED: MCPCTL_E2E_OPENSHELL_CONFIG_HOME must be absolute."
-        )
+        pytest.skip("BLOCKED: MCPCTL_E2E_OPENSHELL_CONFIG_HOME must be absolute.")
     config_home = config_home.resolve()
     if config_home == (Path.home() / ".config").resolve():
         pytest.skip(
@@ -440,8 +433,7 @@ def isolated_openshell_environment(
         )
     except (OSError, subprocess.TimeoutExpired):
         pytest.skip(
-            "BLOCKED: Docker is unavailable or the test context "
-            "could not be inspected."
+            "BLOCKED: Docker is unavailable or the test context could not be inspected."
         )
     if context_result.returncode != 0:
         pytest.skip(
@@ -573,7 +565,10 @@ def test_cli_sbx_051_start_stopped_sandbox_returns_to_ready(
         timeout=LIFECYCLE_TIMEOUT_SECONDS,
     )
     assert stopped.returncode == 0, f"{stopped.stdout}\n{stopped.stderr}"
-    assert _live_sandbox_status(mcpctl_executable, name, environment)["status"] == "Stopped"
+    assert (
+        _live_sandbox_status(mcpctl_executable, name, environment)["status"]
+        == "Stopped"
+    )
 
     started = _run_mcpctl(
         mcpctl_executable,
@@ -582,7 +577,9 @@ def test_cli_sbx_051_start_stopped_sandbox_returns_to_ready(
         timeout=LIFECYCLE_TIMEOUT_SECONDS,
     )
     assert started.returncode == 0, f"{started.stdout}\n{started.stderr}"
-    assert _live_sandbox_status(mcpctl_executable, name, environment)["status"] == "Ready"
+    assert (
+        _live_sandbox_status(mcpctl_executable, name, environment)["status"] == "Ready"
+    )
 
 
 def test_cli_sbx_052_stop_retains_sandbox_state(
@@ -617,7 +614,9 @@ def test_cli_sbx_053_restart_returns_to_ready_and_remains_usable(
         timeout=LIFECYCLE_TIMEOUT_SECONDS,
     )
     assert result.returncode == 0, f"{result.stdout}\n{result.stderr}"
-    assert _live_sandbox_status(mcpctl_executable, name, environment)["status"] == "Ready"
+    assert (
+        _live_sandbox_status(mcpctl_executable, name, environment)["status"] == "Ready"
+    )
     usable = _run_mcpctl(
         mcpctl_executable,
         ["sandbox", "exec", name, "--", "/bin/true"],

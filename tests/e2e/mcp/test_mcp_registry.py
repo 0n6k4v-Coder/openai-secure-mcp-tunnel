@@ -202,7 +202,9 @@ def test_MCP_REG_008_verify_optional_arguments_and_defaults(mcp_client) -> None:
     for name, defaults in EXPECTED_DEFAULTS.items():
         properties = _schema(tools[name])["properties"]
         for argument, expected in defaults.items():
-            assert argument in properties, f"{name}: missing optional argument {argument}"
+            assert argument in properties, (
+                f"{name}: missing optional argument {argument}"
+            )
             if "default" in properties[argument]:
                 assert properties[argument]["default"] == expected, (
                     f"{name}.{argument}: advertised default differs from implementation"
@@ -226,14 +228,18 @@ def test_MCP_REG_009_verify_tool_annotations(mcp_client) -> None:
             annotations.idempotent_hint,
             annotations.open_world_hint,
         )
-        assert actual == expected, f"{name}: annotations {actual!r}, expected {expected!r}"
+        assert actual == expected, (
+            f"{name}: annotations {actual!r}, expected {expected!r}"
+        )
 
 
 @pytest.mark.integration
 def test_MCP_REG_010_verify_registry_stability(mcp_client) -> None:
     first = [tool.name for tool in _list_tools(mcp_client)]
     second = [tool.name for tool in _list_tools(mcp_client)]
-    assert first == second, "Tool order or names changed between unchanged registry listings"
+    assert first == second, (
+        "Tool order or names changed between unchanged registry listings"
+    )
 
 
 @pytest.mark.integration

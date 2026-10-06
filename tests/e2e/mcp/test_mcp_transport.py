@@ -12,7 +12,9 @@ import pytest
 PROTOCOL_VERSION = "2026-07-28"
 
 
-def _jsonrpc_request(method: str, request_id: int = 1, params: dict | None = None) -> bytes:
+def _jsonrpc_request(
+    method: str, request_id: int = 1, params: dict | None = None
+) -> bytes:
     request_params = dict(params or {})
     request_params.setdefault(
         "_meta",
@@ -21,12 +23,14 @@ def _jsonrpc_request(method: str, request_id: int = 1, params: dict | None = Non
             "io.modelcontextprotocol/clientCapabilities": {},
         },
     )
-    return json.dumps({
-        "jsonrpc": "2.0",
-        "id": request_id,
-        "method": method,
-        "params": request_params,
-    }).encode("utf-8")
+    return json.dumps(
+        {
+            "jsonrpc": "2.0",
+            "id": request_id,
+            "method": method,
+            "params": request_params,
+        }
+    ).encode("utf-8")
 
 
 def _assert_protocol_response(result) -> dict:
@@ -60,7 +64,11 @@ def test_MCP_TRANSPORT_001_connect_to_configured_endpoint(mcp_client) -> None:
 
 def test_MCP_TRANSPORT_002_initialize_client(mcp_client) -> None:
     protocol_version, server_info, capabilities = mcp_client.run(
-        lambda client: (client.protocol_version, client.server_info, client.server_capabilities)
+        lambda client: (
+            client.protocol_version,
+            client.server_info,
+            client.server_capabilities,
+        )
     )
     assert protocol_version
     assert server_info is not None
@@ -138,9 +146,7 @@ def test_MCP_TRANSPORT_013_allowed_host(raw_mcp_request) -> None:
 
 
 def test_MCP_TRANSPORT_014_unapproved_host_rejected(raw_mcp_request) -> None:
-    result = raw_mcp_request(
-        _jsonrpc_request("tools/list"), host="unapproved.invalid"
-    )
+    result = raw_mcp_request(_jsonrpc_request("tools/list"), host="unapproved.invalid")
     assert result.status >= 400, (
         f"Unapproved Host was not rejected: HTTP {result.status}, {result.body[:300]!r}"
     )
@@ -208,4 +214,6 @@ def test_MCP_TRANSPORT_020_server_unavailable_returns_connection_failure() -> No
     with pytest.raises(URLError) as error:
         with urlopen(request, timeout=3.0):
             pass
-    assert not isinstance(error.value, HTTPError), "Expected connection failure, not HTTP response."
+    assert not isinstance(error.value, HTTPError), (
+        "Expected connection failure, not HTTP response."
+    )

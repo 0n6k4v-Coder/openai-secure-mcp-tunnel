@@ -87,9 +87,7 @@ def sandbox_cli_environment(tmp_path: Path) -> dict[str, str]:
             environment.get("PATH", ""),
         ]
     )
-    environment["MCPCTL_E2E_ARGV_FILE"] = str(
-        tmp_path / "openshell-argv.json"
-    )
+    environment["MCPCTL_E2E_ARGV_FILE"] = str(tmp_path / "openshell-argv.json")
     environment["MCPCTL_E2E_EXIT_CODE"] = "0"
     environment["MCPCTL_E2E_STDOUT"] = ""
     environment["MCPCTL_E2E_STDERR"] = ""
@@ -141,9 +139,7 @@ def _recorded_openshell_argv(
     environment: dict[str, str],
 ) -> list[str]:
     argv_path = Path(environment["MCPCTL_E2E_ARGV_FILE"])
-    assert argv_path.is_file(), (
-        "The fake OpenShell executable was not invoked."
-    )
+    assert argv_path.is_file(), "The fake OpenShell executable was not invoked."
 
     payload = json.loads(argv_path.read_text(encoding="utf-8"))
     assert isinstance(payload, list)
@@ -163,9 +159,7 @@ def test_cli_sbx_030_shell_delegates_to_openshell(
     )
 
     assert result.returncode == 0, (
-        f"Sandbox shell failed.\n"
-        f"stdout: {result.stdout}\n"
-        f"stderr: {result.stderr}"
+        f"Sandbox shell failed.\nstdout: {result.stdout}\nstderr: {result.stderr}"
     )
     assert _recorded_openshell_argv(sandbox_cli_environment) == [
         "sandbox",
@@ -193,9 +187,7 @@ def test_cli_sbx_031_shell_help(
     assert "usage: mcpctl sandbox shell" in result.stdout
     assert "name" in result.stdout
     assert "--help" in result.stdout
-    assert not Path(
-        sandbox_cli_environment["MCPCTL_E2E_ARGV_FILE"]
-    ).exists()
+    assert not Path(sandbox_cli_environment["MCPCTL_E2E_ARGV_FILE"]).exists()
 
 
 def test_cli_sbx_032_exec_delegates_requested_command(
@@ -217,9 +209,7 @@ def test_cli_sbx_032_exec_delegates_requested_command(
     )
 
     assert result.returncode == 0, (
-        f"Sandbox exec failed.\n"
-        f"stdout: {result.stdout}\n"
-        f"stderr: {result.stderr}"
+        f"Sandbox exec failed.\nstdout: {result.stdout}\nstderr: {result.stderr}"
     )
     assert result.stdout == "e2e-exec-ok"
     assert _recorded_openshell_argv(sandbox_cli_environment) == [
@@ -258,9 +248,7 @@ def test_cli_sbx_033_exec_preserves_multiple_argument_order(
     )
 
     assert result.returncode == 0, (
-        f"Sandbox exec failed.\n"
-        f"stdout: {result.stdout}\n"
-        f"stderr: {result.stderr}"
+        f"Sandbox exec failed.\nstdout: {result.stdout}\nstderr: {result.stderr}"
     )
     assert _recorded_openshell_argv(sandbox_cli_environment) == [
         "sandbox",
@@ -300,9 +288,7 @@ def test_cli_sbx_034_exec_preserves_spaces_and_quoted_arguments(
     )
 
     assert result.returncode == 0, (
-        f"Sandbox exec failed.\n"
-        f"stdout: {result.stdout}\n"
-        f"stderr: {result.stderr}"
+        f"Sandbox exec failed.\nstdout: {result.stdout}\nstderr: {result.stderr}"
     )
 
     forwarded = _recorded_openshell_argv(sandbox_cli_environment)
@@ -343,9 +329,7 @@ def test_cli_sbx_035_exec_forwards_child_command_options(
     )
 
     assert result.returncode == 0, (
-        f"Sandbox exec failed.\n"
-        f"stdout: {result.stdout}\n"
-        f"stderr: {result.stderr}"
+        f"Sandbox exec failed.\nstdout: {result.stdout}\nstderr: {result.stderr}"
     )
     assert _recorded_openshell_argv(sandbox_cli_environment) == [
         "sandbox",
@@ -403,14 +387,9 @@ def test_cli_sbx_037_exec_without_command_returns_validation_error(
     )
 
     assert result.returncode == 2
-    assert (
-        "ERROR: sandbox exec requires a command after '--'."
-        in result.stderr
-    )
+    assert "ERROR: sandbox exec requires a command after '--'." in result.stderr
     assert result.stdout == ""
-    assert not Path(
-        sandbox_cli_environment["MCPCTL_E2E_ARGV_FILE"]
-    ).exists()
+    assert not Path(sandbox_cli_environment["MCPCTL_E2E_ARGV_FILE"]).exists()
 
 
 def test_cli_sbx_038_exec_missing_sandbox_propagates_failure(
@@ -457,6 +436,4 @@ def test_cli_sbx_039_exec_help(
     assert "usage: mcpctl sandbox exec" in result.stdout
     assert "name" in result.stdout
     assert "exec_command" in result.stdout
-    assert not Path(
-        sandbox_cli_environment["MCPCTL_E2E_ARGV_FILE"]
-    ).exists()
+    assert not Path(sandbox_cli_environment["MCPCTL_E2E_ARGV_FILE"]).exists()

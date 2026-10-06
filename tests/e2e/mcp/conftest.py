@@ -151,18 +151,14 @@ def pytest_sessionfinish(session, exitstatus):
         collected_by_group[group].add(test_id)
         reports_by_id[test_id].extend(getattr(item, "_mcp_e2e_reports", []))
 
-    active_groups = {
-        group for group, ids in collected_by_group.items() if ids
-    }
+    active_groups = {group for group, ids in collected_by_group.items() if ids}
     if not active_groups:
         return
 
     # When a family is selected, reset its uncollected cases to "Not implemented"
     # so a partial run cannot leave stale green statuses in the report.
     ids_to_update = {
-        test_id
-        for group in active_groups
-        for test_id in MCP_TEST_ID_GROUPS[group]
+        test_id for group in active_groups for test_id in MCP_TEST_ID_GROUPS[group]
     }
     statuses = {
         test_id: _status_for_reports(reports_by_id[test_id])

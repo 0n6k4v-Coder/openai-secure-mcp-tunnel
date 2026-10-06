@@ -85,11 +85,7 @@ The previous `terminal-executor` service is no longer part of the architecture.
 
 ### Workspace ACL helper
 
-Host workspace authorization is handled by the separate trusted host-side:
-
-```text
-workspace-broker
-```
+Host workspace authorization is exposed through `mcpctl workspace` and implemented by the trusted host-side workspace broker module.
 
 When a workspace is authorized, the broker:
 
@@ -154,22 +150,18 @@ The project requires:
 Python >=3.14,<3.15
 ```
 
-The primary operator CLI is:
-
-```bash
-uv run secure-mcp --help
-```
-
-The configuration and OpenShell TLS control CLI is:
+The sole application operator CLI is:
 
 ```bash
 uv run mcpctl --help
 ```
 
+It also includes setup, status, repair, read-only cleanup inventory, uninstall, and configuration commands.
+
 The trusted host-side workspace broker is:
 
 ```bash
-uv run workspace-broker --help
+uv run mcpctl workspace --help
 ```
 
 ---
@@ -412,80 +404,87 @@ Unauthenticated Gateway users are disabled.
 
 # CLI Reference
 
-The project has three separate host-side CLI entry points.
+The project exposes one host-side CLI entry point: `mcpctl`. Workspace authorization uses its `workspace` subcommands.
 
-## Secure MCP CLI
+## mcpctl application and Compose commands
 
 Run:
 
 ```bash
-uv run secure-mcp --help
+uv run mcpctl --help
 ```
 
-The current top-level commands are:
+The current top-level commands include:
 
 ```text
 start
 stop
 restart
-status
+compose-status
 logs
+setup
+status
+repair
+cleanup
+uninstall
 sandbox
 credential
+workspace
+config
 ```
 
 ### Start the Compose stack
 
 ```bash
-uv run secure-mcp start
+uv run mcpctl start
 ```
 
 ### Stop the Compose stack
 
 ```bash
-uv run secure-mcp stop
+uv run mcpctl stop
 ```
 
 ### Restart the Compose stack
 
 ```bash
-uv run secure-mcp restart
+uv run mcpctl restart
 ```
 
 ### Show Compose service status
 
 ```bash
-uv run secure-mcp status
+uv run mcpctl compose-status
 ```
 
 JSON output:
 
 ```bash
-uv run secure-mcp status --json
+uv run mcpctl compose-status --json
 ```
 
 ### Show Compose logs
 
 ```bash
-uv run secure-mcp logs
+uv run mcpctl logs
 ```
 
 Show one service:
 
 ```bash
-uv run secure-mcp logs mcp-server
+uv run mcpctl logs mcp-server
 ```
 
 Follow logs:
 
 ```bash
-uv run secure-mcp logs --follow
+uv run mcpctl logs --follow
 ```
 
 Follow one service:
 
 ```bash
-uv run secure-mcp logs --follow mcp-server
+uv run mcpctl logs --follow mcp-server
 ```
 
 The service choices are:
@@ -498,12 +497,42 @@ tunnel-client
 
 ---
 
+## Cleanup and uninstall
+
+Preview legacy profile cleanup without changing files:
+
+```bash
+uv run mcpctl uninstall
+```
+
+Remove only generated legacy profile configuration:
+
+```bash
+uv run mcpctl uninstall --yes
+```
+
+Preview a full purge of application-owned configuration and state:
+
+```bash
+uv run mcpctl uninstall --purge
+```
+
+To execute that purge, explicitly confirm it:
+
+```bash
+uv run mcpctl uninstall --yes --purge
+```
+
+The purge first prints a path-only inventory of the application roots, OpenAI MCP configuration and credentials, installation state, workspace-grant records, and application OpenShell TLS. Credential contents are never printed. When Docker is available, execution checks the Compose runtime and refuses to purge while services are running; stop the stack with `uv run mcpctl stop` and retry. The inventory is repeated at execution time, and the CLI verifies each application root is absent after deletion while reporting partial failures.
+
+The purge removes the `local-mcp-server` directories under the configured XDG config and state roots. It does not delete host workspace files, Docker volumes, or the repository. The OpenShell CLI mTLS bundle under `openshell/gateways/local/mtls` is outside the application root and is preserved because it may be shared. Custom Compose paths outside the application roots are reported as outside scope and preserved; review them separately. Back up anything you may need before purging; this operation is destructive and is not reversible through the CLI.
+
 ## Sandbox commands
 
 Run:
 
 ```bash
-uv run secure-mcp sandbox --help
+uv run mcpctl sandbox --help
 ```
 
 The current sandbox CLI provides:
@@ -532,25 +561,25 @@ The `create` command supports:
 ### List sandboxes
 
 ```bash
-uv run secure-mcp sandbox list
+uv run mcpctl sandbox list
 ```
 
 ### Check a sandbox
 
 ```bash
-uv run secure-mcp sandbox status <sandbox-name>
+uv run mcpctl sandbox status <sandbox-name>
 ```
 
 JSON output:
 
 ```bash
-uv run secure-mcp sandbox status <sandbox-name> --json
+uv run mcpctl sandbox status <sandbox-name> --json
 ```
 
 ### Create a default sandbox
 
 ```bash
-uv run secure-mcp sandbox create \
+uv run mcpctl sandbox create \
   <sandbox-name> \
   --workspace <workspace-id>
 ```
@@ -558,7 +587,7 @@ uv run secure-mcp sandbox create \
 ### Create a browser sandbox
 
 ```bash
-uv run secure-mcp sandbox create \
+uv run mcpctl sandbox create \
   <sandbox-name> \
   --workspace <workspace-id> \
   --profile browser
@@ -577,26 +606,26 @@ and starts the browser runtime inside the OpenShell sandbox.
 ### Open an interactive shell
 
 ```bash
-uv run secure-mcp sandbox shell <sandbox-name>
+uv run mcpctl sandbox shell <sandbox-name>
 ```
 
 ### Execute a command
 
 ```bash
-uv run secure-mcp sandbox exec <sandbox-name> -- \
+uv run mcpctl sandbox exec <sandbox-name> -- \
   sh -lc 'echo "OpenShell sandbox is working"'
 ```
 
 ### Show sandbox logs
 
 ```bash
-uv run secure-mcp sandbox logs <sandbox-name>
+uv run mcpctl sandbox logs <sandbox-name>
 ```
 
 ### Start a sandbox
 
 ```bash
-uv run secure-mcp sandbox start <sandbox-name>
+uv run mcpctl sandbox start <sandbox-name>
 ```
 
 Start is used for a stopped sandbox or a retained failed sandbox.
@@ -604,7 +633,7 @@ Start is used for a stopped sandbox or a retained failed sandbox.
 ### Stop a sandbox
 
 ```bash
-uv run secure-mcp sandbox stop <sandbox-name>
+uv run mcpctl sandbox stop <sandbox-name>
 ```
 
 Stop retains the sandbox record and workspace association.
@@ -612,7 +641,7 @@ Stop retains the sandbox record and workspace association.
 ### Restart a sandbox
 
 ```bash
-uv run secure-mcp sandbox restart <sandbox-name>
+uv run mcpctl sandbox restart <sandbox-name>
 ```
 
 Restart is implemented as:
@@ -628,7 +657,7 @@ There is no separate custom OpenShell restart API used by the project.
 ### Repair a sandbox
 
 ```bash
-uv run secure-mcp sandbox repair <sandbox-name>
+uv run mcpctl sandbox repair <sandbox-name>
 ```
 
 Repair retries OpenShell startup of the existing sandbox.
@@ -638,7 +667,7 @@ It does **not** delete and recreate the sandbox.
 ### Delete a sandbox
 
 ```bash
-uv run secure-mcp sandbox delete <sandbox-name>
+uv run mcpctl sandbox delete <sandbox-name>
 ```
 
 Deletion permanently removes the OpenShell sandbox.
@@ -648,7 +677,7 @@ Deletion does not revoke the associated host workspace grant.
 ### Recreate a sandbox
 
 ```bash
-uv run secure-mcp sandbox recreate <sandbox-name> --yes
+uv run mcpctl sandbox recreate <sandbox-name> --yes
 ```
 
 Recreate is destructive.
@@ -678,7 +707,7 @@ Recreate does not preserve runtime state from the deleted sandbox.
 Run:
 
 ```bash
-uv run secure-mcp credential --help
+uv run mcpctl credential --help
 ```
 
 The current credential commands are:
@@ -753,71 +782,45 @@ OpenAI MCP server configuration
 
 under the user-local XDG configuration directory.
 
-The `mcpctl sandbox ...`, `mcpctl credential ...`, and `mcpctl workspace ...` commands provide the same operator functionality through the secondary CLI entry point.
+Sandbox, credential, and workspace commands are available through `mcpctl`; shared service implementations remain internal to the package.
 
 ---
 
-## Workspace Broker CLI
+## Workspace commands
 
-Workspace authorization is intentionally a separate trusted host-side CLI.
+Workspace authorization is available through the trusted host-side `mcpctl workspace` commands.
 
-Run:
+Show workspace command help:
 
 ```bash
-uv run workspace-broker --help
-```
-
-The current commands are:
-
-```text
-authorize
-revoke
-list
+uv run mcpctl workspace --help
 ```
 
 List all authorized host workspaces:
 
 ```bash
-uv run workspace-broker list
+uv run mcpctl workspace list
 ```
 
 List as JSON:
 
 ```bash
-uv run workspace-broker list --json
+uv run mcpctl workspace list --json
 ```
 
 Authorize a workspace:
 
 ```bash
-uv run workspace-broker authorize <host-path>
+uv run mcpctl workspace authorize <host-path>
 ```
 
 Revoke a workspace:
 
 ```bash
-uv run workspace-broker revoke <workspace-id>
+uv run mcpctl workspace revoke <workspace-id>
 ```
 
-The workspace broker is responsible for:
-
-```text
-host path validation
-protected path validation
-workspace authorization
-Docker volume creation
-POSIX ACL provisioning
-POSIX ACL revocation
-workspace grant registry
-```
-
-Do **not** use:
-
-```bash
-uv run secure-mcp workspace-broker ...
-```
-
-`workspace-broker` is a separate executable.
+The internal workspace broker implementation handles host path validation, protected path validation, workspace authorization, Docker volume creation, POSIX ACL provisioning/revocation, and the workspace grant registry. It is invoked by `mcpctl`; there is no separate `workspace-broker` executable.
 
 ---
 
@@ -914,7 +917,7 @@ docker build \
   deploy/docker/workspace-acl-helper
 ```
 
-The helper is used by `workspace-broker` during workspace authorization and revocation.
+The helper is used by the internal workspace broker implementation invoked through `mcpctl workspace` during authorization and revocation.
 
 It does not provide a general-purpose shell or network access.
 
@@ -1260,7 +1263,7 @@ Docker sandbox
 First authorize a host workspace:
 
 ```bash
-uv run workspace-broker authorize "$HOME/path/to/workspace"
+uv run mcpctl workspace authorize "$HOME/path/to/workspace"
 ```
 
 Record the returned:
@@ -1286,7 +1289,7 @@ The sandbox creation API does not accept arbitrary host filesystem paths.
 Create a default sandbox:
 
 ```bash
-uv run secure-mcp sandbox create \
+uv run mcpctl sandbox create \
   <sandbox-name> \
   --workspace <workspace-id>
 ```
@@ -1294,7 +1297,7 @@ uv run secure-mcp sandbox create \
 For browser automation:
 
 ```bash
-uv run secure-mcp sandbox create \
+uv run mcpctl sandbox create \
   <sandbox-name> \
   --workspace <workspace-id> \
   --profile browser
@@ -1328,7 +1331,7 @@ browser
 Use:
 
 ```bash
-uv run secure-mcp sandbox status <sandbox-name>
+uv run mcpctl sandbox status <sandbox-name>
 ```
 
 or:
@@ -1357,7 +1360,7 @@ The exact numeric OpenShell phase/status values are implementation details and s
 Start a stopped or retained failed sandbox:
 
 ```bash
-uv run secure-mcp sandbox start <sandbox-name>
+uv run mcpctl sandbox start <sandbox-name>
 ```
 
 or:
@@ -1369,7 +1372,7 @@ start_sandbox
 Stop a running sandbox:
 
 ```bash
-uv run secure-mcp sandbox stop <sandbox-name>
+uv run mcpctl sandbox stop <sandbox-name>
 ```
 
 or:
@@ -1381,7 +1384,7 @@ stop_sandbox
 Restart a sandbox:
 
 ```bash
-uv run secure-mcp sandbox restart <sandbox-name>
+uv run mcpctl sandbox restart <sandbox-name>
 ```
 
 or:
@@ -1401,7 +1404,7 @@ start
 Repair a retained failed sandbox:
 
 ```bash
-uv run secure-mcp sandbox repair <sandbox-name>
+uv run mcpctl sandbox repair <sandbox-name>
 ```
 
 or:
@@ -1421,7 +1424,7 @@ It does not delete or recreate the sandbox.
 Use:
 
 ```bash
-uv run secure-mcp sandbox exec <sandbox-name> -- \
+uv run mcpctl sandbox exec <sandbox-name> -- \
   sh -lc 'echo "OpenShell sandbox is working"'
 ```
 
@@ -1472,7 +1475,7 @@ The sandbox does not receive an arbitrary host filesystem path from the MCP call
 Create a browser sandbox:
 
 ```bash
-uv run secure-mcp sandbox create \
+uv run mcpctl sandbox create \
   browser-test \
   --workspace <workspace-id> \
   --profile browser
@@ -1481,7 +1484,7 @@ uv run secure-mcp sandbox create \
 Check its status:
 
 ```bash
-uv run secure-mcp sandbox status browser-test
+uv run mcpctl sandbox status browser-test
 ```
 
 Use:
@@ -1573,7 +1576,7 @@ Browser runtime dependencies are baked into the browser image rather than instal
 After testing:
 
 ```bash
-uv run secure-mcp sandbox delete <sandbox-name>
+uv run mcpctl sandbox delete <sandbox-name>
 ```
 
 or use:
@@ -1597,7 +1600,7 @@ Deleting a sandbox does **not** automatically revoke the host workspace grant.
 When a sandbox needs a fresh runtime while retaining its managed workspace capability and profile:
 
 ```bash
-uv run secure-mcp sandbox recreate <sandbox-name> --yes
+uv run mcpctl sandbox recreate <sandbox-name> --yes
 ```
 
 The MCP tool:
@@ -1640,13 +1643,13 @@ Recreation is a destructive operation.
 After the sandbox has been deleted:
 
 ```bash
-uv run workspace-broker revoke <workspace-id>
+uv run mcpctl workspace revoke <workspace-id>
 ```
 
 Then verify:
 
 ```bash
-uv run workspace-broker list
+uv run mcpctl workspace list
 ```
 
 The revoked workspace should no longer appear.
@@ -1909,25 +1912,25 @@ There is normally no reason to create a new tunnel simply because the MCP tool l
 List all authorized workspaces:
 
 ```bash
-uv run workspace-broker list
+uv run mcpctl workspace list
 ```
 
 List as JSON:
 
 ```bash
-uv run workspace-broker list --json
+uv run mcpctl workspace list --json
 ```
 
 Authorize a workspace:
 
 ```bash
-uv run workspace-broker authorize "$HOME/path/to/workspace"
+uv run mcpctl workspace authorize "$HOME/path/to/workspace"
 ```
 
 Revoke a workspace:
 
 ```bash
-uv run workspace-broker revoke <workspace-id>
+uv run mcpctl workspace revoke <workspace-id>
 ```
 
 The broker records:
@@ -2316,7 +2319,7 @@ Host workspace lifecycle:
 Host directory
       │
       ▼
-workspace-broker authorize
+mcpctl workspace authorize
       │
       ├── validate host path
       ├── POSIX ACL provisioning
@@ -2330,7 +2333,7 @@ workspace-broker authorize
        /workspace/project
               │
               ▼
-workspace-broker revoke
+mcpctl workspace revoke
               │
               ▼
 workspace-acl-helper
@@ -2368,3 +2371,23 @@ Compose service.
 The MCP server exposes sandbox operations through OpenShell, workspace operations through authorized workspace boundaries, controlled tool installation through the sandbox installation workflow, and browser automation through the isolated browser sandbox.
 
 The trusted host-side workspace broker remains separate from the MCP server and is responsible for host filesystem authorization, Docker volume provisioning, and POSIX ACL lifecycle.
+
+---
+
+# Workspace CLI Output
+
+The workspace CLI keeps its default output focused on user-relevant fields:
+
+```bash
+mcpctl workspace list
+mcpctl workspace list --json
+```
+
+The public workspace schema contains `id`, `host_path`, `sandbox_path`, and `read_only`. Use `--verbose` when debugging or inspecting host-side infrastructure details:
+
+```bash
+mcpctl workspace list --verbose
+mcpctl workspace list --verbose --json
+```
+
+Verbose output includes internal identifiers and infrastructure metadata such as host UID/GID and Docker volume name. Treat this output as operational detail and avoid sharing it unnecessarily.
