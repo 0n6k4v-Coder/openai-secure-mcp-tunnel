@@ -430,17 +430,17 @@ def _repair() -> int:
     print("Local MCP Server Repair")
 
     print()
-    print("[1/5] Runtime")
+    print("[1/6] Runtime")
     lifecycle.prepare_runtime()
     print("      ✓ READY")
 
     print()
-    print("[2/5] OpenShell TLS")
+    print("[2/6] OpenShell TLS")
     tls_status = repair_openshell_tls()
     print("      " + ("✓ READY" if tls_status.complete else "✗ NOT READY"))
 
     print()
-    print("[3/5] Docker Compose")
+    print("[3/6] Docker Compose")
     lifecycle.validate_compose()
     print("      ✓ VALID")
 
