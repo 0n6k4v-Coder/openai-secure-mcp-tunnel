@@ -525,7 +525,7 @@ To execute that purge, explicitly confirm it:
 uv run mcpctl uninstall --yes --purge
 ```
 
-The purge first prints a path-only inventory of the application roots, OpenAI MCP configuration and credentials, installation state, workspace-grant records, and application OpenShell TLS. Credential contents are never printed. When Docker is available, execution checks the Compose runtime and refuses to purge while services are running; stop the stack with `uv run mcpctl stop` and retry. The inventory is repeated at execution time, and the CLI verifies each application root is absent after deletion while reporting partial failures.
+The purge first prints a path-only inventory of the application roots, OpenAI MCP configuration and credentials, workspace-grant records, and application OpenShell TLS. Credential contents are never printed. When Docker is available, execution checks the Compose runtime and refuses to purge while services are running; stop the stack with `uv run mcpctl stop` and retry. The inventory is repeated at execution time, and the CLI verifies each application root is absent after deletion while reporting partial failures.
 
 The purge removes the `local-mcp-server` directories under the configured XDG config and state roots. It does not delete host workspace files, Docker volumes, or the repository. The OpenShell CLI mTLS bundle under `openshell/gateways/local/mtls` is outside the application root and is preserved because it may be shared. Custom Compose paths outside the application roots are reported as outside scope and preserved; review them separately. Back up anything you may need before purging; this operation is destructive and is not reversible through the CLI.
 
