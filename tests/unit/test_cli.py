@@ -39,6 +39,10 @@ def test_sandbox_list_json(
             ]
         ),
     )
+    monkeypatch.setattr(
+        "local_mcp_server.packages.manager.show_packages",
+        lambda name: {"sandbox": name, "package_state_root": "/state/mcp", "ecosystems": []},
+    )
 
     assert cli._sandbox_list(True) == cli.EXIT_OK
 
@@ -50,6 +54,11 @@ def test_sandbox_list_json(
             "name": "project-api",
             "status": "Ready",
             "host_workspace_id": "ws_project",
+            "package_state": {
+                "sandbox": "project-api",
+                "package_state_root": "/state/mcp",
+                "ecosystems": [],
+            },
         }
     ]
 
@@ -330,12 +339,13 @@ def test_sandbox_delete_json(
         ),
     )
 
-    assert cli._sandbox_delete("project-api", True) == cli.EXIT_OK
+    assert cli._sandbox_delete("project-api", True, confirmed=True) == cli.EXIT_OK
 
     output = json.loads(capsys.readouterr().out)
 
     assert output["name"] == "project-api"
     assert output["status"] == "Deleted"
+    assert output["package_state"]["package_state"] == "NONE"
 
 
 def test_sandbox_delete_table(
@@ -348,7 +358,7 @@ def test_sandbox_delete_table(
         lambda name: json.dumps({"name": name}),
     )
 
-    assert cli._sandbox_delete("project-api", False) == cli.EXIT_OK
+    assert cli._sandbox_delete("project-api", False, confirmed=True) == cli.EXIT_OK
 
     assert "Sandbox deleted: project-api" in capsys.readouterr().out
 
@@ -531,7 +541,7 @@ def test_sandbox_lifecycle_commands(
         (["sandbox", "logs", "project-api"], "sandbox", "logs"),
         (["sandbox", "start", "project-api"], "sandbox", "start"),
         (["sandbox", "stop", "project-api"], "sandbox", "stop"),
-        (["sandbox", "delete", "project-api"], "sandbox", "delete"),
+        (["sandbox", "delete", "project-api", "--yes"], "sandbox", "delete"),
     ],
 )
 def test_sandbox_parser_commands(
