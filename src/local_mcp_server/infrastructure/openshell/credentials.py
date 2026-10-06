@@ -35,7 +35,7 @@ def _gateway_endpoint() -> str:
     context = get_runtime_context()
     default_endpoint = DEFAULT_GATEWAY_ENDPOINT
     if not context.is_default:
-        default_endpoint = os.environ.get("OPENSHELL_RUNTIME_GATEWAY", DEFAULT_GATEWAY_ENDPOINT)
+        default_endpoint = os.environ.get("OPENSHELL_RUNTIME_GATEWAY", f"https://127.0.0.1:{context.profile.openshell_port}")
     raw = os.environ.get(GATEWAY_ENDPOINT_ENV, default_endpoint).strip()
 
     if not raw:

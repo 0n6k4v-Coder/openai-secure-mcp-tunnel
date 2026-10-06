@@ -44,3 +44,15 @@ def test_unknown_runtime_fails_closed(monkeypatch, tmp_path: Path) -> None:
     monkeypatch.setenv("MCP_RUNTIME", "missing")
     with pytest.raises(RuntimeError, match="not registered"):
         get_runtime_context()
+
+
+def test_named_runtime_selects_its_own_cli_gateway(monkeypatch, tmp_path: Path) -> None:
+    from local_mcp_server.infrastructure.openshell.credentials import _gateway_endpoint
+
+    monkeypatch.setenv("XDG_CONFIG_HOME", str(tmp_path / "config"))
+    monkeypatch.delenv("OPENSHELL_CLI_GATEWAY", raising=False)
+    monkeypatch.delenv("OPENSHELL_RUNTIME_GATEWAY", raising=False)
+    create_runtime("gateway-check")
+    monkeypatch.setenv("MCP_RUNTIME", "gateway-check")
+    profile = get_runtime_context().profile
+    assert _gateway_endpoint() == f"https://127.0.0.1:{profile.openshell_port}"
