@@ -482,7 +482,7 @@ def _cleanup_live_sandbox(
 ) -> None:
     result = _run_mcpctl(
         executable,
-        ["sandbox", "delete", name, "--json"],
+        ["sandbox", "delete", name, "--yes", "--json"],
         environment,
         timeout=LIFECYCLE_TIMEOUT_SECONDS,
     )

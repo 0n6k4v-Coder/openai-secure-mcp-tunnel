@@ -270,7 +270,7 @@ def _cleanup_sandbox(
 ) -> None:
     result = _run_mcpctl(
         executable,
-        ["sandbox", "delete", name, "--json"],
+        ["sandbox", "delete", name, "--yes", "--json"],
         environment=environment,
         timeout=CREATE_TIMEOUT_SECONDS,
     )

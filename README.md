@@ -543,6 +543,7 @@ The current sandbox CLI provides:
 create
 list
 status
+packages
 shell
 exec
 logs
@@ -558,7 +559,12 @@ The `create` command supports:
 
 ```text
 --profile default|browser
+--packages <registered-ecosystem>
 ```
+
+The optional `--packages` flag initializes package configuration without
+installing dependencies. See [Sandbox Package Management](docs/package-management.md)
+for supported ecosystems, lock/install workflows, status semantics, and cleanup scope.
 
 ### List sandboxes
 
@@ -669,10 +675,13 @@ It does **not** delete and recreate the sandbox.
 ### Delete a sandbox
 
 ```bash
-uv run mcpctl sandbox delete <sandbox-name>
+uv run mcpctl sandbox delete <sandbox-name> --yes
 ```
 
-Deletion permanently removes the OpenShell sandbox.
+Deletion permanently removes the OpenShell sandbox and requires explicit
+confirmation. Package manifests and lockfiles are preserved by default. To
+remove registered managed package configuration as well, explicitly add
+`--purge-packages`. See [Sandbox Package Management](docs/package-management.md).
 
 Deletion does not revoke the associated host workspace grant.
 

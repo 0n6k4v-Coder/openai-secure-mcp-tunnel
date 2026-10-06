@@ -28,3 +28,27 @@ def test_runtime_create_rejects_path_traversal(monkeypatch, tmp_path: Path, caps
     assert main(["runtime", "create", "../outside"]) == 2
     assert "ERROR:" in capsys.readouterr().err
     assert not (tmp_path.parent / "outside").exists()
+
+
+
+def test_runtime_show_without_name_reports_effective_package_state_root(
+    monkeypatch, tmp_path: Path, capsys
+) -> None:
+    monkeypatch.setenv("XDG_CONFIG_HOME", str(tmp_path / "config"))
+    monkeypatch.setenv("XDG_STATE_HOME", str(tmp_path / "state"))
+    monkeypatch.delenv("MCP_STATE_DIR", raising=False)
+    assert main(["runtime", "show", "--json"]) == 0
+    payload = json.loads(capsys.readouterr().out)
+    assert payload["runtime"]["name"] == "default"
+    assert payload["package_state"]["effective_state_root"] == str(
+        (tmp_path / "state" / "local-mcp-server" / "mcp").resolve()
+    )
+
+
+def test_runtime_show_rejects_relative_mcp_state_dir(
+    monkeypatch, tmp_path: Path, capsys
+) -> None:
+    monkeypatch.setenv("XDG_CONFIG_HOME", str(tmp_path / "config"))
+    monkeypatch.setenv("MCP_STATE_DIR", "relative-state")
+    assert main(["runtime", "show"]) == 2
+    assert "MCP_STATE_DIR must be an absolute path" in capsys.readouterr().err

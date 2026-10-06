@@ -25,6 +25,7 @@ from .main import main as local_mcp_server_main
 from . import workspace_broker
 from ..runtime.registry import RuntimeRegistryError, create_runtime, delete_runtime, list_runtimes, load_runtime
 from ..runtime.templates import runtime_template
+from ..packages import manager as package_manager
 
 EXIT_OK = 0
 EXIT_ERROR = 2
@@ -924,16 +925,33 @@ def _runtime_command(args: argparse.Namespace) -> int:
             print(json.dumps(profile.to_dict(), indent=2) if args.json_output else f"Runtime {profile.name!r} created.")
             return EXIT_OK
         if args.runtime_action == "show":
-            profile = load_runtime(args.name)
+            runtime_name = args.name or os.environ.get("MCP_RUNTIME", "default")
+            profile = load_runtime(runtime_name)
+            from ..runtime.context import get_runtime_context
+            context = get_runtime_context(runtime_name)
+            configured_state_dir = os.environ.get("MCP_STATE_DIR")
+            effective_state_root = Path(configured_state_dir).expanduser() if configured_state_dir else context.state_root / "mcp"
+            if not effective_state_root.is_absolute():
+                raise RuntimeError("MCP_STATE_DIR must be an absolute path; refusing to report an unresolved package-state root.")
             payload = runtime_template(profile.name, profile.description) if profile.name != "default" else {"schema_version": 1, "runtime": profile.to_dict(), "isolation": {"configuration": "legacy XDG application configuration", "state": "legacy XDG application state", "compose_project": profile.compose_project_name, "openshell_workspace": profile.openshell_workspace}}
-            print(json.dumps(payload, indent=2) if args.json_output else f"Runtime: {profile.name}\nCompose project: {profile.compose_project_name}\nOpenShell workspace: {profile.openshell_workspace}\nDescription: {profile.description}")
+            payload["package_state"] = {
+                "configured_mcp_state_dir": configured_state_dir,
+                "effective_state_root": str(effective_state_root.resolve()),
+                "sandbox_pattern": str(effective_state_root / "sandboxes" / "<sandbox-name>"),
+                "package_pattern": str(effective_state_root / "sandboxes" / "<sandbox-name>" / "packages" / "<ecosystem-id>"),
+            }
+            print(json.dumps(payload, indent=2) if args.json_output else f"Runtime: {profile.name}\nCompose project: {profile.compose_project_name}\nOpenShell workspace: {profile.openshell_workspace}\nDescription: {profile.description}\nMCP_STATE_DIR: {configured_state_dir or '(not set)'}\nEffective package state root: {effective_state_root.resolve()}")
             return EXIT_OK
         if args.runtime_action == "delete":
             if not args.confirmed:
                 print("Refusing to delete a runtime without --yes.", file=sys.stderr)
                 return EXIT_ERROR
+            active_runtime = os.environ.get("MCP_RUNTIME", "default")
+            if args.name == active_runtime:
+                print(f"ERROR: Runtime {args.name!r} is selected by MCP_RUNTIME and cannot be deleted from this process.", file=sys.stderr)
+                return EXIT_ERROR
             delete_runtime(args.name)
-            print(f"Runtime {args.name!r} deleted. Runtime data was preserved.")
+            print(f"Runtime {args.name!r} deleted. Sandbox package manifests and lockfiles were preserved.")
             return EXIT_OK
         raise ValueError("Unsupported runtime command.")
     except RuntimeRegistryError as exc:
@@ -963,7 +981,7 @@ def _build_parser() -> argparse.ArgumentParser:
     runtime_create.add_argument("--json", dest="json_output", action="store_true")
     runtime_create.set_defaults(handler=_runtime_command)
     runtime_show = runtime_commands.add_parser("show", help="Show runtime configuration and paths.")
-    runtime_show.add_argument("name")
+    runtime_show.add_argument("name", nargs="?", default=None, help="Runtime name; defaults to MCP_RUNTIME or 'default'.")
     runtime_show.add_argument("--json", dest="json_output", action="store_true")
     runtime_show.set_defaults(handler=_runtime_command)
     runtime_delete = runtime_commands.add_parser("delete", help="Remove a runtime registry entry; preserve its data.")
@@ -1084,11 +1102,48 @@ def _build_parser() -> argparse.ArgumentParser:
         default="default",
     )
 
+    sandbox_create.add_argument("--packages", dest="package_ecosystem", help="Initialize package configuration for a registered ecosystem; does not install packages.")
     sandbox_create.add_argument(
         "--json",
         dest="json_output",
         action="store_true",
     )
+
+    packages = sandbox_commands.add_parser("packages", help="Manage sandbox package manifests and locked installations.")
+    package_commands = packages.add_subparsers(dest="packages_command", required=True)
+    package_list = package_commands.add_parser("list", help="List configured packages.")
+    package_list.add_argument("name")
+    package_list.add_argument("--ecosystem")
+    package_add = package_commands.add_parser("add", help="Add a package declaration.")
+    package_add.add_argument("name")
+    package_add.add_argument("package_spec")
+    package_add.add_argument("--ecosystem", required=True)
+    package_remove = package_commands.add_parser("remove", help="Remove a package declaration.")
+    package_remove.add_argument("name")
+    package_remove.add_argument("package_name")
+    package_remove.add_argument("--ecosystem", required=True)
+    package_lock = package_commands.add_parser("lock", help="Resolve dependencies and write a lockfile.")
+    package_lock.add_argument("name")
+    package_lock.add_argument("--ecosystem", required=True)
+    package_install = package_commands.add_parser("install", help="Install locked packages into the sandbox.")
+    package_install.add_argument("name")
+    package_install.add_argument("--ecosystem", required=True)
+    package_install.add_argument("--yes", action="store_true", dest="confirmed")
+    package_install.add_argument("--no-input", action="store_true")
+    package_show = package_commands.add_parser("show", help="Show package state and adapter status.")
+    package_show.add_argument("name")
+    package_show.add_argument("--ecosystem")
+    package_reset = package_commands.add_parser("reset", help="Reset package declarations to the adapter base manifest.")
+    package_reset.add_argument("name")
+    package_reset.add_argument("--ecosystem", required=True)
+    package_reset.add_argument("--yes", action="store_true", dest="confirmed")
+    package_reset.add_argument("--no-input", action="store_true")
+    for package_parser in (
+        package_list, package_add, package_remove, package_lock,
+        package_install, package_show, package_reset,
+    ):
+        package_parser.add_argument("--quiet", action="store_true")
+        package_parser.add_argument("--verbose", action="store_true")
 
     sandbox_list = sandbox_commands.add_parser(
         "list",
@@ -1176,6 +1231,8 @@ def _build_parser() -> argparse.ArgumentParser:
     sandbox_delete.add_argument(
         "name",
     )
+    sandbox_delete.add_argument("--yes", action="store_true", dest="confirmed", help="Confirm sandbox deletion.")
+    sandbox_delete.add_argument("--purge-packages", action="store_true", help="Explicitly remove managed package manifests and lockfiles.")
 
     sandbox_delete.add_argument(
         "--json",
@@ -1382,6 +1439,9 @@ def _sandbox_arguments(
             "create",
             args.name,
         ]
+        if args.package_ecosystem:
+            package_manager.get_adapter(args.package_ecosystem)
+            arguments.extend(["--packages", args.package_ecosystem])
 
         if args.standalone:
             arguments.append("--standalone")
@@ -1403,6 +1463,11 @@ def _sandbox_arguments(
             args.sandbox_command,
             args.name,
         ]
+        if args.sandbox_command == "delete":
+            if args.confirmed:
+                arguments.append("--yes")
+            if args.purge_packages:
+                arguments.append("--purge-packages")
 
         if args.json_output:
             arguments.append("--json")
@@ -1580,6 +1645,63 @@ def main(
                 f"Unsupported MCP client command: {args.mcp_client_command}"
             )
 
+        if args.command == "sandbox" and args.sandbox_command == "packages":
+            if args.packages_command == "list":
+                payload = package_manager.list_packages(args.name, args.ecosystem)
+                package_rows = payload.get("packages", [])
+                print(f"Sandbox: {args.name}")
+                print("Package state: configured" if payload.get("ecosystems") else "Package configuration: empty")
+                if package_rows:
+                    _print_table(["ECOSYSTEM", "PACKAGE", "REQUESTED", "RESOLVED", "STATUS"], [[str(p["ecosystem"]), str(p["package"]), str(p["requested"]), str(p["resolved"]), str(p["status"])] for p in package_rows])
+                    print(f"\n{len(package_rows)} packages found.")
+                else:
+                    print("\nNo packages are configured for this sandbox.")
+                return EXIT_OK
+            if args.packages_command == "show":
+                if args.verbose:
+                    print(f"INFO: command=sandbox packages show sandbox={args.name} ecosystem={args.ecosystem or 'all'}", file=sys.stderr)
+                payload = package_manager.show_packages(args.name, args.ecosystem)
+                print(f"Sandbox: {args.name}")
+                print(f"Package state root: {payload.get('package_state_root', 'UNKNOWN')}")
+                ecosystems = payload.get("ecosystems", [])
+                if not ecosystems:
+                    print("No registered package ecosystems are available.")
+                    return EXIT_OK
+                _print_table(
+                    ["ECOSYSTEM", "ADAPTER", "MANIFEST", "LOCK", "INSTALLATION"],
+                    [[str(item.get("ecosystem", "-")), str(item.get("adapter_status", "-")), str(item.get("manifest_status", "-")), str(item.get("lock_status", "-")), str(item.get("installation_status", "-"))] for item in ecosystems if isinstance(item, dict)],
+                )
+                for item in ecosystems:
+                    if isinstance(item, dict):
+                        print(f"\n{item.get('ecosystem')}:")
+                        print(f"  Manifest: {item.get('manifest', '-')}")
+                        print(f"  Lockfile: {item.get('lockfile', '-')}")
+                        print(f"  Package state: {item.get('package_state_root', '-')}")
+                return EXIT_OK
+            if args.packages_command == "add":
+                result = package_manager.add_package(args.name, args.ecosystem, args.package_spec)
+            elif args.packages_command == "remove":
+                result = package_manager.remove_package(args.name, args.ecosystem, args.package_name)
+            elif args.packages_command == "lock":
+                result = package_manager.lock_packages(args.name, args.ecosystem)
+            elif args.packages_command == "install":
+                result = package_manager.install_packages(args.name, args.ecosystem, confirmed=args.confirmed, no_input=args.no_input)
+            elif args.packages_command == "reset":
+                package_manager._confirm("package reset", args.name, args.ecosystem, confirmed=args.confirmed, no_input=args.no_input)
+                result = package_manager.reset_packages(args.name, args.ecosystem, confirmed=True)
+            else:
+                raise RuntimeError(f"Unsupported package command: {args.packages_command}")
+            if args.verbose:
+                target = result.manifest or result.lockfile or "-"
+                print(f"INFO: command=sandbox packages {args.packages_command} sandbox={args.name} ecosystem={args.ecosystem} target={target}", file=sys.stderr)
+            if not args.quiet:
+                print(f"OK: {result.message}")
+                if result.manifest is not None:
+                    print(f"Manifest: {result.manifest}")
+                if result.lockfile is not None:
+                    print(f"Lockfile: {result.lockfile}")
+            return EXIT_OK
+
         if args.command == "sandbox":
             return _delegate_local_cli(
                 "sandbox",
@@ -1603,6 +1725,10 @@ def main(
             file=sys.stderr,
         )
         return 130
+
+    except package_manager.PackageManagerError as exc:
+        print(f"ERROR: {exc}", file=sys.stderr)
+        return exc.exit_code
 
     except (
         ConfigError,
