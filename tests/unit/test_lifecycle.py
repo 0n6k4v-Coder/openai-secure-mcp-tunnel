@@ -109,11 +109,6 @@ def test_prepare_runtime_creates_canonical_runtime_state(
     )
     monkeypatch.setattr(
         lifecycle,
-        "installation_state_file",
-        lambda: state_root / "mcp" / "installations.json",
-    )
-    monkeypatch.setattr(
-        lifecycle,
         "workspace_grants_file",
         lambda: state_root / "mcp" / "workspace-grants" / "workspace-grants.json",
     )
@@ -131,18 +126,7 @@ def test_prepare_runtime_creates_canonical_runtime_state(
 
     assert (state_root / "logs").is_dir()
 
-    installation_file = state_root / "mcp" / "installations.json"
-
     grants_file = state_root / "mcp" / "workspace-grants" / "workspace-grants.json"
-
-    assert (
-        json.loads(
-            installation_file.read_text(
-                encoding="utf-8",
-            )
-        )
-        == {}
-    )
 
     assert (
         json.loads(
@@ -152,8 +136,6 @@ def test_prepare_runtime_creates_canonical_runtime_state(
         )
         == {}
     )
-
-    assert installation_file.stat().st_mode & 0o777 == 0o600
 
     assert grants_file.stat().st_mode & 0o777 == 0o600
 
@@ -179,11 +161,6 @@ def test_prepare_runtime_rejects_insecure_state_directory(
         lifecycle,
         "app_state_root",
         lambda: state_root,
-    )
-    monkeypatch.setattr(
-        lifecycle,
-        "installation_state_file",
-        lambda: state_root / "mcp" / "installations.json",
     )
     monkeypatch.setattr(
         lifecycle,
