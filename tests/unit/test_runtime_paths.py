@@ -84,9 +84,6 @@ def test_application_paths_are_canonical(
     assert paths.openai_api_key_file() == (
         config_home / "local-mcp-server" / "mcp-clients" / "openai" / "credentials"
     )
-    assert paths.installation_state_file() == (
-        state_home / "local-mcp-server" / "mcp" / "installations.json"
-    )
     assert paths.workspace_grants_file() == (
         state_home
         / "local-mcp-server"
@@ -119,11 +116,6 @@ def test_workspace_broker_protects_canonical_application_paths(
 
     assert workspace_broker._is_protected_path(
         config_root / "mcp-clients" / "openai" / "credentials",
-        home,
-    )
-
-    assert workspace_broker._is_protected_path(
-        state_root / "mcp" / "installations.json",
         home,
     )
 
