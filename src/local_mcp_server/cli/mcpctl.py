@@ -619,6 +619,46 @@ def _uninstall(*, confirmed: bool, purge: bool = False) -> int:
     app_state_root = xdg_state_home() / APPLICATION_NAME
 
     if purge:
+        configured_mcp_state = os.environ.get("MCP_STATE_DIR")
+        package_state_root = (
+            Path(configured_mcp_state).expanduser()
+            if configured_mcp_state
+            else xdg_state_home() / APPLICATION_NAME / "mcp"
+        )
+        if not package_state_root.is_absolute():
+            print(
+                "RESULT: UNINSTALL BLOCKED",
+                file=sys.stderr,
+            )
+            print(
+                "Reason: MCP_STATE_DIR must be absolute; package state cannot be safely classified.",
+                file=sys.stderr,
+            )
+            print("NO APPLICATION DATA REMOVED BY THIS ATTEMPT", file=sys.stderr)
+            return EXIT_ERROR
+        try:
+            package_state_inside_purge_root = package_state_root.resolve().is_relative_to(
+                app_state_root.resolve()
+            )
+        except OSError:
+            package_state_inside_purge_root = True
+        if (
+            package_state_inside_purge_root
+            and (package_state_root / "sandboxes").exists()
+        ):
+            print("RESULT: UNINSTALL BLOCKED", file=sys.stderr)
+            print(
+                "Reason: package manifests or lockfiles may be inside the application state purge root.",
+                file=sys.stderr,
+            )
+            print(f"Package state root: {package_state_root}", file=sys.stderr)
+            print(
+                "Review or relocate package state explicitly before retrying; this command will not recursively delete it.",
+                file=sys.stderr,
+            )
+            print("NO APPLICATION DATA REMOVED BY THIS ATTEMPT", file=sys.stderr)
+            return EXIT_ERROR
+
         inventory = _purge_inventory()
         print("APPLICATION PURGE — PREFLIGHT INVENTORY")
         print("=" * 58)
