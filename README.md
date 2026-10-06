@@ -27,7 +27,6 @@
                     │  tool authorization     │
                     │  sandbox API            │
                     │  workspace API          │
-                    │  installation API       │
                     │  browser API            │
                     └────────────┬────────────┘
                                  │
@@ -260,7 +259,6 @@ WORKSPACE_ACL_HELPER_IMAGE
 SANDBOX_DEFAULT_CPU
 SANDBOX_DEFAULT_MEMORY
 BROWSER_ALLOWED_ENDPOINTS
-INSTALLATION_TIMEOUT_SECONDS
 LOG_LEVEL
 ```
 
@@ -1202,8 +1200,6 @@ delete_workspace_file
 delete_workspace_directory
 list_authorized_host_workspaces
 
-request_tool_installation
-
 execute_chrome_devtools_command
 ```
 
@@ -1233,8 +1229,6 @@ Workspace operations are constrained to the authorized workspace mounted at:
 ```text
 /workspace/project
 ```
-
-The installation tool provides controlled installation of approved development tools inside the selected sandbox.
 
 The browser tool is:
 
@@ -1440,7 +1434,7 @@ execute_sandbox_command
 
 The command must execute inside the OpenShell sandbox rather than directly on the MCP server host.
 
-The sandbox command path is separate from the controlled installation workflow.
+The sandbox command path is governed by OpenShell sandbox policy.
 
 ---
 
@@ -1528,54 +1522,7 @@ Browser lifecycle is controlled by the OpenShell browser sandbox lifecycle.
 
 ---
 
-## Step 20 - Controlled Tool Installation
-
-The MCP server provides:
-
-```text
-request_tool_installation
-```
-
-Tool installation is performed inside the authorized sandbox rather than directly on the MCP server host.
-
-The workflow is:
-
-```text
-ChatGPT
-   ↓
-request_tool_installation
-   ↓
-MCP server authorization
-   ↓
-OpenShell sandbox
-   ↓
-sandbox network policy
-   ↓
-package/tool installation
-```
-
-The installation request contains:
-
-```text
-sandbox_name
-tool_name
-version
-source
-install_command
-reason
-```
-
-The server validates the installation request before executing it.
-
-The installation command is executed inside the selected OpenShell sandbox.
-
-The host filesystem is not used as the installation target.
-
-Browser runtime dependencies are baked into the browser image rather than installed dynamically through this mechanism.
-
----
-
-## Step 21 - Delete the Sandbox
+## Step 20 - Delete the Sandbox
 
 After testing:
 
@@ -2049,8 +1996,6 @@ delete_workspace_file
 delete_workspace_directory
 list_authorized_host_workspaces
 
-request_tool_installation
-
 execute_chrome_devtools_command
 ```
 
@@ -2061,8 +2006,6 @@ Workspace operations are constrained to the authorized workspace mounted at:
 ```text
 /workspace/project
 ```
-
-Tool installation is performed through the controlled installation workflow inside the authorized sandbox.
 
 Browser automation is performed through the browser sandbox and:
 
@@ -2192,7 +2135,6 @@ OpenShell sandbox isolation
 OpenShell browser policy isolation
 fixed sandbox-local Chrome CDP endpoint
 blocked caller-controlled Chrome connection overrides
-controlled tool installation
 Docker secret delivery for the tunnel API key
 ```
 
@@ -2372,7 +2314,7 @@ CDP relay
 
 Compose service.
 
-The MCP server exposes sandbox operations through OpenShell, workspace operations through authorized workspace boundaries, controlled tool installation through the sandbox installation workflow, and browser automation through the isolated browser sandbox.
+The MCP server exposes sandbox operations through OpenShell, workspace operations through authorized workspace boundaries, and browser automation through the isolated browser sandbox.
 
 The trusted host-side workspace broker remains separate from the MCP server and is responsible for host filesystem authorization, Docker volume provisioning, and POSIX ACL lifecycle.
 
