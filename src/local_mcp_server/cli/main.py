@@ -341,6 +341,7 @@ def _sandbox_list(json_output: bool) -> int:
     if not isinstance(data, list):
         raise RuntimeError("OpenShell returned an invalid sandbox list.")
 
+    rows: list[list[str]] = []
     from ..packages.manager import show_packages
 
     for sandbox in data:
