@@ -7,10 +7,12 @@ import socket
 import uuid
 
 from mcp.server import MCPServer
+from mcp.server.apps import Apps
 from mcp.server.transport_security import TransportSecuritySettings
 from starlette.requests import Request
 from starlette.responses import PlainTextResponse
 
+from ..mcp.apps.registration import register_all_apps
 from ..mcp.registration import register_all_tools
 from .health import health_response
 from .middleware import make_request_logging_middleware
@@ -25,7 +27,10 @@ HEALTH_ALLOWED_HOSTS = {
     "localhost:8000",
 }
 
-mcp = MCPServer(SERVICE_NAME, version=SERVICE_VERSION)
+apps = Apps()
+register_all_apps(apps)
+
+mcp = MCPServer(SERVICE_NAME, version=SERVICE_VERSION, extensions=[apps])
 mcp.middleware.append(make_request_logging_middleware(mcp, INSTANCE_ID))
 
 
