@@ -17,7 +17,7 @@ mcpctl = "local_mcp_server.cli.completion:mcpctl_main"
 [dependency-groups]
 dev = [
     "pytest>=9,<10",
-    "ruff>=0.13,<0.14",
+    "ruff>=0.16.10,<0.17",
 ]
 
 [tool.pytest.ini_options]
