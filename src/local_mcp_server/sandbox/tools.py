@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import platform
 import sys
+from typing import Any
 
 from mcp.server import MCPServer
 from mcp.types import ToolAnnotations
@@ -227,3 +228,22 @@ def register_tools(mcp: MCPServer) -> None:
             name=name,
             command=command,
         )
+
+    @mcp.tool(
+        annotations=ToolAnnotations(
+            readOnlyHint=True,
+            destructiveHint=False,
+            idempotentHint=True,
+            openWorldHint=False,
+        )
+    )
+    def get_sandbox_capabilities(name: str) -> dict[str, Any]:
+        """
+        Inspect capabilities granted to an OpenShell sandbox (e.g. docker, openshell).
+
+        Args:
+            name: The target sandbox name.
+        """
+        from ..capability.service import inspect_sandbox_capabilities
+        return inspect_sandbox_capabilities(name)
+

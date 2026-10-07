@@ -640,6 +640,7 @@ def test_mcpctl_parser_contains_expected_commands() -> None:
         "sandbox",
         "credential",
         "workspace",
+        "capability",
         "config",
         "cleanup",
         "uninstall",

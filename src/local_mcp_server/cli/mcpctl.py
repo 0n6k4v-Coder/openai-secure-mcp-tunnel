@@ -1448,6 +1448,38 @@ def _build_parser() -> argparse.ArgumentParser:
         help="Include internal workspace and infrastructure details.",
     )
 
+    # capability subcommand
+    capability = commands.add_parser(
+        "capability",
+        help="Manage and audit sandbox execution capabilities (docker, openshell).",
+    )
+    cap_subparsers = capability.add_subparsers(
+        dest="capability_command",
+        required=True,
+    )
+
+    # capability grant
+    cap_grant = cap_subparsers.add_parser("grant", help="Grant a capability to a sandbox.")
+    cap_grant.add_argument("sandbox_name", help="Name of the sandbox.")
+    cap_grant.add_argument("capability_name", choices=["docker", "openshell"], help="Capability to grant.")
+    cap_grant.add_argument("--ttl", help="Time-to-live duration (e.g. 30m, 2h).")
+    cap_grant.add_argument("--mode", default="isolated", choices=["isolated", "proxy"], help="Docker mode.")
+
+    # capability revoke
+    cap_revoke = cap_subparsers.add_parser("revoke", help="Revoke a capability from a sandbox.")
+    cap_revoke.add_argument("sandbox_name", help="Name of the sandbox.")
+    cap_revoke.add_argument("capability_name", choices=["docker", "openshell"], help="Capability to revoke.")
+    cap_revoke.add_argument("--purge-data", action="store_true", help="Purge associated data caches.")
+
+    # capability list
+    cap_list = cap_subparsers.add_parser("list", help="List capability grants across sandboxes.")
+    cap_list.add_argument("sandbox_name", nargs="?", help="Optional sandbox name to inspect.")
+    cap_list.add_argument("--json", dest="json_output", action="store_true", help="Output JSON.")
+
+    # capability stats
+    cap_stats = cap_subparsers.add_parser("stats", help="Show capability usage statistics and accounting.")
+    cap_stats.add_argument("--json", dest="json_output", action="store_true", help="Output JSON.")
+
     config = commands.add_parser(
         "config",
         help="Configure application components.",
@@ -1764,6 +1796,95 @@ def main(
                 "credential",
                 _credential_arguments(args),
             )
+
+        if args.command == "capability":
+            from ..capability import service as cap_service
+
+            if args.capability_command == "grant":
+                ttl_seconds = None
+                if args.ttl:
+                    raw_ttl = args.ttl.strip().lower()
+                    if raw_ttl.endswith("h"):
+                        ttl_seconds = int(raw_ttl[:-1]) * 3600
+                    elif raw_ttl.endswith("m"):
+                        ttl_seconds = int(raw_ttl[:-1]) * 60
+                    elif raw_ttl.endswith("s"):
+                        ttl_seconds = int(raw_ttl[:-1])
+                    else:
+                        ttl_seconds = int(raw_ttl)
+                record = cap_service.grant_capability(
+                    args.sandbox_name,
+                    args.capability_name,
+                    ttl_seconds=ttl_seconds,
+                    mode=args.mode,
+                )
+                print(f"Capability '{args.capability_name}' granted to sandbox '{args.sandbox_name}'.")
+                if record.get("expires_at"):
+                    print(f"Expires at: {record['expires_at']}")
+                return EXIT_OK
+
+            if args.capability_command == "revoke":
+                revoked = cap_service.revoke_capability(
+                    args.sandbox_name,
+                    args.capability_name,
+                    purge_data=args.purge_data,
+                )
+                if revoked:
+                    print(f"Capability '{args.capability_name}' revoked from sandbox '{args.sandbox_name}'.")
+                else:
+                    print(f"No active capability '{args.capability_name}' found on sandbox '{args.sandbox_name}'.")
+                return EXIT_OK
+
+            if args.capability_command == "list":
+                grants = cap_service.list_capabilities(args.sandbox_name)
+                if args.json_output:
+                    print(json.dumps(grants, indent=2))
+                    return EXIT_OK
+
+                if args.sandbox_name:
+                    print(f"Sandbox: {args.sandbox_name}")
+                    if not grants:
+                        print("  Capabilities: <none>")
+                    else:
+                        print("  Active Capabilities:")
+                        for cap, details in grants.items():
+                            exp = details.get("expires_at") or "never"
+                            print(f"    • {cap} (Expires: {exp})")
+                else:
+                    if not grants or not any(grants.values()):
+                        print("No active capabilities granted.")
+                    else:
+                        for cap, sboxes in grants.items():
+                            print(f"\nCapability: {cap}")
+                            if not sboxes:
+                                print("  Granted to: <none>")
+                            else:
+                                print(f"  Granted to sandboxes: ({len(sboxes)})")
+                                for s_name, details in sboxes.items():
+                                    exp = details.get("expires_at") or "never"
+                                    print(f"    • {s_name} (Expires: {exp})")
+                return EXIT_OK
+
+            if args.capability_command == "stats":
+                stats = cap_service.get_capability_stats()
+                if args.json_output:
+                    print(json.dumps(stats, indent=2))
+                    return EXIT_OK
+
+                print("Capability Utilization Summary:\n")
+                _print_table(
+                    ["CAPABILITY", "ACTIVE GRANTS", "PEAK CONCURRENT", "TOTAL (LIFETIME)"],
+                    [
+                        [
+                            cap,
+                            str(stats["active_grants"].get(cap, 0)),
+                            str(stats["peak_concurrent"].get(cap, 0)),
+                            str(stats["lifetime_grants"].get(cap, 0)),
+                        ]
+                        for cap in sorted(cap_service.VALID_CAPABILITIES)
+                    ],
+                )
+                return EXIT_OK
 
         if args.command == "workspace":
             return workspace_broker.main(_workspace_arguments(args))
