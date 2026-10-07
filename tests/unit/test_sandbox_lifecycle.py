@@ -139,6 +139,7 @@ def test_restart_does_not_start_after_stop_failure(
 def test_repair_invokes_open_shell_start(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
+    monkeypatch.setattr(cli, "_command_exists", lambda command: None)
     captured: dict[str, object] = {}
 
     fake_completed = cli.subprocess.CompletedProcess(
@@ -162,6 +163,7 @@ def test_sandbox_repair_unresumable_supervisor_failure_reports_guidance(
     monkeypatch: pytest.MonkeyPatch,
     capsys: pytest.CaptureFixture[str],
 ) -> None:
+    monkeypatch.setattr(cli, "_command_exists", lambda command: None)
     fake_completed = cli.subprocess.CompletedProcess(
         args=["openshell", "sandbox", "start", "crashed-sbx"],
         returncode=1,
@@ -187,6 +189,7 @@ def test_sandbox_start_unresumable_supervisor_failure_reports_guidance(
     monkeypatch: pytest.MonkeyPatch,
     capsys: pytest.CaptureFixture[str],
 ) -> None:
+    monkeypatch.setattr(cli, "_command_exists", lambda command: None)
     fake_completed = cli.subprocess.CompletedProcess(
         args=["openshell", "sandbox", "start", "crashed-sbx"],
         returncode=1,
@@ -207,6 +210,7 @@ def test_sandbox_restart_unresumable_supervisor_failure_reports_guidance(
     monkeypatch: pytest.MonkeyPatch,
     capsys: pytest.CaptureFixture[str],
 ) -> None:
+    monkeypatch.setattr(cli, "_command_exists", lambda command: None)
     fake_completed = cli.subprocess.CompletedProcess(
         args=["openshell", "sandbox", "stop", "crashed-sbx"],
         returncode=1,
@@ -227,6 +231,7 @@ def test_sandbox_repair_generic_failure_propagates_raw_stderr(
     monkeypatch: pytest.MonkeyPatch,
     capsys: pytest.CaptureFixture[str],
 ) -> None:
+    monkeypatch.setattr(cli, "_command_exists", lambda command: None)
     fake_completed = cli.subprocess.CompletedProcess(
         args=["openshell", "sandbox", "start", "generic-sbx"],
         returncode=1,
