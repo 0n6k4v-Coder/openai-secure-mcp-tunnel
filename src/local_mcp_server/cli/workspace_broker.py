@@ -569,6 +569,19 @@ def ensure_workspace_volume(
     if not host_path.is_dir():
         return
 
+    # Ensure host and sandbox POSIX ACLs are active on the workspace directory
+    host_uid = grant.get("host_uid")
+    host_gid = grant.get("host_gid")
+    try:
+        _provision_sandbox_acl(
+            host_path,
+            host_uid=int(host_uid) if host_uid is not None else None,
+            host_gid=int(host_gid) if host_gid is not None else None,
+        )
+    except Exception:
+        # Non-fatal if filesystem does not support POSIX ACLs or helper image not ready yet
+        pass
+
     _create_host_backed_volume(
         volume_name,
         host_path,
