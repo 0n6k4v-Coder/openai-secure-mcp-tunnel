@@ -1,10 +1,12 @@
 from __future__ import annotations
 
 import getpass
+import json
 import os
 import re
 import shutil
 import subprocess
+import sys
 from collections.abc import Sequence
 from urllib.parse import urlparse
 
@@ -252,13 +254,131 @@ def update_credential(name: str, credential_key: str) -> int:
     return result.returncode
 
 
+def list_sandbox_credentials(sandbox_name: str) -> list[dict[str, object]]:
+    """List provider credentials attached to a specific sandbox."""
+    sandbox_name = _validate_provider_name(sandbox_name)
+    result = _run_capture(
+        _openshell_command("sandbox", "provider", "list", sandbox_name, "-o", "json")
+    )
+    if result.returncode != 0:
+        return []
+    try:
+        data = json.loads(result.stdout)
+        if isinstance(data, dict):
+            return data.get("providers", [])
+    except Exception:
+        return []
+    return []
+
+
+def _find_granted_sandboxes() -> dict[str, list[str]]:
+    """Map credential/provider names to lists of sandboxes they are granted to."""
+    granted: dict[str, list[str]] = {}
+    sb_list_res = _run_capture(_openshell_command("sandbox", "list", "-o", "json"))
+    if sb_list_res.returncode != 0:
+        return granted
+
+    try:
+        sb_data = json.loads(sb_list_res.stdout)
+        sandboxes = sb_data.get("sandboxes", []) if isinstance(sb_data, dict) else []
+    except Exception:
+        return granted
+
+    for sb in sandboxes:
+        if not isinstance(sb, dict):
+            continue
+        sb_name = sb.get("name")
+        if not isinstance(sb_name, str) or not sb_name:
+            continue
+
+        prov_list_res = _run_capture(
+            _openshell_command("sandbox", "provider", "list", sb_name, "-o", "json")
+        )
+        if prov_list_res.returncode != 0:
+            continue
+
+        try:
+            prov_data = json.loads(prov_list_res.stdout)
+            attached = prov_data.get("providers", []) if isinstance(prov_data, dict) else []
+            for p in attached:
+                if isinstance(p, dict):
+                    p_name = p.get("name")
+                    if isinstance(p_name, str) and p_name:
+                        granted.setdefault(p_name, []).append(sb_name)
+        except Exception:
+            continue
+
+    return granted
+
+
 def list_credentials() -> int:
-    return _run_passthrough(_openshell_command("provider", "list"))
+    providers_res = _run_capture(_openshell_command("provider", "list", "-o", "json"))
+    if providers_res.returncode != 0:
+        return _run_passthrough(_openshell_command("provider", "list"))
+
+    try:
+        providers_data = json.loads(providers_res.stdout)
+        providers = providers_data.get("providers", []) if isinstance(providers_data, dict) else []
+    except Exception:
+        return _run_passthrough(_openshell_command("provider", "list"))
+
+    if not providers:
+        print("No credential providers found.")
+        return 0
+
+    granted_map = _find_granted_sandboxes()
+
+    rows: list[list[str]] = []
+    for p in providers:
+        if not isinstance(p, dict):
+            continue
+        name = str(p.get("name", ""))
+        p_type = str(p.get("type", ""))
+        cred_keys = str(len(p.get("credential_keys", [])))
+        config_keys = str(len(p.get("config_keys", [])))
+        sandboxes = ", ".join(sorted(granted_map.get(name, []))) or "<none>"
+        rows.append([name, p_type, cred_keys, config_keys, sandboxes])
+
+    # Print formatted table
+    headers = ["NAME", "TYPE", "CREDENTIAL_KEYS", "CONFIG_KEYS", "GRANTED TO SANDBOXES"]
+    widths = [len(h) for h in headers]
+    for row in rows:
+        for i, val in enumerate(row):
+            widths[i] = max(widths[i], len(val))
+
+    header_line = "  ".join(h.ljust(widths[i]) for i, h in enumerate(headers))
+    separator_line = "  ".join("-" * widths[i] for i in range(len(headers)))
+    print(header_line)
+    print(separator_line)
+    for row in rows:
+        print("  ".join(val.ljust(widths[i]) for i, val in enumerate(row)))
+
+    return 0
 
 
 def show_credential(name: str) -> int:
     name = _validate_provider_name(name)
-    return _run_passthrough(_openshell_command("provider", "get", name))
+    result = _run_capture(_openshell_command("provider", "get", name))
+    if result.returncode != 0:
+        if result.stderr:
+            sys.stderr.write(result.stderr)
+        return result.returncode
+
+    raw_output = result.stdout
+    # Reduce empty line between "Provider:" and "  Id: ..."
+    formatted = re.sub(r"^Provider:\s*\n\s*\n", "Provider:\n", raw_output.strip())
+    print(formatted)
+    print()
+
+    granted_map = _find_granted_sandboxes()
+    sandboxes = sorted(granted_map.get(name, []))
+    print("Granted to sandboxes:")
+    if sandboxes:
+        for sb in sandboxes:
+            print(f"  - {sb}")
+    else:
+        print("  <none>")
+    return 0
 
 
 def delete_credential(name: str) -> int:

@@ -679,13 +679,34 @@ def recreate_sandbox(
         if profile not in {"default", "browser"}:
             raise SandboxError(f"Sandbox '{name}' has unsupported profile '{profile}'.")
 
+        # Capture attached credentials before deleting the sandbox
+        from .credentials import grant_credential, list_sandbox_credentials
+        attached_credentials = []
+        try:
+            attached_credentials = [
+                str(c.get("name"))
+                for c in list_sandbox_credentials(name)
+                if isinstance(c, dict) and c.get("name")
+            ]
+        except Exception:
+            pass
+
         delete_sandbox(name)
 
-        return create_sandbox(
+        created = create_sandbox(
             name=name,
             workspace_id=workspace_id,
             profile=profile,
         )
+
+        # Restore previously granted credentials
+        for cred_name in attached_credentials:
+            try:
+                grant_credential(name, cred_name)
+            except Exception:
+                pass
+
+        return created
 
     except SandboxError:
         raise

@@ -1296,6 +1296,17 @@ def _build_parser() -> argparse.ArgumentParser:
         help="Confirm destructive delete-and-recreate operation.",
     )
 
+    sandbox_creds = sandbox_commands.add_parser(
+        "credentials",
+        help="List credentials granted to a sandbox.",
+    )
+    sandbox_creds.add_argument("name")
+    sandbox_creds.add_argument(
+        "--json",
+        dest="json_output",
+        action="store_true",
+    )
+
     credential = commands.add_parser(
         "credential",
         help="Manage OpenShell credential providers.",
@@ -1498,7 +1509,7 @@ def _sandbox_arguments(
     if args.sandbox_command == "list":
         return ["list", "--json"] if args.json_output else ["list"]
 
-    if args.sandbox_command in {"status", "delete"}:
+    if args.sandbox_command in {"status", "delete", "credentials"}:
         arguments = [
             args.sandbox_command,
             args.name,

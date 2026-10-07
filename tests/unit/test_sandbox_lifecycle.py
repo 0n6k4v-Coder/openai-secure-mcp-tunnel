@@ -489,6 +489,59 @@ def test_recreate_rejects_unsupported_profile(
         sandbox.recreate_sandbox("project-api")
 
 
+def test_recreate_preserves_attached_credentials(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(
+        sandbox,
+        "sandbox_status",
+        lambda name: json.dumps(
+            {
+                "name": name,
+                "profile": "default",
+                "host_workspace_id": None,
+            }
+        ),
+    )
+
+    calls: list[tuple[str, object]] = []
+
+    monkeypatch.setattr(
+        sandbox,
+        "delete_sandbox",
+        lambda name: calls.append(("delete", name)),
+    )
+
+    monkeypatch.setattr(
+        sandbox,
+        "create_sandbox",
+        lambda name, workspace_id, profile: calls.append(("create", name)) or json.dumps({"name": name}),
+    )
+
+    from local_mcp_server.infrastructure.openshell import credentials
+
+    monkeypatch.setattr(
+        credentials,
+        "list_sandbox_credentials",
+        lambda name: [{"name": "github"}, {"name": "dockerhub"}],
+    )
+
+    monkeypatch.setattr(
+        credentials,
+        "grant_credential",
+        lambda sb_name, cred_name: calls.append(("grant", sb_name, cred_name)),
+    )
+
+    sandbox.recreate_sandbox("project-api")
+
+    assert calls == [
+        ("delete", "project-api"),
+        ("create", "project-api"),
+        ("grant", "project-api", "github"),
+        ("grant", "project-api", "dockerhub"),
+    ]
+
+
 def test_mcp_registers_complete_sandbox_lifecycle_surface() -> None:
     mcp = MCPServer("sandbox-test")
 

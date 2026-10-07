@@ -274,3 +274,75 @@ def test_revoke_credential_uses_provider_detach(
     ]
 
     assert captured["shell"] is False
+
+
+def test_list_sandbox_credentials(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    fake_completed = subprocess.CompletedProcess(
+        args=["openshell", "sandbox", "provider", "list", "sb-1", "-o", "json"],
+        returncode=0,
+        stdout='{"providers": [{"name": "github", "type": "github", "credential_keys": ["GITHUB_TOKEN"]}]}',
+        stderr="",
+    )
+    monkeypatch.setattr(service, "_run_capture", lambda *args, **kwargs: fake_completed)
+
+    creds = service.list_sandbox_credentials("sb-1")
+    assert len(creds) == 1
+    assert creds[0]["name"] == "github"
+
+
+def test_list_credentials_displays_granted_sandboxes(
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    monkeypatch.setattr(
+        service,
+        "_find_granted_sandboxes",
+        lambda: {"github": ["jupyter-dev", "test-sbx"]},
+    )
+
+    def fake_capture(cmd, **kwargs):
+        if "provider" in cmd and "list" in cmd:
+            return subprocess.CompletedProcess(
+                cmd,
+                0,
+                stdout='{"providers": [{"name": "github", "type": "github", "credential_keys": ["KEY"], "config_keys": []}]}',
+                stderr="",
+            )
+        return subprocess.CompletedProcess(cmd, 0, stdout="{}", stderr="")
+
+    monkeypatch.setattr(service, "_run_capture", fake_capture)
+
+    rc = service.list_credentials()
+    assert rc == 0
+    out = capsys.readouterr().out
+    assert "GRANTED TO SANDBOXES" in out
+    assert "github" in out
+    assert "jupyter-dev, test-sbx" in out
+
+
+def test_show_credential_displays_granted_sandboxes(
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    def fake_capture(cmd, **kwargs):
+        return subprocess.CompletedProcess(
+            cmd,
+            0,
+            stdout="Provider:\n\n  Id: 123\n  Name: github\n",
+            stderr="",
+        )
+
+    monkeypatch.setattr(service, "_run_capture", fake_capture)
+    monkeypatch.setattr(
+        service,
+        "_find_granted_sandboxes",
+        lambda: {"github": ["jupyter-dev"]},
+    )
+
+    rc = service.show_credential("github")
+    assert rc == 0
+    out = capsys.readouterr().out
+    assert "Provider:\n  Id: 123" in out
+    assert "Granted to sandboxes:\n  - jupyter-dev" in out

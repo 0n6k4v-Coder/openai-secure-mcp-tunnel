@@ -44,6 +44,7 @@ from ..credentials.service import (  # noqa: E402
     delete_credential,
     grant_credential,
     list_credentials,
+    list_sandbox_credentials,
     revoke_credential,
     show_credential,
     update_credential,
@@ -436,6 +437,17 @@ def _sandbox_status(name: str, json_output: bool) -> int:
     if host_workspace_id:
         print(f"Host workspace ID:   {host_workspace_id}")
 
+    try:
+        attached_creds = list_sandbox_credentials(name)
+        data["credentials"] = attached_creds
+        if attached_creds:
+            cred_names = [str(c.get("name")) for c in attached_creds if isinstance(c, dict) and c.get("name")]
+            print(f"Granted credentials: {', '.join(cred_names) if cred_names else '<none>'}")
+        else:
+            print("Granted credentials: <none>")
+    except Exception:
+        print("Granted credentials: UNKNOWN (inspection failed)")
+
     return EXIT_OK
 
 
@@ -598,6 +610,29 @@ def _sandbox_exec(name: str, command: list[str]) -> int:
 def _sandbox_logs(name: str) -> int:
     validate_name(name)
     return _run_passthrough(_openshell_command("logs", name))
+
+
+def _sandbox_credentials(name: str, json_output: bool = False) -> int:
+    validate_name(name)
+    creds = list_sandbox_credentials(name)
+    if json_output:
+        _print_json(creds)
+        return EXIT_OK
+
+    if not creds:
+        print(f"No credentials granted to sandbox '{name}'.")
+        return EXIT_OK
+
+    rows: list[list[str]] = []
+    for c in creds:
+        c_name = str(c.get("name", ""))
+        c_type = str(c.get("type", ""))
+        cred_keys = ", ".join(c.get("credential_keys", [])) if c.get("credential_keys") else "<none>"
+        config_keys = ", ".join(c.get("config_keys", [])) if c.get("config_keys") else "<none>"
+        rows.append([c_name, c_type, cred_keys, config_keys])
+
+    _print_table(["NAME", "TYPE", "CREDENTIAL_KEYS", "CONFIG_KEYS"], rows)
+    return EXIT_OK
 
 
 def _handle_lifecycle_result(name: str, operation: str, result: subprocess.CompletedProcess[str]) -> int:
@@ -960,6 +995,14 @@ def _build_parser() -> argparse.ArgumentParser:
     )
     recreate.set_defaults(handler=_sandbox_recreate)
 
+    sb_creds = sandbox_commands.add_parser(
+        "credentials",
+        help="List credentials granted to a sandbox.",
+    )
+    sb_creds.add_argument("name")
+    sb_creds.add_argument("--json", dest="json_output", action="store_true")
+    sb_creds.set_defaults(handler=_sandbox_credentials)
+
     credential = commands.add_parser(
         "credential",
         help="Manage OpenShell credential providers.",
@@ -1080,6 +1123,9 @@ def main(argv: Sequence[str] | None = None) -> int:
 
         if args.command == "sandbox" and args.sandbox_command == "recreate":
             return args.handler(args.name, args.confirmed)
+
+        if args.command == "sandbox" and args.sandbox_command == "credentials":
+            return args.handler(args.name, args.json_output)
 
         if args.command == "sandbox":
             return args.handler(args.name)
