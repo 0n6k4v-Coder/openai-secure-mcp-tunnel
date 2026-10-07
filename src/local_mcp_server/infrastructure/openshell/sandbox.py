@@ -299,6 +299,12 @@ def create_sandbox(
             raise ValueError("host_workspace_id must not be empty.")
 
         grant = get_workspace_grant(workspace_id)
+        try:
+            from ...cli.workspace_broker import ensure_workspace_volume
+
+            ensure_workspace_volume(workspace_id)
+        except Exception:
+            pass
 
     labels = {
         SANDBOX_PROFILE_LABEL: profile,

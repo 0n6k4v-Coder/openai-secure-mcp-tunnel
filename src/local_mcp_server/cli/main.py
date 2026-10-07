@@ -623,7 +623,42 @@ def _sandbox_restart(name: str) -> int:
 def _sandbox_repair(name: str) -> int:
     validate_name(name)
 
-    return _sandbox_start(name)
+    result = _run_capture(_openshell_command("sandbox", "start", name))
+    if result.returncode == EXIT_OK:
+        if result.stdout:
+            sys.stdout.write(result.stdout)
+            sys.stdout.flush()
+        return EXIT_OK
+
+    diagnostic = (result.stderr or result.stdout or "").strip()
+    normalized_diagnostic = " ".join(diagnostic.split())
+    if (
+        ("sandbox must be Stopped" in normalized_diagnostic and "current phase: Error" in normalized_diagnostic)
+        or "ControlSupervisorExited" in normalized_diagnostic
+        or "failed to wait for Docker supervisor container" in normalized_diagnostic
+    ):
+        print(f"ERROR: Sandbox '{name}' cannot be resumed directly.", file=sys.stderr)
+        print(
+            "Reason: The sandbox container or supervisor terminated unexpectedly "
+            "(e.g. after a Docker or system restart), invalidating its control session.",
+            file=sys.stderr,
+        )
+        print(file=sys.stderr)
+        print("Recommended Action:", file=sys.stderr)
+        print(
+            "  Recreate the sandbox while preserving all workspace grants and configuration:",
+            file=sys.stderr,
+        )
+        print(f"  $ mcpctl sandbox recreate --yes {name}", file=sys.stderr)
+        return EXIT_ERROR
+
+    if result.stderr:
+        sys.stderr.write(result.stderr)
+        sys.stderr.flush()
+    if result.stdout:
+        sys.stdout.write(result.stdout)
+        sys.stdout.flush()
+    return result.returncode if result.returncode != 0 else EXIT_ERROR
 
 
 def _sandbox_recreate(

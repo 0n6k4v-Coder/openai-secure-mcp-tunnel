@@ -435,6 +435,73 @@ def _docker_volume_exists(
     return completed.returncode == 0
 
 
+def _docker_volume_healthy(
+    volume_name: str,
+) -> bool:
+    docker = shutil.which("docker")
+
+    if docker is None:
+        return False
+
+    completed = _run_command(
+        [
+            docker,
+            "volume",
+            "inspect",
+            volume_name,
+        ]
+    )
+
+    if completed.returncode != 0:
+        return False
+
+    from .lifecycle import _configured_image_value
+
+    helper_image = _configured_image_value(
+        "WORKSPACE_ACL_HELPER_IMAGE",
+        ACL_HELPER_IMAGE,
+    )
+    probe = _run_command(
+        [
+            docker,
+            "run",
+            "--rm",
+            "--network",
+            "none",
+            "--entrypoint",
+            "true",
+            "-v",
+            f"{volume_name}:/probe",
+            helper_image,
+        ]
+    )
+    if probe.returncode == 0:
+        return True
+
+    stderr_lower = probe.stderr.lower()
+    if (
+        "error while mounting volume" in stderr_lower
+        or "failed to mount local volume" in stderr_lower
+        or "no such file or directory" in stderr_lower
+    ):
+        return False
+
+    busybox_probe = _run_command(
+        [
+            docker,
+            "run",
+            "--rm",
+            "--network",
+            "none",
+            "-v",
+            f"{volume_name}:/probe",
+            "busybox:latest",
+            "true",
+        ]
+    )
+    return busybox_probe.returncode == 0
+
+
 def _create_host_backed_volume(
     volume_name: str,
     host_path: Path,
@@ -447,7 +514,9 @@ def _create_host_backed_volume(
         )
 
     if _docker_volume_exists(volume_name):
-        return
+        if _docker_volume_healthy(volume_name):
+            return
+        _remove_volume(volume_name)
 
     completed = _run_command(
         [
@@ -475,6 +544,35 @@ def _create_host_backed_volume(
             )
 
         raise RuntimeError(message)
+
+
+def ensure_workspace_volume(
+    workspace_id: str,
+) -> None:
+    """Ensure the Docker volume backing a workspace grant exists and is healthy."""
+    grants = _load_grants()
+    grant = grants.get(workspace_id)
+    if not grant:
+        return
+
+    host_path_str = grant.get("host_path")
+    volume_name = grant.get("volume_name")
+    if (
+        not host_path_str
+        or not volume_name
+        or not isinstance(host_path_str, str)
+        or not isinstance(volume_name, str)
+    ):
+        return
+
+    host_path = Path(host_path_str)
+    if not host_path.is_dir():
+        return
+
+    _create_host_backed_volume(
+        volume_name,
+        host_path,
+    )
 
 
 def _remove_volume(

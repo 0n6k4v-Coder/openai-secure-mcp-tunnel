@@ -63,10 +63,12 @@ _DEFAULT_BROWSER_ENDPOINTS = (
 
 def validate_name(name: str) -> str:
     if not isinstance(name, str) or not _SANDBOX_NAME.fullmatch(name):
+        actual = repr(name) if isinstance(name, str) else type(name).__name__
+        length_hint = f" (received {len(name)} chars: {actual})" if isinstance(name, str) else f" (received {actual})"
         raise ValueError(
             "sandbox name must contain only lowercase letters, digits, "
             "and hyphens, start with a letter or digit, and be at most "
-            f"{MAX_SANDBOX_NAME_LENGTH} characters"
+            f"{MAX_SANDBOX_NAME_LENGTH} characters{length_hint}"
         )
 
     return name

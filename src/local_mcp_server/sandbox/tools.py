@@ -58,15 +58,17 @@ def register_tools(mcp: MCPServer) -> None:
         """
         Create an OpenShell sandbox.
 
-        host_workspace_id is optional.
-
-        When supplied, the sandbox uses the authorized host workspace.
-
-        When omitted, the sandbox is standalone and its own sandbox-local
-        filesystem is exposed as the application workspace.
-
-        profile selects the workload image and policy. Supported profiles are
-        'default' and 'browser'.
+        :param name: Unique identifier for the sandbox. Must be 1 to 19 characters,
+            start with a letter or digit, and contain only lowercase letters, digits,
+            and hyphens (matching regex `^[a-z0-9][a-z0-9-]{0,18}$`). Underscores,
+            uppercase letters, and names exceeding 19 characters are rejected.
+        :param host_workspace_id: Optional authorized host workspace ID.
+            When supplied, mounts the host workspace directory into `/workspace/project`.
+            When omitted, creates a standalone sandbox using its own local filesystem.
+        :param profile: Selects the workload image and runtime policy.
+            - 'default': General development environment (Python/Node/Linux utilities).
+            - 'browser': Includes headless Chrome and DevTools daemon (required for
+              `execute_chrome_devtools_command`).
         """
         profile = validate_profile(profile)
 

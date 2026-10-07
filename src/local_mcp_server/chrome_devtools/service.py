@@ -92,11 +92,14 @@ def _validate_arguments(
 
 def _validate_browser_sandbox(sandbox_name: str) -> None:
     status = json.loads(sandbox_status(sandbox_name))
+    current_profile = status.get("profile", "unknown")
 
-    if status.get("profile") != "browser":
+    if current_profile != "browser":
         raise ChromeDevToolsError(
-            f"Sandbox '{sandbox_name}' is not a browser sandbox. "
-            "Create or select a sandbox with profile='browser'."
+            f"Sandbox '{sandbox_name}' is not a browser sandbox (current profile: '{current_profile}'). "
+            "Chrome DevTools commands require a sandbox created with profile='browser'. "
+            "Please create a dedicated browser sandbox using `create_sandbox(name=..., profile='browser')` "
+            "or run DevTools commands against an existing browser sandbox."
         )
 
 

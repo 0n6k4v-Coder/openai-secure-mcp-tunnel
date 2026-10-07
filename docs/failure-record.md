@@ -138,3 +138,82 @@ mcpctl status
 
 3. **Ensure TLS SANs Include Loopback:**
    * Whenever generating TLS certificates for local developer services, always ensure `127.0.0.1` and `localhost` are included in the server SAN list (as implemented in `src/local_mcp_server/infrastructure/openshell/tls.py`).
+
+---
+
+## FR-002: Docker Desktop WSL2 Stale Bind-Mount Volume Invalidation (`ContainerCreateFailed`)
+
+| Field | Detail |
+|---|---|
+| **Incident ID** | FR-002 |
+| **Component** | Workspace Broker (`workspace_broker.py`) / OpenShell Docker Driver / Sandbox Recreate |
+| **Date** | 2026-10-07 |
+| **Environment** | Linux (WSL2 Ubuntu) with Docker Desktop on Windows |
+| **Severity** | High (Prevented creating or recreating sandboxes attached to host workspaces) |
+| **Status** | Resolved (Permanent Self-Healing Implementation) |
+
+---
+
+### 1. Incident Description & Symptoms
+
+When running `mcpctl sandbox recreate --yes <sandbox-name>` after a host reboot or Docker Desktop restart, sandbox recreation failed with:
+
+```text
+ERROR: Failed to create sandbox 'jupyter-dev': SandboxError: sandbox jupyter-dev entered error phase
+```
+
+Inspecting `openshell sandbox get jupyter-dev` revealed:
+
+```text
+Conditions:
+  - Ready: False (ContainerCreateFailed) - create docker sandbox container failed:
+    Docker responded with status code 500: failed to populate volume:
+    error while mounting volume '/var/lib/docker/volumes/mcp-ws-3d3f2ed2a53a4e6a8fd34cf6f13352be/_data':
+    failed to mount local volume:
+    mount /run/desktop/mnt/host/wsl/docker-desktop-bind-mounts/Ubuntu/55d2a49dc84e756f9975fff34790a8d86152f9efc216e25c2ac8769d6c01f451:/var/lib/docker/volumes/mcp-ws-3d3f2ed2a53a4e6a8fd34cf6f13352be/_data, flags: 0x1000: no such file or directory
+```
+
+---
+
+### 2. Root Cause Analysis
+
+```text
+       WSL2 Ubuntu Filesystem                              Docker Desktop VM
+ ┌────────────────────────────────┐                 ┌─────────────────────────────┐
+ │ /home/.../workspace            │                 │                             │
+ │       ▲                        │  dynamic mount  │                             │
+ │       │                        ├─────────────────┼─► /run/desktop/mnt/.../<hash>
+ │       │                        │                 │           ▲                 │
+ │       │                        │                 │           │ (stale path)    │
+ │   host directory               │                 │           │                 │
+ │   persists across restarts     │                 │   Docker volume mcp-ws-...  │
+ │                                │                 │   (type=none, o=bind)       │
+ └────────────────────────────────┘                 └─────────────────────────────┘
+                                                    WSL/Docker restart invalidates
+                                                    the dynamic path hash in VM!
+```
+
+1. **Docker Desktop WSL2 Architecture:**
+   * In Docker Desktop on Windows, the Docker daemon runs inside a dedicated lightweight VM (`docker-desktop`), separate from the user's WSL2 distribution (`Ubuntu`).
+   * Bind-mount volumes created with `docker volume create --opt type=none --opt o=bind --opt device=/path/in/wsl` rely on a dynamic mount bridge inside Docker's VM: `/run/desktop/mnt/host/wsl/docker-desktop-bind-mounts/Ubuntu/<hash>`.
+2. **Ephemeral Mount Hashes Across Restarts:**
+   * When Docker Desktop or Windows restarts, that dynamic mount hash is invalidated and wiped from the Docker VM.
+   * However, Docker's volume database still retains the volume record. `docker volume inspect` succeeds with return code `0`, but any attempt to mount the volume fails with HTTP 500 (`no such file or directory`).
+3. **Missing Health Verification:**
+   * Previously, `_create_host_backed_volume` only checked `if _docker_volume_exists(volume_name): return`. Because `inspect` succeeded, the broker assumed the volume was healthy and never refreshed the dead bind mount.
+
+---
+
+### 3. Resolution (Permanent Self-Healing Fix)
+
+1. **Active Volume Health Probe (`_docker_volume_healthy`):**
+   * Implemented in `src/local_mcp_server/cli/workspace_broker.py`.
+   * Inspects the volume and executes a lightweight mount probe container (`docker run --rm --network none -v <vol>:/probe ... true`).
+   * If mounting fails with error 500 or "no such file or directory", reports the volume as unhealthy.
+2. **Automatic Stale-Volume Refresh in `_create_host_backed_volume`:**
+   * If a volume exists but fails the health probe, it is automatically removed (`docker volume rm`) and recreated with the host directory bind.
+   * Because it is a bind mount to a host directory, removing Docker's volume record never deletes the user's host files.
+3. **Self-Healing Hook in `create_sandbox` and `recreate_sandbox`:**
+   * Added `ensure_workspace_volume(workspace_id)` call in `src/local_mcp_server/infrastructure/openshell/sandbox.py`.
+   * Automatically verifies and repairs the workspace's Docker volume before OpenShell attempts to create the sandbox container.
+

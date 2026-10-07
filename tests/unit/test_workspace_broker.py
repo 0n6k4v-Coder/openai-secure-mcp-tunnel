@@ -765,3 +765,89 @@ def test_acl_helper_missing_image_fails_before_run(
         )
 
     assert commands == []
+
+
+def test_docker_volume_healthy_success(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(broker.shutil, "which", lambda name: "/usr/bin/docker")
+    commands: list[list[str]] = []
+
+    def fake_run(command):
+        commands.append(command)
+        return subprocess.CompletedProcess(command, 0, stdout="", stderr="")
+
+    monkeypatch.setattr(broker, "_run_command", fake_run)
+    assert broker._docker_volume_healthy("mcp-ws-test") is True
+    assert len(commands) == 2
+    assert commands[0] == ["/usr/bin/docker", "volume", "inspect", "mcp-ws-test"]
+    assert commands[1][:7] == [
+        "/usr/bin/docker",
+        "run",
+        "--rm",
+        "--network",
+        "none",
+        "--entrypoint",
+        "true",
+    ]
+
+
+def test_docker_volume_healthy_stale_failure(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(broker.shutil, "which", lambda name: "/usr/bin/docker")
+    commands: list[list[str]] = []
+
+    def fake_run(command):
+        commands.append(command)
+        if "inspect" in command:
+            return subprocess.CompletedProcess(command, 0, stdout="", stderr="")
+        return subprocess.CompletedProcess(
+            command,
+            125,
+            stdout="",
+            stderr="docker: Error response from daemon: error while mounting volume: no such file or directory",
+        )
+
+    monkeypatch.setattr(broker, "_run_command", fake_run)
+    assert broker._docker_volume_healthy("mcp-ws-stale") is False
+
+
+def test_create_host_backed_volume_recreates_stale_volume(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setattr(broker.shutil, "which", lambda name: "/usr/bin/docker")
+    commands: list[list[str]] = []
+
+    monkeypatch.setattr(broker, "_docker_volume_exists", lambda name: True)
+    monkeypatch.setattr(broker, "_docker_volume_healthy", lambda name: False)
+
+    def fake_run(command):
+        commands.append(command)
+        return subprocess.CompletedProcess(command, 0, stdout="", stderr="")
+
+    monkeypatch.setattr(broker, "_run_command", fake_run)
+    broker._create_host_backed_volume("mcp-ws-stale", tmp_path)
+
+    # Should have removed the stale volume, then created it
+    assert len(commands) == 2
+    assert commands[0] == ["/usr/bin/docker", "volume", "rm", "mcp-ws-stale"]
+    assert commands[1][:4] == ["/usr/bin/docker", "volume", "create", "--driver"]
+    assert f"device={tmp_path}" in commands[1]
+
+
+def test_ensure_workspace_volume_refreshes_volume(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    grants = {
+        "ws_test123": {
+            "host_path": str(tmp_path),
+            "volume_name": "mcp-ws-test123",
+        }
+    }
+    monkeypatch.setattr(broker, "_load_grants", lambda: grants)
+    called_with: list[tuple[str, Path]] = []
+    monkeypatch.setattr(
+        broker,
+        "_create_host_backed_volume",
+        lambda vol, path: called_with.append((vol, path)),
+    )
+
+    broker.ensure_workspace_volume("ws_test123")
+    assert called_with == [("mcp-ws-test123", tmp_path)]

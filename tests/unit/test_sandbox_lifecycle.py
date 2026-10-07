@@ -136,20 +136,70 @@ def test_restart_does_not_start_after_stop_failure(
     ]
 
 
-def test_repair_reuses_open_shell_start(
+def test_repair_invokes_open_shell_start(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    calls: list[str] = []
+    captured: dict[str, object] = {}
 
-    monkeypatch.setattr(
-        cli,
-        "_sandbox_start",
-        lambda name: calls.append(name) or cli.EXIT_OK,
+    fake_completed = cli.subprocess.CompletedProcess(
+        args=["openshell", "sandbox", "start", "project-api"],
+        returncode=0,
+        stdout="started\n",
+        stderr="",
     )
 
-    assert cli._sandbox_repair("project-api") == cli.EXIT_OK
+    def fake_capture(command, *, cwd=cli.PROJECT_ROOT, env=None):
+        captured["command"] = command
+        return fake_completed
 
-    assert calls == ["project-api"]
+    monkeypatch.setattr(cli, "_run_capture", fake_capture)
+
+    assert cli._sandbox_repair("project-api") == cli.EXIT_OK
+    assert captured["command"] == ["openshell", "sandbox", "start", "project-api"]
+
+
+def test_sandbox_repair_unresumable_supervisor_failure_reports_guidance(
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    fake_completed = cli.subprocess.CompletedProcess(
+        args=["openshell", "sandbox", "start", "crashed-sbx"],
+        returncode=1,
+        stdout="",
+        stderr=(
+            "Error:   × code: 'The system is not in a state required for the operation\'s\n"
+            "  │ execution', message: \"sandbox must be Stopped, Completed, or a failed\n"
+            "  │ main-process Error to start (current phase: Error)\"\n"
+        ),
+    )
+    monkeypatch.setattr(cli, "_run_capture", lambda *args, **kwargs: fake_completed)
+
+    result = cli._sandbox_repair("crashed-sbx")
+
+    assert result == cli.EXIT_ERROR
+    captured = capsys.readouterr()
+    assert "ERROR: Sandbox 'crashed-sbx' cannot be resumed directly." in captured.err
+    assert "Reason: The sandbox container or supervisor terminated unexpectedly" in captured.err
+    assert "mcpctl sandbox recreate --yes crashed-sbx" in captured.err
+
+
+def test_sandbox_repair_generic_failure_propagates_raw_stderr(
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    fake_completed = cli.subprocess.CompletedProcess(
+        args=["openshell", "sandbox", "start", "generic-sbx"],
+        returncode=1,
+        stdout="",
+        stderr="Error: connection refused\n",
+    )
+    monkeypatch.setattr(cli, "_run_capture", lambda *args, **kwargs: fake_completed)
+
+    result = cli._sandbox_repair("generic-sbx")
+
+    assert result == 1
+    captured = capsys.readouterr()
+    assert "Error: connection refused" in captured.err
 
 
 def test_service_restart_stops_then_starts(
