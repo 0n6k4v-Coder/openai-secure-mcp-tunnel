@@ -9,6 +9,7 @@ CHROME_LOG="/tmp/chrome.log"
 OPENSSL_CA="/run/openshell-supervisor-ca/material/ca.crt"
 
 cleanup() {
+    trap '' INT TERM HUP EXIT
     if [ -n "${CHROME_DEVTOOLS_PID:-}" ]; then
         kill "${CHROME_DEVTOOLS_PID}" 2>/dev/null || true
     fi
@@ -19,9 +20,10 @@ cleanup() {
         kill "${CHROME_PID}" 2>/dev/null || true
         wait "${CHROME_PID}" 2>/dev/null || true
     fi
+    pkill -P $$ 2>/dev/null || true
 }
 
-trap cleanup INT TERM EXIT
+trap cleanup INT TERM HUP EXIT
 
 # OpenShell may set HOME to the mounted workspace. Chrome's NSS shared DB is
 # resolved from HOME, so keep the browser trust database in its private home.

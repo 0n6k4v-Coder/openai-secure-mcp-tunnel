@@ -195,6 +195,51 @@ def _status_value(record: dict[str, object]) -> str:
     return "UNKNOWN"
 
 
+def _gracefully_stop_active_sandboxes() -> None:
+    """Stop active sandboxes gracefully before shutting down or recreating gateway."""
+    try:
+        from ..sandbox.service import list_sandboxes, stop_sandbox
+
+        raw = list_sandboxes()
+        records = json.loads(raw) if isinstance(raw, str) else raw
+        for record in records:
+            if not isinstance(record, dict):
+                continue
+            status = record.get("status") or record.get("phase")
+            if status in (2, 8, "2", "8", "READY", "STARTING"):
+                name = record.get("name")
+                if isinstance(name, str):
+                    try:
+                        stop_sandbox(name)
+                    except Exception:
+                        pass
+    except Exception:
+        # Non-fatal if gateway is already unreachable
+        pass
+
+
+def _heal_degraded_sandboxes() -> None:
+    """Auto-heal sandboxes stuck in ERROR phase after gateway restart."""
+    try:
+        from ..sandbox.service import list_sandboxes, recreate_sandbox
+
+        raw = list_sandboxes()
+        records = json.loads(raw) if isinstance(raw, str) else raw
+        for record in records:
+            if not isinstance(record, dict):
+                continue
+            status = record.get("status") or record.get("phase")
+            if status in (3, "3", "ERROR", "SANDBOX_PHASE_ERROR"):
+                name = record.get("name")
+                if isinstance(name, str):
+                    try:
+                        recreate_sandbox(name)
+                    except Exception:
+                        pass
+    except Exception:
+        pass
+
+
 def _verify_started_stack(action: str) -> int:
     from . import lifecycle
     from ..infrastructure.openshell.tls import get_status as get_openshell_tls_status
@@ -207,6 +252,10 @@ def _verify_started_stack(action: str) -> int:
         print("Next: mcpctl logs openshell-gateway", file=sys.stderr)
         print("      mcpctl logs mcp-server", file=sys.stderr)
         return EXIT_ERROR
+
+    # Automatically heal any sandboxes left in error state by supervisor disconnection
+    _heal_degraded_sandboxes()
+
     if status.ready:
         print(f"RESULT: {action} READY")
     else:
@@ -239,6 +288,7 @@ def _start() -> int:
 def _stop() -> int:
     _command_exists("docker")
     print("Stopping local MCP application")
+    _gracefully_stop_active_sandboxes()
     result = _run_passthrough(_compose_command("down"))
     if result == EXIT_OK:
         print("RESULT: STOPPED")
@@ -253,6 +303,7 @@ def _restart() -> int:
     from . import lifecycle
 
     print("Restarting local MCP application")
+    _gracefully_stop_active_sandboxes()
     print("Preflight: custom images")
     lifecycle.ensure_local_images()
     result = _run_passthrough(
