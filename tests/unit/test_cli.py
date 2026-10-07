@@ -506,11 +506,16 @@ def test_sandbox_lifecycle_commands(
         lambda *args: ["openshell", *args],
     )
 
-    def fake_run(command, *, cwd=cli.PROJECT_ROOT, env=None):
+    def fake_capture(command, *, cwd=cli.PROJECT_ROOT, env=None):
         captured["command"] = command
-        return 0
+        return cli.subprocess.CompletedProcess(
+            args=command,
+            returncode=0,
+            stdout="",
+            stderr="",
+        )
 
-    monkeypatch.setattr(cli, "_run_passthrough", fake_run)
+    monkeypatch.setattr(cli, "_run_capture", fake_capture)
 
     assert getattr(cli, helper)("project-api") == cli.EXIT_OK
 

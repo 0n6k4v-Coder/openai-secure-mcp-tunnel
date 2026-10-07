@@ -178,8 +178,48 @@ def test_sandbox_repair_unresumable_supervisor_failure_reports_guidance(
 
     assert result == cli.EXIT_ERROR
     captured = capsys.readouterr()
-    assert "ERROR: Sandbox 'crashed-sbx' cannot be resumed directly." in captured.err
+    assert "ERROR: Sandbox 'crashed-sbx' is in an unrecoverable Error phase and cannot be repaired directly." in captured.err
     assert "Reason: The sandbox container or supervisor terminated unexpectedly" in captured.err
+    assert "mcpctl sandbox recreate --yes crashed-sbx" in captured.err
+
+
+def test_sandbox_start_unresumable_supervisor_failure_reports_guidance(
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    fake_completed = cli.subprocess.CompletedProcess(
+        args=["openshell", "sandbox", "start", "crashed-sbx"],
+        returncode=1,
+        stdout="",
+        stderr="Error:   × message: \"sandbox must be Stopped, Completed, or a failed main-process Error to start (current phase: Error)\"",
+    )
+    monkeypatch.setattr(cli, "_run_capture", lambda *args, **kwargs: fake_completed)
+
+    result = cli._sandbox_start("crashed-sbx")
+
+    assert result == cli.EXIT_ERROR
+    captured = capsys.readouterr()
+    assert "ERROR: Sandbox 'crashed-sbx' is in an unrecoverable Error phase and cannot be started directly." in captured.err
+    assert "mcpctl sandbox recreate --yes crashed-sbx" in captured.err
+
+
+def test_sandbox_restart_unresumable_supervisor_failure_reports_guidance(
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    fake_completed = cli.subprocess.CompletedProcess(
+        args=["openshell", "sandbox", "stop", "crashed-sbx"],
+        returncode=1,
+        stdout="",
+        stderr="Error:   × message: \"sandbox must be Ready to stop (current phase: Error)\"",
+    )
+    monkeypatch.setattr(cli, "_run_capture", lambda *args, **kwargs: fake_completed)
+
+    result = cli._sandbox_restart("crashed-sbx")
+
+    assert result == cli.EXIT_ERROR
+    captured = capsys.readouterr()
+    assert "ERROR: Sandbox 'crashed-sbx' is in an unrecoverable Error phase and cannot be stopped directly." in captured.err
     assert "mcpctl sandbox recreate --yes crashed-sbx" in captured.err
 
 

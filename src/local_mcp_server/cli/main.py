@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import re
 import shutil
 import subprocess
 import sys
@@ -599,31 +600,7 @@ def _sandbox_logs(name: str) -> int:
     return _run_passthrough(_openshell_command("logs", name))
 
 
-def _sandbox_start(name: str) -> int:
-    validate_name(name)
-    return _run_passthrough(_openshell_command("sandbox", "start", name))
-
-
-def _sandbox_stop(name: str) -> int:
-    validate_name(name)
-    return _run_passthrough(_openshell_command("sandbox", "stop", name))
-
-
-def _sandbox_restart(name: str) -> int:
-    validate_name(name)
-
-    stop_result = _sandbox_stop(name)
-
-    if stop_result != EXIT_OK:
-        return stop_result
-
-    return _sandbox_start(name)
-
-
-def _sandbox_repair(name: str) -> int:
-    validate_name(name)
-
-    result = _run_capture(_openshell_command("sandbox", "start", name))
+def _handle_lifecycle_result(name: str, operation: str, result: subprocess.CompletedProcess[str]) -> int:
     if result.returncode == EXIT_OK:
         if result.stdout:
             sys.stdout.write(result.stdout)
@@ -631,13 +608,26 @@ def _sandbox_repair(name: str) -> int:
         return EXIT_OK
 
     diagnostic = (result.stderr or result.stdout or "").strip()
-    normalized_diagnostic = " ".join(diagnostic.split())
-    if (
+    cleaned_diagnostic = re.sub(r"\s*[│|]\s*", " ", diagnostic)
+    normalized_diagnostic = " ".join(cleaned_diagnostic.split())
+
+    # Detect when sandbox is stuck in Error phase and cannot be stopped/started/repaired
+    is_error_phase_blocker = (
         ("sandbox must be Stopped" in normalized_diagnostic and "current phase: Error" in normalized_diagnostic)
+        or ("sandbox must be Ready to stop" in normalized_diagnostic and "current phase: Error" in normalized_diagnostic)
         or "ControlSupervisorExited" in normalized_diagnostic
         or "failed to wait for Docker supervisor container" in normalized_diagnostic
-    ):
-        print(f"ERROR: Sandbox '{name}' cannot be resumed directly.", file=sys.stderr)
+    )
+
+    if is_error_phase_blocker:
+        verb_map = {
+            "start": "started",
+            "stop": "stopped",
+            "restart": "restarted",
+            "repair": "repaired",
+        }
+        past_verb = verb_map.get(operation, f"{operation}ed")
+        print(f"ERROR: Sandbox '{name}' is in an unrecoverable Error phase and cannot be {past_verb} directly.", file=sys.stderr)
         print(
             "Reason: The sandbox container or supervisor terminated unexpectedly "
             "(e.g. after a Docker or system restart), invalidating its control session.",
@@ -659,6 +649,36 @@ def _sandbox_repair(name: str) -> int:
         sys.stdout.write(result.stdout)
         sys.stdout.flush()
     return result.returncode if result.returncode != 0 else EXIT_ERROR
+
+
+def _sandbox_start(name: str) -> int:
+    validate_name(name)
+    result = _run_capture(_openshell_command("sandbox", "start", name))
+    return _handle_lifecycle_result(name, "start", result)
+
+
+def _sandbox_stop(name: str) -> int:
+    validate_name(name)
+    result = _run_capture(_openshell_command("sandbox", "stop", name))
+    return _handle_lifecycle_result(name, "stop", result)
+
+
+def _sandbox_restart(name: str) -> int:
+    validate_name(name)
+
+    stop_result = _sandbox_stop(name)
+
+    if stop_result != EXIT_OK:
+        return stop_result
+
+    return _sandbox_start(name)
+
+
+def _sandbox_repair(name: str) -> int:
+    validate_name(name)
+
+    result = _run_capture(_openshell_command("sandbox", "start", name))
+    return _handle_lifecycle_result(name, "repair", result)
 
 
 def _sandbox_recreate(
