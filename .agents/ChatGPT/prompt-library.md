@@ -163,3 +163,17 @@ Rules:
 * The complete runbook must be executable **without the user having to infer, invent, or fill in missing steps**.
 * Section 3 contains the complete file contents. Section 4 contains the **execution procedure only**.
 ````
+
+---
+
+```text
+Let's apply these solutions directly to the codebase in the sandbox using Project Jupyter.
+```
+
+```text
+Create unit tests and integration tests for the features you've implemented.
+```
+
+```text
+Updated item in e2e test documents as well.
+```

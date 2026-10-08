@@ -6,6 +6,15 @@ from local_mcp_server.browser import service as browser_service
 from local_mcp_server.clone import service as clone_service
 
 
+@pytest.fixture(autouse=True)
+def clear_cdp_relay_state():
+    browser_service._CDP_INPUT_READY.clear()
+    browser_service._CDP_INPUT_SOCKET_READY.clear()
+    yield
+    browser_service._CDP_INPUT_READY.clear()
+    browser_service._CDP_INPUT_SOCKET_READY.clear()
+
+
 def test_validate_url_accepts_public_http_and_https():
     assert browser_service.validate_url("https://example.com/path?q=1") == "https://example.com/path?q=1"
     assert browser_service.validate_url("http://example.com") == "http://example.com"
@@ -239,3 +248,202 @@ def test_clone_page_escapes_title_and_writes_output(monkeypatch):
     assert "&lt;img" in document
     title = document.split("<title>", 1)[1].split("</title>", 1)[0]
     assert "<img" not in title
+
+
+def test_validate_input_text_limits():
+    assert browser_service._validate_input_text("hello") == "hello"
+    with pytest.raises(browser_service.BrowserError):
+        browser_service._validate_input_text("")
+    with pytest.raises(browser_service.BrowserError, match="65536"):
+        browser_service._validate_input_text("x" * 65537)
+
+
+@pytest.mark.parametrize("value", [-1, True, "1", None])
+def test_validate_coordinate_rejects_invalid_values(value):
+    with pytest.raises(browser_service.BrowserError):
+        browser_service._validate_coordinate(value, "x")
+
+
+def test_validate_coordinate_accepts_viewport_values():
+    assert browser_service._validate_coordinate(0, "x") == 0
+    assert browser_service._validate_coordinate(1280, "x") == 1280
+
+
+def test_viewport_paths_are_page_scoped():
+    paths = browser_service._viewport_paths(7)
+    assert paths[0].endswith("screencast-7.jpg")
+    assert paths[1].endswith("screencast-7.json")
+    assert paths[2].endswith("screencast-7.pid")
+    assert paths[3].endswith("screencast-7.log")
+
+
+def test_viewport_start_validates_dimensions_and_quality():
+    with pytest.raises(browser_service.BrowserError):
+        browser_service.viewport_start("sandbox-1", 1, width=100)
+    with pytest.raises(browser_service.BrowserError):
+        browser_service.viewport_start("sandbox-1", 1, height=100)
+    with pytest.raises(browser_service.BrowserError):
+        browser_service.viewport_start("sandbox-1", 1, quality=10)
+
+
+def test_viewport_start_launches_persistent_cdp_relay(monkeypatch):
+    calls = []
+
+    def fake_argv(sandbox, argv, timeout_seconds):
+        calls.append((sandbox, argv, timeout_seconds))
+        return {"return_code": 0, "stdout": "1234\n", "stderr": ""}
+
+    monkeypatch.setattr(browser_service, "execute_sandbox_argv", fake_argv)
+    result = browser_service.viewport_start("sandbox-1", 3)
+
+    assert result["state"] == "starting"
+    joined = "\n".join(" ".join(c[1]) for c in calls)
+    assert "mcp-browser-screencast-relay.js" in joined
+    assert "mcp-browser-input-3.sock" in joined
+    assert "Page.startScreencast" in browser_service._CDP_RELAY_SCRIPT
+    assert "everyNthFrame: 4" in browser_service._CDP_RELAY_SCRIPT
+    assert "maxFramesInFlight: 1" in browser_service._CDP_RELAY_SCRIPT
+    assert "net.createServer" in browser_service._CDP_RELAY_SCRIPT
+    assert "inputSocketPath" in browser_service._CDP_RELAY_SCRIPT
+    assert ("sandbox-1", 3) in browser_service._CDP_INPUT_SOCKET_READY
+
+
+def test_viewport_stop_clears_persistent_input_relay_state(monkeypatch):
+    browser_service._CDP_INPUT_SOCKET_READY.add(("sandbox-1", 8))
+    calls = []
+    monkeypatch.setattr(
+        browser_service,
+        "execute_sandbox_argv",
+        lambda *args, **kwargs: calls.append((args, kwargs)) or {"return_code": 0, "stdout": "", "stderr": ""},
+    )
+
+    result = browser_service.viewport_stop("sandbox-1", 8)
+
+    assert result["state"] == "stopped"
+    assert ("sandbox-1", 8) not in browser_service._CDP_INPUT_SOCKET_READY
+    command = calls[0][0][1][2]
+    assert "mcp-browser-input-8.sock" in command
+
+
+def test_viewport_frame_decodes_latest_jpeg(monkeypatch):
+    monkeypatch.setattr(
+        browser_service,
+        "execute_sandbox_argv",
+        lambda *args, **kwargs: {"return_code": 0, "stdout": "aGVsbG8=", "stderr": ""},
+    )
+    data, mime = browser_service.viewport_frame("sandbox-1", 2)
+    assert data == b"hello"
+    assert mime == "image/jpeg"
+
+
+def test_viewport_frame_waits_when_no_frame(monkeypatch):
+    monkeypatch.setattr(
+        browser_service,
+        "execute_sandbox_argv",
+        lambda *args, **kwargs: {"return_code": 0, "stdout": "", "stderr": ""},
+    )
+    data, mime = browser_service.viewport_frame("sandbox-1", 2)
+    assert data == b""
+    assert mime is None
+
+
+def test_browser_input_uses_persistent_cdp_relay(monkeypatch):
+    calls = []
+    monkeypatch.setattr(browser_service, "_ensure_cdp_input", lambda sandbox: None)
+    browser_service._CDP_INPUT_SOCKET_READY.add(("sandbox-1", 3))
+    monkeypatch.setattr(
+        browser_service,
+        "execute_sandbox_argv",
+        lambda *args, **kwargs: calls.append((args, kwargs)) or {"return_code": 0, "stdout": "", "stderr": ""},
+    )
+    monkeypatch.setattr(
+        browser_service,
+        "_run_node_script",
+        lambda sandbox, script, args, **kwargs: calls.append((sandbox, script, args)) or {"return_code": 0, "stdout": "", "stderr": ""},
+    )
+
+    result = browser_service.browser_click("sandbox-1", 3, 10, 20)
+
+    assert result["page_id"] == 3
+    assert len(calls) == 1
+    assert calls[0][1] == browser_service._CDP_INPUT_PATH
+    assert calls[0][2][0].endswith("mcp-browser-input-3.sock")
+    assert calls[0][2][1] == "click"
+    assert '"x":10.0' in calls[0][2][2]
+    assert '"y":20.0' in calls[0][2][2]
+
+
+def test_browser_input_reuses_socket_without_rechecking_each_event(monkeypatch):
+    sandbox = "sandbox-1"
+    page_id = 4
+    browser_service._CDP_INPUT_SOCKET_READY.add((sandbox, page_id))
+    checks = []
+    sends = []
+    monkeypatch.setattr(browser_service, "_ensure_cdp_input", lambda _: None)
+    monkeypatch.setattr(
+        browser_service,
+        "execute_sandbox_argv",
+        lambda *args, **kwargs: checks.append(args) or {"return_code": 0, "stdout": "", "stderr": ""},
+    )
+    monkeypatch.setattr(
+        browser_service,
+        "_run_node_script",
+        lambda *args, **kwargs: sends.append(args) or {"return_code": 0, "stdout": "", "stderr": ""},
+    )
+
+    browser_service.browser_move(sandbox, page_id, 1, 2)
+    browser_service.browser_move(sandbox, page_id, 3, 4)
+
+    assert checks == []
+    assert len(sends) == 2
+
+
+def test_browser_input_recovers_when_persistent_relay_dies(monkeypatch):
+    sandbox = "sandbox-1"
+    page_id = 5
+    browser_service._CDP_INPUT_SOCKET_READY.add((sandbox, page_id))
+    starts = []
+    sends = []
+    monkeypatch.setattr(browser_service, "_ensure_cdp_input", lambda _: None)
+    monkeypatch.setattr(
+        browser_service,
+        "_run_node_script",
+        lambda *args, **kwargs: sends.append(args) or {
+            "return_code": 1 if len(sends) == 1 else 0,
+            "stdout": "",
+            "stderr": "dead relay" if len(sends) == 1 else "",
+        },
+    )
+    monkeypatch.setattr(
+        browser_service,
+        "viewport_start",
+        lambda *args, **kwargs: starts.append((args, kwargs)) or {"state": "starting"},
+    )
+
+    result = browser_service.browser_move(sandbox, page_id, 1, 2)
+
+    assert result["page_id"] == page_id
+    assert len(starts) == 1
+    assert len(sends) == 2
+    assert (sandbox, page_id) in browser_service._CDP_INPUT_SOCKET_READY
+
+
+def test_cdp_relay_script_has_atomic_frame_writes_and_backpressure():
+    script = browser_service._CDP_RELAY_SCRIPT
+    assert 'outputPath + ".tmp"' in script
+    assert "fs.renameSync(tempFramePath, outputPath)" in script
+    assert "Page.screencastFrameAck" in script
+    assert "maxFramesInFlight: 1" in script
+    assert "everyNthFrame: 4" in script
+
+
+def test_cdp_input_client_is_unix_socket_based():
+    script = browser_service._CDP_INPUT_SCRIPT
+    assert 'require("net")' in script
+    assert "net.createConnection(socketPath)" in script
+    assert "socket.write(JSON.stringify({operation, payload: JSON.parse(payload)}) + \"\\n\")" in script
+
+
+def test_browser_drag_validates_step_count():
+    with pytest.raises(browser_service.BrowserError):
+        browser_service.browser_drag("sandbox-1", 1, 0, 0, 10, 10, steps=1)

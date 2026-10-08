@@ -36,8 +36,10 @@ BROWSER_HTML = """<!doctype html>
     #selector { flex:1; min-width:220px; }
     button { cursor:pointer; }
     button:hover { background:#1b2632; }
-    #screenshot { width:100%; max-height:55vh; object-fit:contain; background:#000; border:1px solid #26303a; border-radius:6px; margin:8px 0; }
-    #output { white-space:pre-wrap; word-break:break-word; margin:0; padding:10px; background:#080b0f; border:1px solid #26303a; border-radius:6px; max-height:38vh; overflow:auto; }
+    #viewport-wrap { width:100%; background:#000; border:1px solid #26303a; border-radius:6px; overflow:hidden; margin:8px 0; }
+    #viewport { display:block; width:100%; height:auto; min-height:240px; background:#000; cursor:crosshair; user-select:none; -webkit-user-drag:none; outline:none; }
+    #viewport:focus { outline:2px solid #6ea8fe; outline-offset:-2px; }
+    #output { white-space:pre-wrap; word-break:break-word; margin:0; padding:10px; background:#080b0f; border:1px solid #26303a; border-radius:6px; max-height:30vh; overflow:auto; }
   </style>
 </head>
 <body>
@@ -60,7 +62,9 @@ BROWSER_HTML = """<!doctype html>
       <button id="clone-region">Clone Selection</button>
       <button id="clone-page">Clone Page</button>
     </section>
-    <img id="screenshot" alt="Browser screenshot" hidden>
+    <section id="viewport-wrap">
+      <img id="viewport" tabindex="0" alt="Live Chrome browser viewport" hidden>
+    </section>
     <pre id="output"></pre>
   </main>
   <script type="module">{BROWSER_BUNDLE}</script>
@@ -106,7 +110,7 @@ def register_browser_app(apps: Apps) -> None:
         BROWSER_APP_URI,
         BROWSER_HTML,
         title="Sandbox Browser",
-        description="Isolated Chrome browser inspection and static cloning UI.",
+        description="Shared live Chrome browser viewport with inspection and static cloning controls.",
         domain=browser_domain,
         csp=ResourceCsp(),
         prefers_border=True,

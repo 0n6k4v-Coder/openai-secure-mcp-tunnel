@@ -1,13 +1,25 @@
 import { App } from "@modelcontextprotocol/ext-apps";
 
-const app = new App({ name: "Sandbox Browser", version: "0.1.0" });
+const app = new App({ name: "Sandbox Browser", version: "0.2.0" });
 const $ = (id) => document.getElementById(id);
 const status = $("status");
 const urlInput = $("url");
 const pageInput = $("page");
 const selectorInput = $("selector");
 const output = $("output");
-const screenshot = $("screenshot");
+const viewport = $("viewport");
+
+let frameBusy = false;
+let pollTimer = null;
+let inputChain = Promise.resolve();
+let pointer = null;
+let moveAt = 0;
+let pendingMove = null;
+let moveTimer = null;
+let wheelTimer = null;
+let wheelDeltaX = 0;
+let wheelDeltaY = 0;
+let wheelPoint = { x: 1, y: 1 };
 
 function setStatus(message, kind = "") {
   status.textContent = message;
@@ -39,6 +51,68 @@ function show(value) {
   output.textContent = typeof value === "string" ? value : JSON.stringify(value, null, 2);
 }
 
+function pageId() {
+  const value = Number(pageInput.value);
+  return Number.isInteger(value) && value >= 0 ? value : null;
+}
+
+function viewportPoint(event) {
+  const rect = viewport.getBoundingClientRect();
+  const naturalWidth = viewport.naturalWidth || rect.width;
+  const naturalHeight = viewport.naturalHeight || rect.height;
+  return {
+    x: Math.max(0, Math.min(naturalWidth, (event.clientX - rect.left) * naturalWidth / rect.width)),
+    y: Math.max(0, Math.min(naturalHeight, (event.clientY - rect.top) * naturalHeight / rect.height)),
+  };
+}
+
+function stopPolling() {
+  if (pollTimer) clearInterval(pollTimer);
+  pollTimer = null;
+}
+
+async function pollFrame() {
+  if (frameBusy) return;
+  const id = pageId();
+  if (id == null || !window.__browserSandbox) return;
+  frameBusy = true;
+  try {
+    const result = await call("browser_viewport_frame", {
+      sandbox_name: window.__browserSandbox,
+      page_id: id,
+    });
+    const image = (result?.content || []).find((item) => item.type === "image");
+    if (image?.data) {
+      const mime = image.mimeType || image.mime_type || "image/jpeg";
+      viewport.src = "data:" + mime + ";base64," + image.data;
+      viewport.hidden = false;
+    }
+  } catch (error) {
+    setStatus("Viewport: " + (error.message || error), "error");
+  } finally {
+    frameBusy = false;
+  }
+}
+
+function startPolling() {
+  stopPolling();
+  pollFrame();
+  pollTimer = setInterval(pollFrame, 500);
+}
+
+async function startViewport() {
+  const id = pageId();
+  if (id == null || !window.__browserSandbox) return;
+  await call("browser_viewport_start", {
+    sandbox_name: window.__browserSandbox,
+    page_id: id,
+    width: 1280,
+    height: 800,
+    quality: 70,
+  });
+  startPolling();
+}
+
 async function openUrl() {
   const url = urlInput.value.trim();
   if (!url) return;
@@ -48,9 +122,11 @@ async function openUrl() {
     const data = getStructured(result);
     show(data);
     const nested = data && data.result;
-    const pageId = (nested && (nested.pageId ?? nested.page_id)) ?? (data && data.page_id);
-    if (Number.isInteger(pageId)) pageInput.value = String(pageId);
-    setStatus("Opened", "ok");
+    const id = (nested && (nested.pageId ?? nested.page_id)) ?? (data && data.page_id);
+    if (Number.isInteger(id)) pageInput.value = String(id);
+    if (data?.sandbox_name) window.__browserSandbox = data.sandbox_name;
+    await startViewport();
+    setStatus("Live", "ok");
   } catch (error) {
     setStatus(error.message || String(error), "error");
     show(error.message || String(error));
@@ -58,13 +134,11 @@ async function openUrl() {
 }
 
 async function snapshotCall() {
-  const pageId = Number(pageInput.value);
-  if (!Number.isInteger(pageId)) return;
+  const id = pageId();
+  if (id == null) return;
   setStatus("Inspecting…");
   try {
-    const result = await call("browser_snapshot", {
-      sandbox_name: window.__browserSandbox, page_id: pageId
-    });
+    const result = await call("browser_snapshot", { sandbox_name: window.__browserSandbox, page_id: id });
     show(getStructured(result) ?? result);
     setStatus("Snapshot ready", "ok");
   } catch (error) {
@@ -74,14 +148,12 @@ async function snapshotCall() {
 }
 
 async function inspectCall() {
-  const pageId = Number(pageInput.value);
+  const id = pageId();
   const selector = selectorInput.value.trim();
-  if (!Number.isInteger(pageId) || !selector) return;
+  if (id == null || !selector) return;
   setStatus("Inspecting element…");
   try {
-    const result = await call("browser_inspect", {
-      sandbox_name: window.__browserSandbox, page_id: pageId, selector
-    });
+    const result = await call("browser_inspect", { sandbox_name: window.__browserSandbox, page_id: id, selector });
     show(getStructured(result) ?? result);
     setStatus("Element inspected", "ok");
   } catch (error) {
@@ -91,17 +163,15 @@ async function inspectCall() {
 }
 
 async function screenshotCall() {
-  const pageId = Number(pageInput.value);
-  if (!Number.isInteger(pageId)) return;
+  const id = pageId();
+  if (id == null) return;
   setStatus("Capturing…");
   try {
-    const result = await call("browser_screenshot", {
-      sandbox_name: window.__browserSandbox, page_id: pageId, full_page: false
-    });
+    const result = await call("browser_screenshot", { sandbox_name: window.__browserSandbox, page_id: id, full_page: false });
     const image = (result?.content || []).find((item) => item.type === "image");
     if (image?.data) {
-      screenshot.src = "data:" + (image.mimeType || image.mime_type || "image/png") + ";base64," + image.data;
-      screenshot.hidden = false;
+      viewport.src = "data:" + (image.mimeType || image.mime_type || "image/jpeg") + ";base64," + image.data;
+      viewport.hidden = false;
     }
     setStatus("Screenshot ready", "ok");
   } catch (error) {
@@ -111,14 +181,12 @@ async function screenshotCall() {
 }
 
 async function clonePreview() {
-  const pageId = Number(pageInput.value);
+  const id = pageId();
+  if (id == null) return;
   const selector = selectorInput.value.trim() || null;
-  if (!Number.isInteger(pageId)) return;
   setStatus("Preparing clone preview…");
   try {
-    const result = await call("clone_preview", {
-      sandbox_name: window.__browserSandbox, page_id: pageId, selector
-    });
+    const result = await call("clone_preview", { sandbox_name: window.__browserSandbox, page_id: id, selector });
     show(getStructured(result) ?? result);
     setStatus("Clone preview ready", "ok");
   } catch (error) {
@@ -128,14 +196,12 @@ async function clonePreview() {
 }
 
 async function cloneRegion() {
-  const pageId = Number(pageInput.value);
+  const id = pageId();
   const selector = selectorInput.value.trim();
-  if (!Number.isInteger(pageId) || !selector) return;
+  if (id == null || !selector) return;
   setStatus("Cloning selection…");
   try {
-    const result = await call("clone_region", {
-      sandbox_name: window.__browserSandbox, page_id: pageId, selector
-    });
+    const result = await call("clone_region", { sandbox_name: window.__browserSandbox, page_id: id, selector });
     show(getStructured(result) ?? result);
     setStatus("Region cloned", "ok");
   } catch (error) {
@@ -145,13 +211,11 @@ async function cloneRegion() {
 }
 
 async function clonePage() {
-  const pageId = Number(pageInput.value);
-  if (!Number.isInteger(pageId)) return;
+  const id = pageId();
+  if (id == null) return;
   setStatus("Cloning page…");
   try {
-    const result = await call("clone_page", {
-      sandbox_name: window.__browserSandbox, page_id: pageId
-    });
+    const result = await call("clone_page", { sandbox_name: window.__browserSandbox, page_id: id });
     show(getStructured(result) ?? result);
     setStatus("Page cloned", "ok");
   } catch (error) {
@@ -159,6 +223,100 @@ async function clonePage() {
     show(error.message || String(error));
   }
 }
+
+function sendInput(name, args) {
+  const id = pageId();
+  if (id == null) return inputChain;
+  inputChain = inputChain.then(async () => {
+    await call(name, { sandbox_name: window.__browserSandbox, page_id: id, ...args });
+  }).catch((error) => {
+    setStatus(error.message || String(error), "error");
+  });
+  return inputChain;
+}
+
+function queueMove(point) {
+  pendingMove = point;
+  if (moveTimer) return;
+  moveTimer = setTimeout(async () => {
+    moveTimer = null;
+    const next = pendingMove;
+    pendingMove = null;
+    if (next) await sendInput("browser_move", next);
+    if (pendingMove) queueMove(pendingMove);
+  }, 16);
+}
+
+viewport.addEventListener("pointerdown", async (event) => {
+  viewport.focus();
+  const point = viewportPoint(event);
+  pointer = { ...point, clientX: event.clientX, clientY: event.clientY, moved: false };
+  viewport.setPointerCapture?.(event.pointerId);
+  queueMove(point);
+});
+
+viewport.addEventListener("pointermove", async (event) => {
+  if (!pointer) return;
+  const dx = event.clientX - pointer.clientX;
+  const dy = event.clientY - pointer.clientY;
+  if (Math.hypot(dx, dy) > 4) pointer.moved = true;
+  const now = performance.now();
+  if (now - moveAt > 60) {
+    moveAt = now;
+    queueMove(viewportPoint(event));
+  }
+});
+
+viewport.addEventListener("pointerup", async (event) => {
+  if (!pointer) return;
+  const point = viewportPoint(event);
+  const start = pointer;
+  pointer = null;
+  if (start.moved) {
+    await sendInput("browser_drag", {
+      from_x: start.x, from_y: start.y, to_x: point.x, to_y: point.y, steps: 8,
+    });
+  } else {
+    await sendInput("browser_click", { x: point.x, y: point.y });
+  }
+});
+
+viewport.addEventListener("pointercancel", () => { pointer = null; });
+
+viewport.addEventListener("wheel", (event) => {
+  event.preventDefault();
+  const point = viewportPoint(event);
+  wheelDeltaX += event.deltaX;
+  wheelDeltaY += event.deltaY;
+  wheelPoint = point;
+  if (wheelTimer) return;
+  wheelTimer = setTimeout(async () => {
+    const deltaX = wheelDeltaX;
+    const deltaY = wheelDeltaY;
+    const currentPoint = wheelPoint;
+    wheelDeltaX = 0;
+    wheelDeltaY = 0;
+    wheelTimer = null;
+    await sendInput("browser_scroll", {
+      x: currentPoint.x, y: currentPoint.y, delta_x: deltaX, delta_y: deltaY,
+    });
+  }, 30);
+}, { passive: false });
+
+viewport.addEventListener("keydown", async (event) => {
+  event.preventDefault();
+  const modifiers = [];
+  if (event.ctrlKey) modifiers.push("Control");
+  if (event.shiftKey) modifiers.push("Shift");
+  if (event.altKey) modifiers.push("Alt");
+  if (event.metaKey) modifiers.push("Meta");
+  const printable = event.key.length === 1 && !event.ctrlKey && !event.altKey && !event.metaKey;
+  if (printable) {
+    await sendInput("browser_type", { text: event.key });
+  } else {
+    await sendInput("browser_key", { key: [...modifiers, event.key].join("+") });
+  }
+});
 
 app.ontoolresult = (result) => {
   const data = getStructured(result);
