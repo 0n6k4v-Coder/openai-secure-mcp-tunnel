@@ -171,7 +171,7 @@ Let's apply these solutions directly to the codebase in the sandbox using Projec
 ```
 
 ```text
-Create unit tests and integration tests for the features you've implemented.
+Create or update unit tests and integration tests for the features you've implemented.
 ```
 
 ```text

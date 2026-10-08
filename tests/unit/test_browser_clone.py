@@ -286,8 +286,80 @@ def test_viewport_start_validates_dimensions_and_quality():
         browser_service.viewport_start("sandbox-1", 1, quality=10)
 
 
+def test_viewport_target_resolution_matches_logical_page(monkeypatch):
+    logical_pages = {
+        "pages": [
+            {"id": 1, "url": "about:blank", "title": ""},
+            {"id": 2, "url": "https://example.com/", "title": "Example"},
+            {"id": 3, "url": "https://example.com/", "title": "Example"},
+        ]
+    }
+    targets = [
+        {"type": "page", "url": "https://example.com/", "title": "Example", "webSocketDebuggerUrl": "ws://127.0.0.1:9222/devtools/page/second"},
+        {"type": "page", "url": "https://example.com/", "title": "Example", "webSocketDebuggerUrl": "ws://127.0.0.1:9222/devtools/page/first"},
+        {"type": "page", "url": "https://other.example/", "title": "Other", "webSocketDebuggerUrl": "ws://127.0.0.1:9222/devtools/page/other"},
+    ]
+    monkeypatch.setattr(browser_service, "_run", lambda *args: logical_pages)
+    monkeypatch.setattr(
+        browser_service,
+        "execute_sandbox_argv",
+        lambda *args, **kwargs: {"return_code": 0, "stdout": __import__("json").dumps(targets), "stderr": ""},
+    )
+    assert browser_service._resolve_page_websocket("sandbox-1", 3).endswith("/second")
+
+
+def test_viewport_start_rematerializes_input_helper_after_sandbox_recreation(monkeypatch):
+    calls = []
+    browser_service._CDP_INPUT_READY.add("sandbox-1")
+    monkeypatch.setattr(browser_service, "_resolve_page_websocket", lambda *args: "ws://127.0.0.1:9222/devtools/page/dummy")
+    def fake_argv(sandbox, argv, timeout_seconds):
+        calls.append((sandbox, argv, timeout_seconds))
+        return {"return_code": 0, "stdout": "", "stderr": ""}
+    monkeypatch.setattr(browser_service, "execute_sandbox_argv", fake_argv)
+    browser_service.viewport_start("sandbox-1", 3)
+    helper_write = [c for c in calls if "base64 -d" in " ".join(c[1])]
+    assert helper_write, "viewport_start must re-materialize the input helper"
+
+
+def test_viewport_start_always_refreshes_helper_even_when_cache_is_set(monkeypatch):
+    calls = []
+    browser_service._CDP_INPUT_READY.add("sandbox-1")
+    monkeypatch.setattr(browser_service, "_resolve_page_websocket", lambda *args: "ws://127.0.0.1:9222/devtools/page/dummy")
+
+    def fake_argv(sandbox, argv, timeout_seconds):
+        calls.append((sandbox, argv, timeout_seconds))
+        return {"return_code": 0, "stdout": "", "stderr": ""}
+
+    monkeypatch.setattr(browser_service, "execute_sandbox_argv", fake_argv)
+    browser_service.viewport_start("sandbox-1", 3)
+
+    assert any("base64 -d" in " ".join(call[1]) for call in calls)
+
+
+def test_browser_scroll_uses_persistent_relay(monkeypatch):
+    sends = []
+    sandbox, page_id = "sandbox-1", 7
+    browser_service._CDP_INPUT_SOCKET_READY.add((sandbox, page_id))
+    monkeypatch.setattr(browser_service, "_ensure_cdp_input", lambda *_args, **_kwargs: None)
+    monkeypatch.setattr(
+        browser_service,
+        "_run_node_script",
+        lambda *args, **kwargs: sends.append(args) or {"return_code": 0, "stdout": "", "stderr": ""},
+    )
+
+    result = browser_service.browser_scroll(sandbox, page_id, 0, 800, x=100, y=200)
+
+    assert result["page_id"] == page_id
+    assert len(sends) == 1
+    assert sends[0][1] == browser_service._CDP_INPUT_PATH
+    assert sends[0][2][1] == "scroll"
+    assert '"deltaX":0' in sends[0][2][2]
+    assert '"deltaY":800' in sends[0][2][2]
+
+
 def test_viewport_start_launches_persistent_cdp_relay(monkeypatch):
     calls = []
+    monkeypatch.setattr(browser_service, "_resolve_page_websocket", lambda *args: "ws://127.0.0.1:9222/devtools/page/dummy")
 
     def fake_argv(sandbox, argv, timeout_seconds):
         calls.append((sandbox, argv, timeout_seconds))
@@ -301,8 +373,8 @@ def test_viewport_start_launches_persistent_cdp_relay(monkeypatch):
     assert "mcp-browser-screencast-relay.js" in joined
     assert "mcp-browser-input-3.sock" in joined
     assert "Page.startScreencast" in browser_service._CDP_RELAY_SCRIPT
-    assert "everyNthFrame: 4" in browser_service._CDP_RELAY_SCRIPT
-    assert "maxFramesInFlight: 1" in browser_service._CDP_RELAY_SCRIPT
+    assert "everyNthFrame: 1" in browser_service._CDP_RELAY_SCRIPT
+    assert "maxFramesInFlight: 2" in browser_service._CDP_RELAY_SCRIPT
     assert "net.createServer" in browser_service._CDP_RELAY_SCRIPT
     assert "inputSocketPath" in browser_service._CDP_RELAY_SCRIPT
     assert ("sandbox-1", 3) in browser_service._CDP_INPUT_SOCKET_READY
@@ -433,8 +505,8 @@ def test_cdp_relay_script_has_atomic_frame_writes_and_backpressure():
     assert 'outputPath + ".tmp"' in script
     assert "fs.renameSync(tempFramePath, outputPath)" in script
     assert "Page.screencastFrameAck" in script
-    assert "maxFramesInFlight: 1" in script
-    assert "everyNthFrame: 4" in script
+    assert "maxFramesInFlight: 2" in script
+    assert "everyNthFrame: 1" in script
 
 
 def test_cdp_input_client_is_unix_socket_based():
@@ -442,6 +514,36 @@ def test_cdp_input_client_is_unix_socket_based():
     assert 'require("net")' in script
     assert "net.createConnection(socketPath)" in script
     assert "socket.write(JSON.stringify({operation, payload: JSON.parse(payload)}) + \"\\n\")" in script
+
+
+def test_cdp_relay_input_path_is_fire_and_forget():
+    script = browser_service._CDP_RELAY_SCRIPT
+    assert "const cdpFire = (method, params)" in script
+    assert 'operation === "pointerDown"' in script
+    assert 'operation === "pointerUp"' in script
+    assert 'operation === "move"' in script and "buttons: Number(payload.buttons || 0)" in script
+
+
+def test_browser_pointer_lifecycle_uses_persistent_relay(monkeypatch):
+    sends = []
+    browser_service._CDP_INPUT_SOCKET_READY.add(("sandbox-1", 9))
+    monkeypatch.setattr(browser_service, "_ensure_cdp_input", lambda *_args, **_kwargs: None)
+    monkeypatch.setattr(
+        browser_service,
+        "_run_node_script",
+        lambda *args, **kwargs: sends.append(args) or {"return_code": 0, "stdout": "", "stderr": ""},
+    )
+    browser_service.browser_pointer_down("sandbox-1", 9, 10, 20)
+    browser_service.browser_move("sandbox-1", 9, 20, 30, button_name="left", buttons=1)
+    browser_service.browser_pointer_up("sandbox-1", 9, 20, 30)
+    assert [item[2][1] for item in sends] == ["pointerDown", "move", "pointerUp"]
+
+
+def test_browser_move_validates_pressed_button_state():
+    with pytest.raises(browser_service.BrowserError):
+        browser_service.browser_move("sandbox-1", 1, 0, 0, button_name="bogus")
+    with pytest.raises(browser_service.BrowserError):
+        browser_service.browser_move("sandbox-1", 1, 0, 0, buttons=8)
 
 
 def test_browser_drag_validates_step_count():

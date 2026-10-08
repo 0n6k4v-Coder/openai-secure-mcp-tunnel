@@ -478,6 +478,11 @@ Browser live viewport functionality is exposed through MCP tools rather than a d
 | CLI-BROWSER-009 | Input relay reuse | Repeated click/move/scroll/type/key operations reuse the page-scoped relay and Unix socket | ⚪ Not implemented |
 | CLI-BROWSER-010 | Relay recovery | A failed persistent relay is detected and restarted without changing the target page | ⚪ Not implemented |
 | CLI-BROWSER-011 | Input/frame load stability | Sustained browser input does not cause unbounded sandbox command-process growth or viewport starvation | ⚪ Not implemented |
+| CLI-BROWSER-012 | Scroll relay helper recreation | After browser sandbox/relay recreation, the input helper is re-materialized despite stale in-memory readiness state | ⚪ Not implemented |
+| CLI-BROWSER-013 | Repeated scroll relay stability | Consecutive wheel operations reuse the page-scoped relay and preserve browser/page responsiveness | ⚪ Not implemented |
+| CLI-BROWSER-014 | Low-latency CDP input dispatch | Pointer, wheel, and keyboard input is dispatched through the persistent relay without per-event CDP response waits | ⚪ Not implemented |
+| CLI-BROWSER-015 | Pointer press/release lifecycle | Pointer down → move → up preserves pressed-button state and supports real drag semantics | ⚪ Not implemented |
+| CLI-BROWSER-016 | Logical page target resolution | Viewport relay attaches to the correct Chrome target even when DevTools target ordering differs from logical MCP page ordering | ⚪ Not implemented |
 | CLI-CLONE-001 | Clone preview prerequisite | Browser page can be opened and previewed without unintended file writes | ⚪ Not implemented |
 | CLI-CLONE-002 | Clone selected region | Valid selector produces a sanitized `index.html` | ⚪ Not implemented |
 | CLI-CLONE-003 | Clone full page | Full page produces the expected sanitized artifact | ⚪ Not implemented |

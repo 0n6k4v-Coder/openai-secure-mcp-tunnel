@@ -10,6 +10,8 @@ from local_mcp_server.browser.service import (
     browser_evaluate,
     browser_key,
     browser_move,
+    browser_pointer_down,
+    browser_pointer_up,
     browser_scroll,
     browser_type,
     execute_sandbox_argv,
@@ -131,3 +133,53 @@ def test_live_scroll_updates_shared_page_state(live_browser):
 
     assert before["result"] == 0
     assert after["result"] > 0
+
+    # The same page-scoped relay must remain usable for another wheel event.
+    browser_scroll(sandbox, page_id, 0, 500, x=100, y=100)
+    after_second = browser_evaluate(sandbox, page_id, "() => window.scrollY")
+    assert after_second["result"] >= after["result"]
+
+    socket = f"/tmp/mcp-browser-input-{page_id}.sock"
+    socket_check = execute_sandbox_argv(
+        sandbox,
+        ["sh", "-c", f"test -S {socket}"],
+        timeout_seconds=5,
+    )
+    assert socket_check["return_code"] == 0
+
+
+def test_live_pointer_lifecycle_keeps_drag_state(live_browser):
+    sandbox, page_id = live_browser
+
+    browser_evaluate(
+        sandbox,
+        page_id,
+        """
+        () => {
+          document.body.innerHTML = `
+            <div id="drag-source" style="position:absolute;left:20px;top:20px;width:80px;height:80px;background:#ccc"></div>
+            <div id="drag-target" style="position:absolute;left:240px;top:20px;width:100px;height:100px;border:2px solid #000"></div>
+          `;
+          window.dragState = {down: 0, moves: 0, up: 0};
+          const source = document.querySelector('#drag-source');
+          source.addEventListener('pointerdown', () => window.dragState.down++);
+          source.addEventListener('pointermove', () => window.dragState.moves++);
+          source.addEventListener('pointerup', () => window.dragState.up++);
+          return true;
+        }
+        """,
+    )
+
+    browser_pointer_down(sandbox, page_id, 50, 50)
+    for x in range(70, 231, 20):
+        browser_move(sandbox, page_id, x, 60, button_name="left", buttons=1)
+    browser_pointer_up(sandbox, page_id, 240, 60)
+
+    state = browser_evaluate(sandbox, page_id, "() => window.dragState")
+    assert state["result"]["down"] == 1
+    assert state["result"]["up"] == 1
+    assert state["result"]["moves"] >= 1
+
+    frame, mime = wait_for_frame(sandbox, page_id)
+    assert frame
+    assert mime == "image/jpeg"

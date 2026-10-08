@@ -16,10 +16,9 @@ let pointer = null;
 let moveAt = 0;
 let pendingMove = null;
 let moveTimer = null;
-let wheelTimer = null;
-let wheelDeltaX = 0;
-let wheelDeltaY = 0;
-let wheelPoint = { x: 1, y: 1 };
+let moveBusy = false;
+let pendingWheel = null;
+let wheelBusy = false;
 
 function setStatus(message, kind = "") {
   status.textContent = message;
@@ -97,7 +96,7 @@ async function pollFrame() {
 function startPolling() {
   stopPolling();
   pollFrame();
-  pollTimer = setInterval(pollFrame, 500);
+  pollTimer = setInterval(pollFrame, 90);
 }
 
 async function startViewport() {
@@ -108,7 +107,7 @@ async function startViewport() {
     page_id: id,
     width: 1280,
     height: 800,
-    quality: 70,
+    quality: 62,
   });
   startPolling();
 }
@@ -122,7 +121,9 @@ async function openUrl() {
     const data = getStructured(result);
     show(data);
     const nested = data && data.result;
-    const id = (nested && (nested.pageId ?? nested.page_id)) ?? (data && data.page_id);
+    const pages = (nested && Array.isArray(nested.pages)) ? nested.pages : (Array.isArray(data?.pages) ? data.pages : []);
+    const selectedPage = pages.find((p) => p && p.selected) || (pages.length ? pages[pages.length - 1] : null);
+    const id = (data && data.page_id) ?? (nested && (nested.pageId ?? nested.page_id)) ?? (selectedPage && selectedPage.id);
     if (Number.isInteger(id)) pageInput.value = String(id);
     if (data?.sandbox_name) window.__browserSandbox = data.sandbox_name;
     await startViewport();
@@ -235,72 +236,104 @@ function sendInput(name, args) {
   return inputChain;
 }
 
+async function sendRealtimeInput(name, args) {
+  const id = pageId();
+  if (id == null) return;
+  try {
+    await call(name, { sandbox_name: window.__browserSandbox, page_id: id, ...args });
+  } catch (error) {
+    setStatus(error.message || String(error), "error");
+  }
+}
+
 function queueMove(point) {
   pendingMove = point;
-  if (moveTimer) return;
-  moveTimer = setTimeout(async () => {
-    moveTimer = null;
-    const next = pendingMove;
-    pendingMove = null;
-    if (next) await sendInput("browser_move", next);
+  if (moveTimer || moveBusy) return;
+  moveTimer = setTimeout(flushMove, 8);
+}
+
+async function flushMove() {
+  moveTimer = null;
+  if (moveBusy || !pendingMove) return;
+  const point = pendingMove;
+  pendingMove = null;
+  moveBusy = true;
+  try {
+    await sendRealtimeInput("browser_move", { ...point, button_name: pointer ? "left" : "none", buttons: pointer ? 1 : 0 });
+  } finally {
+    moveBusy = false;
     if (pendingMove) queueMove(pendingMove);
-  }, 16);
+  }
+}
+
+function queueWheel(point, deltaX, deltaY) {
+  if (pendingWheel) {
+    pendingWheel.deltaX += deltaX;
+    pendingWheel.deltaY += deltaY;
+    pendingWheel.x = point.x;
+    pendingWheel.y = point.y;
+  } else {
+    pendingWheel = { x: point.x, y: point.y, deltaX, deltaY };
+  }
+  if (wheelBusy) return;
+  flushWheel();
+}
+
+async function flushWheel() {
+  if (wheelBusy || !pendingWheel) return;
+  const wheel = pendingWheel;
+  pendingWheel = null;
+  wheelBusy = true;
+  try {
+    await sendRealtimeInput("browser_scroll", {
+      x: wheel.x, y: wheel.y, delta_x: wheel.deltaX, delta_y: wheel.deltaY,
+    });
+  } finally {
+    wheelBusy = false;
+    if (pendingWheel) queueMicrotask(flushWheel);
+  }
 }
 
 viewport.addEventListener("pointerdown", async (event) => {
   viewport.focus();
   const point = viewportPoint(event);
-  pointer = { ...point, clientX: event.clientX, clientY: event.clientY, moved: false };
+  pointer = { ...point, clientX: event.clientX, clientY: event.clientY, moved: false, pointerId: event.pointerId };
   viewport.setPointerCapture?.(event.pointerId);
-  queueMove(point);
+  await sendInput("browser_pointer_down", { x: point.x, y: point.y });
 });
 
-viewport.addEventListener("pointermove", async (event) => {
-  if (!pointer) return;
-  const dx = event.clientX - pointer.clientX;
-  const dy = event.clientY - pointer.clientY;
-  if (Math.hypot(dx, dy) > 4) pointer.moved = true;
+viewport.addEventListener("pointermove", (event) => {
+  const point = viewportPoint(event);
+  if (pointer) {
+    const dx = event.clientX - pointer.clientX;
+    const dy = event.clientY - pointer.clientY;
+    if (Math.hypot(dx, dy) > 4) pointer.moved = true;
+  }
   const now = performance.now();
-  if (now - moveAt > 60) {
+  if (now - moveAt > 12) {
     moveAt = now;
-    queueMove(viewportPoint(event));
+    queueMove(point);
   }
 });
 
 viewport.addEventListener("pointerup", async (event) => {
-  if (!pointer) return;
   const point = viewportPoint(event);
   const start = pointer;
   pointer = null;
-  if (start.moved) {
-    await sendInput("browser_drag", {
-      from_x: start.x, from_y: start.y, to_x: point.x, to_y: point.y, steps: 8,
-    });
-  } else {
-    await sendInput("browser_click", { x: point.x, y: point.y });
-  }
+  await sendInput("browser_pointer_up", { x: point.x, y: point.y });
+  if (start?.pointerId != null) viewport.releasePointerCapture?.(start.pointerId);
 });
 
-viewport.addEventListener("pointercancel", () => { pointer = null; });
+viewport.addEventListener("pointercancel", async (event) => {
+  const point = viewportPoint(event);
+  pointer = null;
+  await sendInput("browser_pointer_up", { x: point.x, y: point.y });
+});
 
 viewport.addEventListener("wheel", (event) => {
   event.preventDefault();
   const point = viewportPoint(event);
-  wheelDeltaX += event.deltaX;
-  wheelDeltaY += event.deltaY;
-  wheelPoint = point;
-  if (wheelTimer) return;
-  wheelTimer = setTimeout(async () => {
-    const deltaX = wheelDeltaX;
-    const deltaY = wheelDeltaY;
-    const currentPoint = wheelPoint;
-    wheelDeltaX = 0;
-    wheelDeltaY = 0;
-    wheelTimer = null;
-    await sendInput("browser_scroll", {
-      x: currentPoint.x, y: currentPoint.y, delta_x: deltaX, delta_y: deltaY,
-    });
-  }, 30);
+  queueWheel(point, event.deltaX, event.deltaY);
 }, { passive: false });
 
 viewport.addEventListener("keydown", async (event) => {

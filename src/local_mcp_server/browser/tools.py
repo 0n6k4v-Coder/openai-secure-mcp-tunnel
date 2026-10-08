@@ -10,6 +10,8 @@ from .service import (
     browser_drag as browser_drag_impl,
     browser_key as browser_key_impl,
     browser_move as browser_move_impl,
+    browser_pointer_down as browser_pointer_down_impl,
+    browser_pointer_up as browser_pointer_up_impl,
     browser_scroll as browser_scroll_impl,
     browser_type as browser_type_impl,
     evaluate as evaluate_impl,
@@ -81,9 +83,19 @@ def register_tools(mcp: MCPServer) -> None:
         return browser_click_impl(sandbox_name, page_id, x, y, button_name=button_name, double=double)
 
     @mcp.tool(annotations=ToolAnnotations(readOnlyHint=False, destructiveHint=False, idempotentHint=False, openWorldHint=True))
-    def browser_move(sandbox_name: str, page_id: int, x: float, y: float) -> dict[str, object]:
-        """Move the mouse in the shared Chrome page."""
-        return browser_move_impl(sandbox_name, page_id, x, y)
+    def browser_move(sandbox_name: str, page_id: int, x: float, y: float, button_name: str = "none", buttons: int = 0) -> dict[str, object]:
+        """Move the mouse in the shared Chrome page, optionally preserving a pressed-button state."""
+        return browser_move_impl(sandbox_name, page_id, x, y, button_name=button_name, buttons=buttons)
+
+    @mcp.tool(annotations=ToolAnnotations(readOnlyHint=False, destructiveHint=False, idempotentHint=False, openWorldHint=True))
+    def browser_pointer_down(sandbox_name: str, page_id: int, x: float, y: float, button_name: str = "left") -> dict[str, object]:
+        """Press and hold a mouse button in the shared Chrome page."""
+        return browser_pointer_down_impl(sandbox_name, page_id, x, y, button_name=button_name)
+
+    @mcp.tool(annotations=ToolAnnotations(readOnlyHint=False, destructiveHint=False, idempotentHint=False, openWorldHint=True))
+    def browser_pointer_up(sandbox_name: str, page_id: int, x: float, y: float, button_name: str = "left") -> dict[str, object]:
+        """Release a mouse button in the shared Chrome page."""
+        return browser_pointer_up_impl(sandbox_name, page_id, x, y, button_name=button_name)
 
     @mcp.tool(annotations=ToolAnnotations(readOnlyHint=False, destructiveHint=False, idempotentHint=False, openWorldHint=True))
     def browser_scroll(sandbox_name: str, page_id: int, delta_x: float, delta_y: float, x: float = 1, y: float = 1) -> dict[str, object]:

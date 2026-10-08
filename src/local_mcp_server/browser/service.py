@@ -172,7 +172,17 @@ def open_page(sandbox_name: str, url: str) -> dict[str, object]:
     url = validate_url(url)
     _ensure_browser_endpoint_allowed(sandbox_name, url)
     result = _run(sandbox_name, "new_page", [url])
-    return {"url": url, "result": result}
+    page_id = None
+    if isinstance(result, dict):
+        pages = result.get("pages")
+        if isinstance(pages, list) and pages:
+            for p in pages:
+                if isinstance(p, dict) and p.get("selected") and isinstance(p.get("id"), int):
+                    page_id = p["id"]
+                    break
+            if page_id is None and isinstance(pages[-1], dict) and isinstance(pages[-1].get("id"), int):
+                page_id = pages[-1]["id"]
+    return {"url": url, "result": result, "page_id": page_id}
 
 
 def list_pages(sandbox_name: str) -> object:
@@ -336,15 +346,7 @@ const width = Number(process.argv[5] || 1280);
 const height = Number(process.argv[6] || 800);
 const quality = Number(process.argv[7] || 70);
 const inputSocketPath = process.argv[8];
-
-async function pageTarget() {
-  const response = await fetch("http://127.0.0.1:9222/json/list");
-  const targets = await response.json();
-  const pages = targets.filter((target) => target.type === "page");
-  const target = pages[pageId - 1];
-  if (!target?.webSocketDebuggerUrl) throw new Error("Unable to resolve browser page " + pageId);
-  return target.webSocketDebuggerUrl;
-}
+const websocketUrl = process.argv[9];
 
 function modifiers(payload) {
   let value = 0;
@@ -363,7 +365,7 @@ async function main() {
   fs.rmSync(inputSocketPath, {force: true});
   fs.writeFileSync(metadataPath, JSON.stringify({state: "starting"}));
 
-  const ws = new WebSocket(await pageTarget());
+  const ws = new WebSocket(websocketUrl);
   let commandId = 0;
   const pending = new Map();
   let wsReadyResolve;
@@ -390,21 +392,33 @@ async function main() {
     }, 5000);
   });
 
+  // Input is the latency-sensitive path. CDP preserves WebSocket command order,
+  // so dispatch events do not need a request/response round-trip. Waiting for
+  // every mouse/wheel/key event was the main source of interaction lag.
+  const cdpFire = (method, params) => {
+    ws.send(JSON.stringify({id: ++commandId, method, params}));
+  };
+
   const executeInput = async (operation, payload) => {
     await wsReady;
     const x = Number(payload.x || 0);
     const y = Number(payload.y || 0);
     if (operation === "click") {
       const params = {x, y, button: button(payload.button), clickCount: payload.double ? 2 : 1, modifiers: modifiers(payload)};
-      await cdp("Input.dispatchMouseEvent", {type: "mouseMoved", ...params, button: "none"});
-      await cdp("Input.dispatchMouseEvent", {type: "mousePressed", ...params});
-      await cdp("Input.dispatchMouseEvent", {type: "mouseReleased", ...params});
+      cdpFire("Input.dispatchMouseEvent", {type: "mouseMoved", ...params, button: "none"});
+      cdpFire("Input.dispatchMouseEvent", {type: "mousePressed", ...params});
+      cdpFire("Input.dispatchMouseEvent", {type: "mouseReleased", ...params});
     } else if (operation === "move") {
-      await cdp("Input.dispatchMouseEvent", {type: "mouseMoved", x, y, modifiers: modifiers(payload), button: "none"});
+      cdpFire("Input.dispatchMouseEvent", {type: "mouseMoved", x, y, modifiers: modifiers(payload), button: button(payload.button), buttons: Number(payload.buttons || 0)});
+    } else if (operation === "pointerDown") {
+      cdpFire("Input.dispatchMouseEvent", {type: "mouseMoved", x, y, modifiers: modifiers(payload), button: "none"});
+      cdpFire("Input.dispatchMouseEvent", {type: "mousePressed", x, y, button: button(payload.button), clickCount: 1, modifiers: modifiers(payload)});
+    } else if (operation === "pointerUp") {
+      cdpFire("Input.dispatchMouseEvent", {type: "mouseReleased", x, y, button: button(payload.button), clickCount: 1, modifiers: modifiers(payload)});
     } else if (operation === "scroll") {
-      await cdp("Input.dispatchMouseEvent", {type: "mouseWheel", x, y, deltaX: Number(payload.deltaX || 0), deltaY: Number(payload.deltaY || 0), modifiers: modifiers(payload)});
+      cdpFire("Input.dispatchMouseEvent", {type: "mouseWheel", x, y, deltaX: Number(payload.deltaX || 0), deltaY: Number(payload.deltaY || 0), modifiers: modifiers(payload)});
     } else if (operation === "type") {
-      await cdp("Input.insertText", {text: String(payload.text || "")});
+      cdpFire("Input.insertText", {text: String(payload.text || "")});
     } else if (operation === "key") {
       const key = String(payload.key || "");
       const keyMap = {
@@ -423,22 +437,22 @@ async function main() {
       const flags = {ctrl: parts.includes("Control") || parts.includes("Ctrl"), shift: parts.includes("Shift"), alt: parts.includes("Alt"), meta: parts.includes("Meta") || parts.includes("Command") || parts.includes("Cmd")};
       const base = keyMap[mainKey] || {key: mainKey, code: mainKey.length === 1 ? "Key" + mainKey.toUpperCase() : mainKey};
       const params = {...base, modifiers: modifiers(flags), autoRepeat: false};
-      await cdp("Input.dispatchKeyEvent", {type: "keyDown", ...params});
+      cdpFire("Input.dispatchKeyEvent", {type: "keyDown", ...params});
       if (!flags.ctrl && !flags.alt && !flags.meta && mainKey.length === 1) {
-        await cdp("Input.dispatchKeyEvent", {type: "char", text: mainKey, key: mainKey, modifiers: modifiers(flags)});
+        cdpFire("Input.dispatchKeyEvent", {type: "char", text: mainKey, key: mainKey, modifiers: modifiers(flags)});
       }
-      await cdp("Input.dispatchKeyEvent", {type: "keyUp", ...params});
+      cdpFire("Input.dispatchKeyEvent", {type: "keyUp", ...params});
     } else if (operation === "drag") {
       const fromX = Number(payload.fromX), fromY = Number(payload.fromY), toX = Number(payload.toX), toY = Number(payload.toY);
       const b = button(payload.button);
-      await cdp("Input.dispatchMouseEvent", {type: "mouseMoved", x: fromX, y: fromY, button: "none"});
-      await cdp("Input.dispatchMouseEvent", {type: "mousePressed", x: fromX, y: fromY, button: b, clickCount: 1});
+      cdpFire("Input.dispatchMouseEvent", {type: "mouseMoved", x: fromX, y: fromY, button: "none"});
+      cdpFire("Input.dispatchMouseEvent", {type: "mousePressed", x: fromX, y: fromY, button: b, clickCount: 1});
       const steps = Math.max(2, Number(payload.steps || 8));
       for (let i = 1; i <= steps; i++) {
         const t = i / steps;
-        await cdp("Input.dispatchMouseEvent", {type: "mouseMoved", x: fromX + (toX - fromX) * t, y: fromY + (toY - fromY) * t, button: b, buttons: b === "left" ? 1 : b === "middle" ? 4 : 2});
+        cdpFire("Input.dispatchMouseEvent", {type: "mouseMoved", x: fromX + (toX - fromX) * t, y: fromY + (toY - fromY) * t, button: b, buttons: b === "left" ? 1 : b === "middle" ? 4 : 2});
       }
-      await cdp("Input.dispatchMouseEvent", {type: "mouseReleased", x: toX, y: toY, button: b, clickCount: 1});
+      cdpFire("Input.dispatchMouseEvent", {type: "mouseReleased", x: toX, y: toY, button: b, clickCount: 1});
     } else {
       throw new Error("Unknown browser input operation: " + operation);
     }
@@ -490,8 +504,8 @@ async function main() {
       quality,
       maxWidth: width,
       maxHeight: height,
-      everyNthFrame: 4,
-      maxFramesInFlight: 1,
+      everyNthFrame: 1,
+      maxFramesInFlight: 2,
       sendLastFrame: true,
     });
     wsReadyResolve();
@@ -585,9 +599,9 @@ connect();
 def _ensure_cdp_relay(sandbox_name: str) -> None:
     _write_sandbox_file(sandbox_name, _CDP_RELAY_PATH, _CDP_RELAY_SCRIPT)
 
-def _ensure_cdp_input(sandbox_name: str) -> None:
+def _ensure_cdp_input(sandbox_name: str, *, force: bool = False) -> None:
     sandbox_name = validate_name(sandbox_name)
-    if sandbox_name in _CDP_INPUT_READY:
+    if not force and sandbox_name in _CDP_INPUT_READY:
         return
     _write_sandbox_file(sandbox_name, _CDP_INPUT_PATH, _CDP_INPUT_SCRIPT)
     _CDP_INPUT_READY.add(sandbox_name)
@@ -641,6 +655,65 @@ def _viewport_paths(page_id: int) -> tuple[str, str, str, str]:
         f"/tmp/mcp-browser-screencast-{token}.log",
     )
 
+def _resolve_page_websocket(sandbox_name: str, page_id: int) -> str:
+    """Resolve the stable CDP target for the browser tool's logical page id."""
+    page_id = validate_page_id(page_id)
+    listed = _run(sandbox_name, "list_pages")
+    pages = listed.get("pages") if isinstance(listed, dict) else None
+    if not isinstance(pages, list) or not 1 <= page_id <= len(pages):
+        raise BrowserError(f"Unable to resolve browser page {page_id}.")
+    logical = pages[page_id - 1]
+    if not isinstance(logical, dict):
+        raise BrowserError(f"Unable to resolve browser page {page_id}.")
+    url = logical.get("url")
+    title = logical.get("title")
+    if not isinstance(url, str) or not isinstance(title, str):
+        raise BrowserError(f"Unable to resolve browser page {page_id}.")
+
+    raw = execute_sandbox_argv(
+        validate_name(sandbox_name),
+        ["sh", "-c", "curl -fsS http://127.0.0.1:9222/json/list"],
+        timeout_seconds=5,
+    )
+    if int(raw.get("return_code", 1)) != 0:
+        raise BrowserError("Unable to query Chrome DevTools targets.")
+    try:
+        targets = json.loads(str(raw.get("stdout", "")))
+    except json.JSONDecodeError as exc:
+        raise BrowserError("Chrome DevTools returned invalid target metadata.") from exc
+
+    def _page_matches(item_url: str, item_title: str, target_url: str, target_title: str) -> bool:
+        if item_url != target_url:
+            return False
+        if item_title == target_title:
+            return True
+        if item_url == "about:blank" and target_title in ("", "about:blank"):
+            return True
+        return bool(item_title and target_title and (item_title.startswith(target_title) or target_title.startswith(item_title)))
+
+    # /json/list returns targets in reverse chronological order (newest first).
+    # Reverse it so matching order corresponds to creation order (same as list_pages).
+    candidates = [
+        target for target in reversed(targets)
+        if isinstance(target, dict) and target.get("type") == "page"
+    ]
+    occurrence = sum(
+        1 for item in pages[:page_id]
+        if isinstance(item, dict)
+        and _page_matches(url, title, str(item.get("url", "")), str(item.get("title", "")))
+    )
+    matches = [
+        target for target in candidates
+        if _page_matches(url, title, str(target.get("url", "")), str(target.get("title", "")))
+    ]
+    if occurrence < 1 or occurrence > len(matches):
+        raise BrowserError(f"Unable to resolve browser page {page_id}.")
+    websocket_url = matches[occurrence - 1].get("webSocketDebuggerUrl")
+    if not isinstance(websocket_url, str) or not websocket_url.startswith("ws://127.0.0.1:9222/"):
+        raise BrowserError("Chrome DevTools returned an invalid page websocket target.")
+    return websocket_url
+
+
 def viewport_start(sandbox_name: str, page_id: int, *, width: int = 1280, height: int = 800, quality: int = 70) -> dict[str, object]:
     page_id = validate_page_id(page_id)
     if not isinstance(width, int) or not 320 <= width <= _MAX_VIEWPORT_DIMENSION:
@@ -650,14 +723,17 @@ def viewport_start(sandbox_name: str, page_id: int, *, width: int = 1280, height
     if not isinstance(quality, int) or not 20 <= quality <= 90:
         raise BrowserError("quality must be an integer between 20 and 90.")
     sandbox_name = validate_name(sandbox_name)
-    _ensure_cdp_input(sandbox_name)
+    # Re-materialize the helper whenever a relay is (re)started. The sandbox
+    # can be recreated independently of this server process, so the in-memory
+    # readiness cache must not be trusted across relay lifecycles.
+    _ensure_cdp_input(sandbox_name, force=True)
     _ensure_cdp_relay(sandbox_name)
     output_path, metadata_path, pid_path, log_path = _viewport_paths(page_id)
     socket_path = _input_socket_path(page_id)
     execute_sandbox_argv(sandbox_name, ["sh", "-c", f"if test -f {pid_path}; then kill $(cat {pid_path}) 2>/dev/null || true; fi; rm -f {json.dumps(socket_path)}"], timeout_seconds=10)
     command = (
         f"nohup node {_CDP_RELAY_PATH} {page_id} {json.dumps(output_path)} {json.dumps(metadata_path)} "
-        f"{width} {height} {quality} {json.dumps(socket_path)} >{json.dumps(log_path)} 2>&1 & echo $! > {json.dumps(pid_path)}"
+        f"{width} {height} {quality} {json.dumps(socket_path)} {json.dumps(_resolve_page_websocket(sandbox_name, page_id))} >{json.dumps(log_path)} 2>&1 & echo $! > {json.dumps(pid_path)}"
     )
     result = execute_sandbox_argv(sandbox_name, ["sh", "-c", command], timeout_seconds=10)
     if int(result.get("return_code", 1)) != 0:
@@ -699,9 +775,32 @@ def browser_click(sandbox_name: str, page_id: int, x: float, y: float, *, button
     _run_cdp_input(sandbox_name, page_id, "click", {"x": _validate_coordinate(x, "x"), "y": _validate_coordinate(y, "y"), "button": button_name, "double": double})
     return {"page_id": validate_page_id(page_id), "x": x, "y": y, "button": button_name, "double": double}
 
-def browser_move(sandbox_name: str, page_id: int, x: float, y: float) -> dict[str, object]:
-    _run_cdp_input(sandbox_name, page_id, "move", {"x": _validate_coordinate(x, "x"), "y": _validate_coordinate(y, "y")})
-    return {"page_id": validate_page_id(page_id), "x": x, "y": y}
+def browser_move(sandbox_name: str, page_id: int, x: float, y: float, *, button_name: str = "none", buttons: int = 0) -> dict[str, object]:
+    if button_name not in {"none", "left", "middle", "right"}:
+        raise BrowserError("button_name must be none, left, middle, or right.")
+    if not isinstance(buttons, int) or buttons < 0 or buttons > 7:
+        raise BrowserError("buttons must be an integer between 0 and 7.")
+    _run_cdp_input(sandbox_name, page_id, "move", {
+        "x": _validate_coordinate(x, "x"), "y": _validate_coordinate(y, "y"),
+        "button": button_name, "buttons": buttons,
+    })
+    return {"page_id": validate_page_id(page_id), "x": x, "y": y, "button": button_name, "buttons": buttons}
+
+def browser_pointer_down(sandbox_name: str, page_id: int, x: float, y: float, *, button_name: str = "left") -> dict[str, object]:
+    if button_name not in {"left", "middle", "right"}:
+        raise BrowserError("button_name must be left, middle, or right.")
+    _run_cdp_input(sandbox_name, page_id, "pointerDown", {
+        "x": _validate_coordinate(x, "x"), "y": _validate_coordinate(y, "y"), "button": button_name,
+    })
+    return {"page_id": validate_page_id(page_id), "x": x, "y": y, "button": button_name, "state": "down"}
+
+def browser_pointer_up(sandbox_name: str, page_id: int, x: float, y: float, *, button_name: str = "left") -> dict[str, object]:
+    if button_name not in {"left", "middle", "right"}:
+        raise BrowserError("button_name must be left, middle, or right.")
+    _run_cdp_input(sandbox_name, page_id, "pointerUp", {
+        "x": _validate_coordinate(x, "x"), "y": _validate_coordinate(y, "y"), "button": button_name,
+    })
+    return {"page_id": validate_page_id(page_id), "x": x, "y": y, "button": button_name, "state": "up"}
 
 def browser_scroll(sandbox_name: str, page_id: int, delta_x: float, delta_y: float, *, x: float = 1, y: float = 1) -> dict[str, object]:
     _run_cdp_input(sandbox_name, page_id, "scroll", {"x": _validate_coordinate(x, "x"), "y": _validate_coordinate(y, "y"), "deltaX": delta_x, "deltaY": delta_y})
