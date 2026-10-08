@@ -249,7 +249,7 @@ async function sendRealtimeInput(name, args) {
 function queueMove(point) {
   pendingMove = point;
   if (moveTimer || moveBusy) return;
-  moveTimer = setTimeout(flushMove, 8);
+  moveTimer = setTimeout(flushMove, 60);
 }
 
 async function flushMove() {
@@ -286,33 +286,49 @@ async function flushWheel() {
   wheelBusy = true;
   try {
     await sendRealtimeInput("browser_scroll", {
-      x: wheel.x, y: wheel.y, delta_x: wheel.deltaX, delta_y: wheel.deltaY,
+      x: wheel.x, y: wheel.y, delta_x: Math.round(wheel.deltaX), delta_y: Math.round(wheel.deltaY),
     });
   } finally {
     wheelBusy = false;
-    if (pendingWheel) queueMicrotask(flushWheel);
+    if (pendingWheel) {
+      setTimeout(flushWheel, 20);
+    }
   }
 }
 
-viewport.addEventListener("pointerdown", async (event) => {
+viewport.addEventListener("pointerdown", (event) => {
   viewport.focus();
   const point = viewportPoint(event);
-  pointer = { ...point, clientX: event.clientX, clientY: event.clientY, moved: false, pointerId: event.pointerId };
+  pointer = { ...point, clientX: event.clientX, clientY: event.clientY, moved: false, pointerId: event.pointerId, sentDown: false };
   viewport.setPointerCapture?.(event.pointerId);
-  await sendInput("browser_pointer_down", { x: point.x, y: point.y });
 });
 
 viewport.addEventListener("pointermove", (event) => {
   const point = viewportPoint(event);
-  if (pointer) {
-    const dx = event.clientX - pointer.clientX;
-    const dy = event.clientY - pointer.clientY;
-    if (Math.hypot(dx, dy) > 4) pointer.moved = true;
+  if (!pointer) {
+    // When no button is held, throttle hover move to at least 150ms to keep relay free
+    const now = performance.now();
+    if (now - moveAt > 150) {
+      moveAt = now;
+      queueMove(point);
+    }
+    return;
   }
-  const now = performance.now();
-  if (now - moveAt > 12) {
-    moveAt = now;
-    queueMove(point);
+
+  const dx = event.clientX - pointer.clientX;
+  const dy = event.clientY - pointer.clientY;
+  if (!pointer.moved && Math.hypot(dx, dy) > 5) {
+    pointer.moved = true;
+    pointer.sentDown = true;
+    sendInput("browser_pointer_down", { x: pointer.x, y: pointer.y });
+  }
+
+  if (pointer.sentDown) {
+    const now = performance.now();
+    if (now - moveAt > 60) {
+      moveAt = now;
+      queueMove(point);
+    }
   }
 });
 
@@ -320,14 +336,27 @@ viewport.addEventListener("pointerup", async (event) => {
   const point = viewportPoint(event);
   const start = pointer;
   pointer = null;
-  await sendInput("browser_pointer_up", { x: point.x, y: point.y });
   if (start?.pointerId != null) viewport.releasePointerCapture?.(start.pointerId);
+
+  if (start && start.sentDown) {
+    await sendInput("browser_pointer_up", { x: point.x, y: point.y });
+  } else {
+    // Fast path: Atomic click (single roundtrip instead of pointer_down + pointer_up)
+    const clickPoint = start || point;
+    await sendInput("browser_click", { x: clickPoint.x, y: clickPoint.y, button_name: "left" });
+  }
+  // Schedule an immediate frame poll to show the effect of the click without waiting for next tick
+  setTimeout(pollFrame, 50);
 });
 
 viewport.addEventListener("pointercancel", async (event) => {
   const point = viewportPoint(event);
+  const start = pointer;
   pointer = null;
-  await sendInput("browser_pointer_up", { x: point.x, y: point.y });
+  if (start?.pointerId != null) viewport.releasePointerCapture?.(start.pointerId);
+  if (start?.sentDown) {
+    await sendInput("browser_pointer_up", { x: point.x, y: point.y });
+  }
 });
 
 viewport.addEventListener("wheel", (event) => {
