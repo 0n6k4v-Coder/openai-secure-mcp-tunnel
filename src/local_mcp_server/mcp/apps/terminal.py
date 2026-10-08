@@ -1,162 +1,181 @@
 from __future__ import annotations
 
-from mcp.server.apps import Apps
+import os
+from pathlib import Path
+
+from mcp.server.apps import Apps, ResourceCsp
+from mcp.types import ToolAnnotations
+
+from ...terminal.service import open_terminal
 
 TERMINAL_APP_URI = "ui://terminal/view"
+DEFAULT_TERMINAL_APP_DOMAIN = "https://terminal.openai-secure-mcp-tunnel.internal"
 
-TERMINAL_HTML = """<!DOCTYPE html>
+TERMINAL_BUNDLE = Path(__file__).with_name("terminal.js").read_text(encoding="utf-8")
+TERMINAL_CSS = Path(__file__).with_name("terminal.css").read_text(encoding="utf-8")
+
+TERMINAL_HTML = """<!doctype html>
 <html lang="en">
 <head>
   <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>Sandbox Live Terminal</title>
+  <style>{TERMINAL_CSS}</style>
   <style>
+    :root {
+      color-scheme: dark;
+    }
+
+    html,
     body {
+      width: 100%;
+      height: 100%;
       margin: 0;
-      padding: 12px;
-      background: #1e1e1e;
-      color: #cccccc;
-      font-family: Menlo, Monaco, "Courier New", monospace;
-      font-size: 13px;
+      padding: 0;
+      overflow: hidden;
+      background: #0b0f14;
     }
+
+    body {
+      display: flex;
+      flex-direction: column;
+      font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas,
+        "Liberation Mono", "Courier New", monospace;
+    }
+
     #header {
+      height: 34px;
+      min-height: 34px;
       display: flex;
-      justify-content: space-between;
       align-items: center;
-      padding-bottom: 8px;
-      border-bottom: 1px solid #333;
-      margin-bottom: 8px;
+      justify-content: space-between;
+      padding: 0 10px;
+      box-sizing: border-box;
+      border-bottom: 1px solid #26303a;
+      background: #111820;
+      color: #d7dee7;
+      font-size: 12px;
     }
-    .badge {
-      background: #007acc;
-      color: #fff;
-      padding: 2px 6px;
-      border-radius: 3px;
-      font-size: 11px;
-    }
-    #term-screen {
-      background: #000;
-      color: #0f0;
-      padding: 10px;
-      border-radius: 4px;
-      height: 380px;
-      overflow-y: auto;
-      white-space: pre-wrap;
-      word-break: break-all;
-    }
-    #input-bar {
+
+    #title {
       display: flex;
-      margin-top: 8px;
-      gap: 6px;
+      align-items: center;
+      gap: 8px;
+      font-weight: 600;
     }
-    #term-input {
+
+    #status {
+      display: inline-flex;
+      align-items: center;
+      gap: 5px;
+      color: #8f9ba8;
+      font-weight: 400;
+    }
+
+    #status-dot {
+      width: 7px;
+      height: 7px;
+      border-radius: 50%;
+      background: #777;
+    }
+
+    #status.connected #status-dot {
+      background: #43d17a;
+    }
+
+    #status.error #status-dot {
+      background: #ef6461;
+    }
+
+    #terminal-container {
       flex: 1;
-      background: #252526;
-      border: 1px solid #3c3c3c;
-      color: #fff;
-      padding: 6px 8px;
-      border-radius: 3px;
-      font-family: inherit;
-      font-size: 13px;
+      min-height: 0;
+      padding: 8px;
+      box-sizing: border-box;
+      background: #000;
     }
-    button {
-      background: #0e639c;
-      color: white;
-      border: none;
-      padding: 6px 12px;
-      border-radius: 3px;
-      cursor: pointer;
-    }
-    button:hover {
-      background: #1177bb;
+
+    #terminal {
+      width: 100%;
+      height: 100%;
     }
   </style>
 </head>
+
 <body>
   <div id="header">
-    <div><strong>Sandbox Terminal</strong> <span id="status-badge" class="badge">Connecting</span></div>
-    <div id="terminal-meta" style="font-size: 11px; color: #888;">Live OpenShell PTY</div>
+    <div id="title">
+      <span>Sandbox Terminal</span>
+      <span id="status">
+        <span id="status-dot"></span>
+        <span id="status-text">Connecting</span>
+      </span>
+    </div>
+    <span id="terminal-meta">OpenShell PTY</span>
   </div>
-  <div id="term-screen">$ Connecting to sandbox shell...</div>
-  <div id="input-bar">
-    <input id="term-input" type="text" placeholder="Type command or input and press Enter..." autofocus />
-    <button id="send-btn">Send</button>
+
+  <div id="terminal-container">
+    <div id="terminal"></div>
   </div>
 
-  <script>
-    const termScreen = document.getElementById("term-screen");
-    const termInput = document.getElementById("term-input");
-    const sendBtn = document.getElementById("send-btn");
-    const statusBadge = document.getElementById("status-badge");
-
-    let terminalId = null;
-    let pollInterval = null;
-
-    function appendOutput(text) {
-      if (!text) return;
-      termScreen.textContent += text;
-      termScreen.scrollTop = termScreen.scrollHeight;
-    }
-
-    async function sendInput(val) {
-      if (!terminalId) return;
-      try {
-        await window.openai?.callTool?.("terminal_input", {
-          terminal_id: terminalId,
-          data: val + "\\n"
-        });
-      } catch (err) {
-        console.error("Failed to send terminal input:", err);
-      }
-    }
-
-    async function pollOutput() {
-      if (!terminalId) return;
-      try {
-        const res = await window.openai?.callTool?.("terminal_state", {
-          terminal_id: terminalId,
-          clear_buffer: true
-        });
-        if (res && res.output) {
-          appendOutput(res.output);
-        }
-      } catch (err) {
-        console.error("Poll error:", err);
-      }
-    }
-
-    sendBtn.addEventListener("click", () => {
-      const val = termInput.value;
-      if (val) {
-        sendInput(val);
-        termInput.value = "";
-      }
-    });
-
-    termInput.addEventListener("keydown", (e) => {
-      if (e.key === "Enter") {
-        const val = termInput.value;
-        sendInput(val);
-        termInput.value = "";
-      }
-    });
-
-    window.addEventListener("message", (event) => {
-      if (event.data && event.data.terminal_id) {
-        terminalId = event.data.terminal_id;
-        statusBadge.textContent = "Connected";
-        statusBadge.style.background = "#388a34";
-        pollInterval = setInterval(pollOutput, 500);
-      }
-    });
+  <script type="module">
+    {TERMINAL_BUNDLE}
   </script>
 </body>
 </html>
 """
 
+TERMINAL_HTML = TERMINAL_HTML.replace("{TERMINAL_BUNDLE}", TERMINAL_BUNDLE).replace("{TERMINAL_CSS}", TERMINAL_CSS)
+
 
 def register_terminal_app(apps: Apps) -> None:
-    """Register the Terminal MCP App HTML resource."""
+    """Register the terminal MCP App resource and its UI-bound tool."""
+
+    @apps.tool(
+        resource_uri=TERMINAL_APP_URI,
+        title="Open Sandbox Terminal",
+        description=(
+            "Open a persistent interactive PTY terminal in an OpenShell sandbox "
+            "and display it as a live terminal UI when MCP Apps are supported."
+        ),
+        annotations=ToolAnnotations(
+            readOnlyHint=False,
+            destructiveHint=False,
+            idempotentHint=False,
+            openWorldHint=False,
+        ),
+    )
+    def terminal_open(
+        sandbox: str,
+        command: list[str] | None = None,
+        cols: int = 80,
+        rows: int = 24,
+    ) -> dict[str, object]:
+        """
+        Open a persistent interactive PTY terminal session.
+
+        The returned terminal metadata is available to the MCP App as
+        structured tool output. Non-MCP-App clients receive the same data
+        through the normal MCP tool result.
+        """
+        return open_terminal(
+            sandbox=sandbox,
+            command=command,
+            cols=cols,
+            rows=rows,
+        )
+
+    terminal_domain = (
+        os.environ.get("MCP_TERMINAL_APP_DOMAIN", "").strip()
+        or DEFAULT_TERMINAL_APP_DOMAIN
+    )
+
     apps.add_html_resource(
         TERMINAL_APP_URI,
         TERMINAL_HTML,
+        title="Sandbox Live Terminal",
+        description="Interactive terminal connected to an OpenShell sandbox PTY.",
+        domain=terminal_domain,
+        csp=ResourceCsp(),
+        prefers_border=True,
     )
