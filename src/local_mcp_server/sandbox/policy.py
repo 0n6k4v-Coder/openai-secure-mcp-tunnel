@@ -55,9 +55,8 @@ _NPM_AUDIT_PATHS = (
 _BROWSER_BINARY = "/opt/chrome/chrome"
 
 _DEFAULT_BROWSER_ENDPOINTS = (
-    "host.openshell.internal:4173",
-    "mtioon.com:443",
-    "www.mtioon.com:443",
+    "*:80",
+    "*:443",
 )
 
 

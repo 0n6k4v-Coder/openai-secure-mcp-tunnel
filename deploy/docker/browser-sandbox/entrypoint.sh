@@ -59,6 +59,9 @@ prepare_chrome_trust
 rm -rf "${USER_DATA_DIR}"
 mkdir -p "${USER_DATA_DIR}"
 
+# Clean any stale daemon socket or PID file left over from a previous container run
+rm -rf /tmp/chrome-devtools-mcp-* >/dev/null 2>&1 || true
+
 "${CHROME}" \
     --headless=new \
     --no-sandbox \

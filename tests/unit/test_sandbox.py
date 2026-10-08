@@ -138,7 +138,7 @@ def test_browser_sandbox_has_browser_specific_policy(
 ) -> None:
     monkeypatch.setenv(
         "BROWSER_ALLOWED_ENDPOINTS",
-        "host.openshell.internal:4173,mtioon.com:443",
+        "*:80,*:443",
     )
 
     spec = policy.build_sandbox_spec(
@@ -157,8 +157,8 @@ def test_browser_sandbox_has_browser_specific_policy(
         (endpoint.host, endpoint.port, endpoint.protocol)
         for endpoint in browser_policy.endpoints
     } == {
-        ("host.openshell.internal", 4173, ""),
-        ("mtioon.com", 443, ""),
+        ("*", 80, ""),
+        ("*", 443, ""),
     }
 
     assert browser_policy.binaries[0].path == "/opt/chrome/chrome"

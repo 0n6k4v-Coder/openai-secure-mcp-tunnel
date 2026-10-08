@@ -1,0 +1,32 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>Sandbox Browser</title>
+</head>
+<body>
+  <header>
+    <strong>Sandbox Browser</strong>
+    <span id="status">Connecting…</span>
+  </header>
+  <main>
+    <section class="controls">
+      <input id="url" type="url" placeholder="https://example.com">
+      <button id="open">Open</button>
+      <label>Page <input id="page" type="number" min="0" value="1"></label>
+      <input id="selector" placeholder="CSS selector, e.g. main .pricing">
+    </section>
+    <section class="actions">
+      <button id="snapshot">Snapshot</button>
+      <button id="inspect">Inspect</button>
+      <button id="screenshot-button">Screenshot</button>
+      <button id="clone-preview">Preview Clone</button>
+      <button id="clone-region">Clone Selection</button>
+      <button id="clone-page">Clone Page</button>
+    </section>
+    <img id="screenshot" alt="Browser screenshot" hidden>
+    <pre id="output"></pre>
+  </main>
+</body>
+</html>
