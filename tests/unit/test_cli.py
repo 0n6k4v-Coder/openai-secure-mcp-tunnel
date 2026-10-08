@@ -363,6 +363,145 @@ def test_sandbox_delete_table(
     assert "Sandbox deleted: project-api" in capsys.readouterr().out
 
 
+def test_sandbox_delete_all_json(
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    deleted_names: list[str] = []
+    monkeypatch.setattr(
+        cli,
+        "list_sandboxes",
+        lambda: json.dumps([{"name": "sb-1"}, {"name": "sb-2"}]),
+    )
+    monkeypatch.setattr(
+        cli,
+        "delete_sandbox",
+        lambda name: deleted_names.append(name) or json.dumps({"name": name, "status": "Deleted"}),
+    )
+
+    assert cli._sandbox_delete(json_output=True, confirmed=True, all_sandboxes=True) == cli.EXIT_OK
+
+    assert deleted_names == ["sb-1", "sb-2"]
+    output = json.loads(capsys.readouterr().out)
+    assert isinstance(output, list)
+    assert len(output) == 2
+    assert output[0]["name"] == "sb-1"
+    assert output[1]["name"] == "sb-2"
+
+
+def test_sandbox_delete_all_table(
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    monkeypatch.setattr(
+        cli,
+        "list_sandboxes",
+        lambda: json.dumps([{"name": "sb-1"}, {"name": "sb-2"}]),
+    )
+    monkeypatch.setattr(
+        cli,
+        "delete_sandbox",
+        lambda name: json.dumps({"name": name}),
+    )
+
+    assert cli._sandbox_delete(json_output=False, confirmed=True, all_sandboxes=True) == cli.EXIT_OK
+
+    out = capsys.readouterr().out
+    assert "Sandbox deleted: sb-1" in out
+    assert "Sandbox deleted: sb-2" in out
+
+
+def test_sandbox_delete_all_requires_yes() -> None:
+    with pytest.raises(ValueError, match=r"sandbox delete requires --yes"):
+        cli._sandbox_delete(confirmed=False, all_sandboxes=True)
+
+
+def test_sandbox_delete_rejects_both_name_and_all() -> None:
+    with pytest.raises(ValueError, match=r"Cannot specify both sandbox name and --all"):
+        cli._sandbox_delete(name="sb-1", confirmed=True, all_sandboxes=True)
+
+
+def test_sandbox_delete_rejects_neither_name_nor_all() -> None:
+    with pytest.raises(ValueError, match=r"Sandbox name is required unless --all is specified"):
+        cli._sandbox_delete(name=None, confirmed=True, all_sandboxes=False)
+
+
+def test_sandbox_lifecycle_all_commands(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    calls: list[list[str]] = []
+    monkeypatch.setattr(
+        cli,
+        "list_sandboxes",
+        lambda: json.dumps([{"name": "sb-a"}, {"name": "sb-b"}]),
+    )
+    monkeypatch.setattr(
+        cli,
+        "_openshell_command",
+        lambda *args: ["openshell", *args],
+    )
+
+    def fake_capture(command, *, cwd=cli.PROJECT_ROOT, env=None):
+        calls.append(list(command))
+        return cli.subprocess.CompletedProcess(
+            args=command,
+            returncode=0,
+            stdout="",
+            stderr="",
+        )
+
+    monkeypatch.setattr(cli, "_run_capture", fake_capture)
+
+    # Start all
+    assert cli._sandbox_start(all_sandboxes=True) == cli.EXIT_OK
+    assert ["openshell", "sandbox", "start", "sb-a"] in calls
+    assert ["openshell", "sandbox", "start", "sb-b"] in calls
+
+    calls.clear()
+    # Stop all
+    assert cli._sandbox_stop(all_sandboxes=True) == cli.EXIT_OK
+    assert ["openshell", "sandbox", "stop", "sb-a"] in calls
+    assert ["openshell", "sandbox", "stop", "sb-b"] in calls
+
+    calls.clear()
+    # Restart all (each stops then starts)
+    assert cli._sandbox_restart(all_sandboxes=True) == cli.EXIT_OK
+    assert ["openshell", "sandbox", "stop", "sb-a"] in calls
+    assert ["openshell", "sandbox", "start", "sb-a"] in calls
+    assert ["openshell", "sandbox", "stop", "sb-b"] in calls
+    assert ["openshell", "sandbox", "start", "sb-b"] in calls
+
+
+def test_sandbox_lifecycle_all_empty(
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    monkeypatch.setattr(cli, "list_sandboxes", lambda: json.dumps([]))
+
+    assert cli._sandbox_start(all_sandboxes=True) == cli.EXIT_OK
+    assert "No sandboxes found." in capsys.readouterr().out
+
+    assert cli._sandbox_stop(all_sandboxes=True) == cli.EXIT_OK
+    assert "No sandboxes found." in capsys.readouterr().out
+
+    assert cli._sandbox_restart(all_sandboxes=True) == cli.EXIT_OK
+    assert "No sandboxes found." in capsys.readouterr().out
+
+    assert cli._sandbox_delete(confirmed=True, all_sandboxes=True) == cli.EXIT_OK
+    assert "No sandboxes found." in capsys.readouterr().out
+
+    assert cli._sandbox_delete(json_output=True, confirmed=True, all_sandboxes=True) == cli.EXIT_OK
+    assert capsys.readouterr().out.strip() == "[]"
+
+
+def test_sandbox_lifecycle_rejects_invalid_arg_combinations() -> None:
+    for helper in (cli._sandbox_start, cli._sandbox_stop, cli._sandbox_restart):
+        with pytest.raises(ValueError, match=r"Cannot specify both sandbox name and --all"):
+            helper(name="sb-1", all_sandboxes=True)
+        with pytest.raises(ValueError, match=r"Sandbox name is required unless --all is specified"):
+            helper(name=None, all_sandboxes=False)
+
+
 def test_sandbox_shell_builds_expected_command(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -545,8 +684,13 @@ def test_sandbox_lifecycle_commands(
         ),
         (["sandbox", "logs", "project-api"], "sandbox", "logs"),
         (["sandbox", "start", "project-api"], "sandbox", "start"),
+        (["sandbox", "start", "--all"], "sandbox", "start"),
         (["sandbox", "stop", "project-api"], "sandbox", "stop"),
+        (["sandbox", "stop", "--all"], "sandbox", "stop"),
+        (["sandbox", "restart", "project-api"], "sandbox", "restart"),
+        (["sandbox", "restart", "--all"], "sandbox", "restart"),
         (["sandbox", "delete", "project-api", "--yes"], "sandbox", "delete"),
+        (["sandbox", "delete", "--all", "--yes"], "sandbox", "delete"),
     ],
 )
 def test_sandbox_parser_commands(

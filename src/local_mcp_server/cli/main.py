@@ -616,9 +616,64 @@ def _sandbox_create(
     return EXIT_OK
 
 
-def _sandbox_delete(name: str, json_output: bool, purge_packages: bool = False, confirmed: bool = False) -> int:
+def _sandbox_delete(
+    name: str | None = None,
+    json_output: bool = False,
+    purge_packages: bool = False,
+    confirmed: bool = False,
+    all_sandboxes: bool = False,
+) -> int:
     if not confirmed:
         raise ValueError("sandbox delete requires --yes.")
+
+    if all_sandboxes:
+        if name:
+            raise ValueError("Cannot specify both sandbox name and --all.")
+        names = _get_all_sandbox_names()
+        if not names:
+            if json_output:
+                _print_json([])
+            else:
+                print("No sandboxes found.")
+            return EXIT_OK
+
+        from ..packages.manager import delete_package_state
+
+        overall_exit_code = EXIT_OK
+        results = []
+        for sb_name in names:
+            try:
+                data = _parse_json(delete_sandbox(sb_name))
+                if not isinstance(data, dict):
+                    raise RuntimeError("OpenShell returned invalid deletion metadata.")
+
+                try:
+                    package_result = delete_package_state(sb_name, purge=purge_packages)
+                except Exception as exc:
+                    print("ERROR: Sandbox was deleted, but package-state cleanup failed.", file=sys.stderr)
+                    print(f"Resource: sandbox {sb_name}; operation: package-state cleanup", file=sys.stderr)
+                    print(f"Reason: {type(exc).__name__}: {exc}", file=sys.stderr)
+                    print("State: sandbox deletion completed; package state was not verified as removed.", file=sys.stderr)
+                    print("Next step: inspect the managed package-state path before retrying.", file=sys.stderr)
+                    overall_exit_code = EXIT_ERROR
+                    package_result = {"package_state": "FAILED"}
+
+                data["package_state"] = package_result
+                results.append(data)
+                if not json_output:
+                    print(f"Sandbox deleted: {data.get('name', sb_name)}")
+                    print(f"Package state: {package_result.get('package_state', 'UNKNOWN')}")
+            except Exception as exc:
+                print(f"ERROR: Failed to delete sandbox '{sb_name}': {exc}", file=sys.stderr)
+                overall_exit_code = EXIT_ERROR
+
+        if json_output:
+            _print_json(results)
+        return overall_exit_code
+
+    if not name:
+        raise ValueError("Sandbox name is required unless --all is specified.")
+
     data = _parse_json(delete_sandbox(name))
 
     if not isinstance(data, dict):
@@ -723,9 +778,15 @@ def _handle_lifecycle_result(name: str, operation: str, result: subprocess.Compl
     cleaned_diagnostic = re.sub(r"\s*[│|]\s*", " ", diagnostic)
     normalized_diagnostic = " ".join(cleaned_diagnostic.split())
 
-    # Detect when sandbox is stuck in Error phase and cannot be stopped/started/repaired
+    # Detect when sandbox is stuck in Error phase or blocked by stale volume mount
+    is_volume_mount_failure = (
+        "error while mounting volume" in normalized_diagnostic
+        or "failed to mount local volume" in normalized_diagnostic
+        or "stage Docker sandbox bundle" in normalized_diagnostic
+    )
     is_error_phase_blocker = (
-        ("sandbox must be Stopped" in normalized_diagnostic and "current phase: Error" in normalized_diagnostic)
+        is_volume_mount_failure
+        or ("sandbox must be Stopped" in normalized_diagnostic and "current phase: Error" in normalized_diagnostic)
         or ("sandbox must be Ready to stop" in normalized_diagnostic and "current phase: Error" in normalized_diagnostic)
         or "ControlSupervisorExited" in normalized_diagnostic
         or "failed to wait for Docker supervisor container" in normalized_diagnostic
@@ -740,11 +801,18 @@ def _handle_lifecycle_result(name: str, operation: str, result: subprocess.Compl
         }
         past_verb = verb_map.get(operation, f"{operation}ed")
         print(f"ERROR: Sandbox '{name}' is in an unrecoverable Error phase and cannot be {past_verb} directly.", file=sys.stderr)
-        print(
-            "Reason: The sandbox container or supervisor terminated unexpectedly "
-            "(e.g. after a Docker or system restart), invalidating its control session.",
-            file=sys.stderr,
-        )
+        if is_volume_mount_failure:
+            print(
+                "Reason: The host-backed workspace volume mount is invalid or stale "
+                "(e.g. after a system or Docker Desktop restart).",
+                file=sys.stderr,
+            )
+        else:
+            print(
+                "Reason: The sandbox container or supervisor terminated unexpectedly "
+                "(e.g. after a Docker or system restart), invalidating its control session.",
+                file=sys.stderr,
+            )
         print(file=sys.stderr)
         print("Recommended Action:", file=sys.stderr)
         print(
@@ -763,19 +831,80 @@ def _handle_lifecycle_result(name: str, operation: str, result: subprocess.Compl
     return result.returncode if result.returncode != 0 else EXIT_ERROR
 
 
-def _sandbox_start(name: str) -> int:
+def _get_all_sandbox_names() -> list[str]:
+    data = _parse_json(list_sandboxes())
+    if not isinstance(data, list):
+        raise RuntimeError("OpenShell returned an invalid sandbox list.")
+    names: list[str] = []
+    for item in data:
+        if isinstance(item, dict) and "name" in item and item["name"]:
+            names.append(str(item["name"]))
+    return sorted(names)
+
+
+def _sandbox_start(name: str | None = None, all_sandboxes: bool = False) -> int:
+    if all_sandboxes:
+        if name:
+            raise ValueError("Cannot specify both sandbox name and --all.")
+        names = _get_all_sandbox_names()
+        if not names:
+            print("No sandboxes found.")
+            return EXIT_OK
+        overall_exit_code = EXIT_OK
+        for sb_name in names:
+            result = _run_capture(_openshell_command("sandbox", "start", sb_name))
+            exit_code = _handle_lifecycle_result(sb_name, "start", result)
+            if exit_code != EXIT_OK:
+                overall_exit_code = EXIT_ERROR
+        return overall_exit_code
+
+    if not name:
+        raise ValueError("Sandbox name is required unless --all is specified.")
     validate_name(name)
     result = _run_capture(_openshell_command("sandbox", "start", name))
     return _handle_lifecycle_result(name, "start", result)
 
 
-def _sandbox_stop(name: str) -> int:
+def _sandbox_stop(name: str | None = None, all_sandboxes: bool = False) -> int:
+    if all_sandboxes:
+        if name:
+            raise ValueError("Cannot specify both sandbox name and --all.")
+        names = _get_all_sandbox_names()
+        if not names:
+            print("No sandboxes found.")
+            return EXIT_OK
+        overall_exit_code = EXIT_OK
+        for sb_name in names:
+            result = _run_capture(_openshell_command("sandbox", "stop", sb_name))
+            exit_code = _handle_lifecycle_result(sb_name, "stop", result)
+            if exit_code != EXIT_OK:
+                overall_exit_code = EXIT_ERROR
+        return overall_exit_code
+
+    if not name:
+        raise ValueError("Sandbox name is required unless --all is specified.")
     validate_name(name)
     result = _run_capture(_openshell_command("sandbox", "stop", name))
     return _handle_lifecycle_result(name, "stop", result)
 
 
-def _sandbox_restart(name: str) -> int:
+def _sandbox_restart(name: str | None = None, all_sandboxes: bool = False) -> int:
+    if all_sandboxes:
+        if name:
+            raise ValueError("Cannot specify both sandbox name and --all.")
+        names = _get_all_sandbox_names()
+        if not names:
+            print("No sandboxes found.")
+            return EXIT_OK
+        overall_exit_code = EXIT_OK
+        for sb_name in names:
+            exit_code = _sandbox_restart(sb_name)
+            if exit_code != EXIT_OK:
+                overall_exit_code = EXIT_ERROR
+        return overall_exit_code
+
+    if not name:
+        raise ValueError("Sandbox name is required unless --all is specified.")
     validate_name(name)
 
     stop_result = _sandbox_stop(name)
@@ -1028,21 +1157,39 @@ def _build_parser() -> argparse.ArgumentParser:
         "start",
         help="Start a stopped or retained failed sandbox.",
     )
-    start_parser.add_argument("name")
+    start_parser.add_argument("name", nargs="?", default=None)
+    start_parser.add_argument(
+        "--all",
+        action="store_true",
+        dest="all_sandboxes",
+        help="Start all sandboxes.",
+    )
     start_parser.set_defaults(handler=_sandbox_start)
 
     stop_parser = sandbox_commands.add_parser(
         "stop",
         help="Stop a sandbox while retaining its state.",
     )
-    stop_parser.add_argument("name")
+    stop_parser.add_argument("name", nargs="?", default=None)
+    stop_parser.add_argument(
+        "--all",
+        action="store_true",
+        dest="all_sandboxes",
+        help="Stop all sandboxes.",
+    )
     stop_parser.set_defaults(handler=_sandbox_stop)
 
     restart_parser = sandbox_commands.add_parser(
         "restart",
         help="Restart a sandbox using OpenShell stop then start.",
     )
-    restart_parser.add_argument("name")
+    restart_parser.add_argument("name", nargs="?", default=None)
+    restart_parser.add_argument(
+        "--all",
+        action="store_true",
+        dest="all_sandboxes",
+        help="Restart all sandboxes.",
+    )
     restart_parser.set_defaults(handler=_sandbox_restart)
 
     repair_parser = sandbox_commands.add_parser(
@@ -1053,7 +1200,13 @@ def _build_parser() -> argparse.ArgumentParser:
     repair_parser.set_defaults(handler=_sandbox_repair)
 
     delete = sandbox_commands.add_parser("delete", help="Delete a sandbox.")
-    delete.add_argument("name")
+    delete.add_argument("name", nargs="?", default=None)
+    delete.add_argument(
+        "--all",
+        action="store_true",
+        dest="all_sandboxes",
+        help="Delete all sandboxes.",
+    )
     delete.add_argument("--yes", action="store_true", dest="confirmed", help="Confirm sandbox deletion.")
     delete.add_argument("--purge-packages", action="store_true", help="Explicitly remove managed package manifests and lockfiles.")
     delete.add_argument("--json", dest="json_output", action="store_true")
@@ -1195,8 +1348,17 @@ def main(argv: Sequence[str] | None = None) -> int:
         if args.command == "sandbox" and args.sandbox_command == "status":
             return args.handler(args.name, args.json_output)
 
+        if args.command == "sandbox" and args.sandbox_command in {"start", "stop", "restart"}:
+            return args.handler(args.name, args.all_sandboxes)
+
         if args.command == "sandbox" and args.sandbox_command == "delete":
-            return args.handler(args.name, args.json_output, args.purge_packages, args.confirmed)
+            return args.handler(
+                args.name,
+                args.json_output,
+                args.purge_packages,
+                args.confirmed,
+                args.all_sandboxes,
+            )
 
         if args.command == "sandbox" and args.sandbox_command == "recreate":
             return args.handler(args.name, args.confirmed)

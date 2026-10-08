@@ -1240,21 +1240,39 @@ def _build_parser() -> argparse.ArgumentParser:
         help="Start a stopped or retained failed sandbox.",
     )
 
-    sandbox_start.add_argument("name")
+    sandbox_start.add_argument("name", nargs="?", default=None)
+    sandbox_start.add_argument(
+        "--all",
+        action="store_true",
+        dest="all_sandboxes",
+        help="Start all sandboxes.",
+    )
 
     sandbox_stop = sandbox_commands.add_parser(
         "stop",
         help="Stop a sandbox while retaining its state.",
     )
 
-    sandbox_stop.add_argument("name")
+    sandbox_stop.add_argument("name", nargs="?", default=None)
+    sandbox_stop.add_argument(
+        "--all",
+        action="store_true",
+        dest="all_sandboxes",
+        help="Stop all sandboxes.",
+    )
 
     sandbox_restart = sandbox_commands.add_parser(
         "restart",
         help="Restart a sandbox using OpenShell stop then start.",
     )
 
-    sandbox_restart.add_argument("name")
+    sandbox_restart.add_argument("name", nargs="?", default=None)
+    sandbox_restart.add_argument(
+        "--all",
+        action="store_true",
+        dest="all_sandboxes",
+        help="Restart all sandboxes.",
+    )
 
     sandbox_repair = sandbox_commands.add_parser(
         "repair",
@@ -1270,6 +1288,14 @@ def _build_parser() -> argparse.ArgumentParser:
 
     sandbox_delete.add_argument(
         "name",
+        nargs="?",
+        default=None,
+    )
+    sandbox_delete.add_argument(
+        "--all",
+        action="store_true",
+        dest="all_sandboxes",
+        help="Delete all sandboxes.",
     )
     sandbox_delete.add_argument("--yes", action="store_true", dest="confirmed", help="Confirm sandbox deletion.")
     sandbox_delete.add_argument("--purge-packages", action="store_true", help="Explicitly remove managed package manifests and lockfiles.")
@@ -1541,28 +1567,44 @@ def _sandbox_arguments(
     if args.sandbox_command == "list":
         return ["list", "--json"] if args.json_output else ["list"]
 
-    if args.sandbox_command in {"status", "delete", "credentials"}:
+    if args.sandbox_command in {"status", "credentials"}:
         arguments = [
             args.sandbox_command,
             args.name,
         ]
-        if args.sandbox_command == "delete":
-            if args.confirmed:
-                arguments.append("--yes")
-            if args.purge_packages:
-                arguments.append("--purge-packages")
-
         if args.json_output:
             arguments.append("--json")
+        return arguments
 
+    if args.sandbox_command == "delete":
+        arguments = ["delete"]
+        if getattr(args, "all_sandboxes", False):
+            arguments.append("--all")
+        if args.name:
+            arguments.append(args.name)
+        if args.confirmed:
+            arguments.append("--yes")
+        if args.purge_packages:
+            arguments.append("--purge-packages")
+        if args.json_output:
+            arguments.append("--json")
+        return arguments
+
+    if args.sandbox_command in {
+        "start",
+        "stop",
+        "restart",
+    }:
+        arguments = [args.sandbox_command]
+        if getattr(args, "all_sandboxes", False):
+            arguments.append("--all")
+        if args.name:
+            arguments.append(args.name)
         return arguments
 
     if args.sandbox_command in {
         "shell",
         "logs",
-        "start",
-        "stop",
-        "restart",
         "repair",
     }:
         return [

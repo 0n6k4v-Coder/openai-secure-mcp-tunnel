@@ -1062,6 +1062,27 @@ def test_mcpctl_sandbox_list_json_flag_is_forwarded() -> None:
     assert mcpctl._sandbox_arguments(args) == ["list", "--json"]
 
 
+@pytest.mark.parametrize(
+    ("argv", "expected"),
+    [
+        (["sandbox", "start", "--all"], ["start", "--all"]),
+        (["sandbox", "stop", "--all"], ["stop", "--all"]),
+        (["sandbox", "restart", "--all"], ["restart", "--all"]),
+        (["sandbox", "delete", "--all", "--yes"], ["delete", "--all", "--yes"]),
+        (["sandbox", "delete", "--all", "--yes", "--json"], ["delete", "--all", "--yes", "--json"]),
+        (["sandbox", "delete", "--all", "--yes", "--purge-packages"], ["delete", "--all", "--yes", "--purge-packages"]),
+    ],
+)
+def test_mcpctl_sandbox_lifecycle_all_arguments_forwarded(
+    argv: list[str],
+    expected: list[str],
+) -> None:
+    parser = mcpctl._build_parser()
+    args = parser.parse_args(argv)
+
+    assert mcpctl._sandbox_arguments(args) == expected
+
+
 def test_mcpctl_credential_get_matches_underlying_provider_cli() -> None:
     parser = mcpctl._build_parser()
     args = parser.parse_args(["credential", "get", "openai-provider"])

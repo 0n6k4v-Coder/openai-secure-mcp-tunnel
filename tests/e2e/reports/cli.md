@@ -461,24 +461,30 @@ Any unexpected failure in a production-critical path blocks release until resolv
 If CLI E2E and MCP E2E both pass but production fails, investigate differences between the tested environment and production—including configuration, credentials, network policy, gateway version, container images, and deployment settings—before attributing the issue to the application.
 
 
-## 19. NEW GROUP — Browser & Website Clone CLI E2E Coverage
+## 19. Browser, Live Viewport & Website Clone CLI E2E Coverage
+
+Browser live viewport functionality is exposed through MCP tools rather than a dedicated `mcpctl browser` command. CLI coverage therefore focuses on sandbox/browser runtime prerequisites and CLI-level lifecycle behavior; the interactive CDP viewport/input contract is covered by MCP E2E tests.
 
 | ID | Test | Expected Result | Status |
 |---|---|---|---|
-| CLI-BROWSER-NEW-001 | Create browser sandbox with `--profile browser`  | Creates a browser-capable sandbox that reaches ready state | ⚪ Not implemented |
-| CLI-BROWSER-NEW-002 | Browser runtime readiness | Chrome/DevTools runtime is available | ⚪ Not implemented |
-| CLI-BROWSER-NEW-003 | Browser network allow policy | Allowed public HTTP/HTTPS destinations are reachable | ⚪ Not implemented |
-| CLI-BROWSER-NEW-004 | Browser network deny policy | Loopback/private/link-local/reserved targets are blocked | ⚪ Not implemented |
-| CLI-BROWSER-NEW-005 | Browser navigation | A real page can be opened and navigated | ⚪ Not implemented |
-| CLI-BROWSER-NEW-006 | Browser inspection | Page listing, snapshot, selector inspection, and evaluation work | ⚪ Not implemented |
-| CLI-BROWSER-NEW-007 | Browser screenshot | Screenshot succeeds and temporary artifacts are cleaned up | ⚪ Not implemented |
-| CLI-CLONE-NEW-001 | Clone preview | Preview is returned without unexpected file writes | ⚪ Not implemented |
-| CLI-CLONE-NEW-002 | Clone selected region | Valid selector produces a sanitized  | ⚪ Not implemented |
-| CLI-CLONE-NEW-003 | Clone full page | Full page produces the expected sanitized artifact | ⚪ Not implemented |
-| CLI-CLONE-NEW-004 | Clone invalid selector | Invalid/missing selector fails without unintended output | ⚪ Not implemented |
-| CLI-CLONE-NEW-005 | Clone sanitization | Scripts, iframes, event handlers, and dangerous URLs are removed/neutralized | ⚪ Not implemented |
-| CLI-CLONE-NEW-006 | Clone CSS sanitization | CSS limits are enforced and style breakout is prevented | ⚪ Not implemented |
-| CLI-CLONE-NEW-007 | Clone filesystem safety | Generated slug/title cannot escape the target workspace | ⚪ Not implemented |
-| CLI-CLONE-NEW-008 | External asset reporting | External stylesheets/assets are reported according to current V1 behavior | ⚪ Not implemented |
-| CLI-CLONE-NEW-009 | End-to-end website clone | Navigate → inspect → preview → clone produces a usable sanitized artifact | ⚪ Not implemented |
-| CLI-CLONE-NEW-010 | Clone cleanup/isolation | Test-created browser/clone resources are cleaned without touching unrelated resources | ⚪ Not implemented |
+| CLI-BROWSER-001 | Create browser sandbox with `--profile browser` | Browser-capable sandbox reaches ready state | ⚪ Not implemented |
+| CLI-BROWSER-002 | Browser runtime readiness | Chrome and DevTools endpoint are available | ⚪ Not implemented |
+| CLI-BROWSER-003 | Browser network allow policy | Allowed public HTTP/HTTPS destinations are reachable | ⚪ Not implemented |
+| CLI-BROWSER-004 | Browser network deny policy | Loopback/private/link-local/reserved targets are blocked | ⚪ Not implemented |
+| CLI-BROWSER-005 | Browser lifecycle | Browser sandbox can be created, inspected, stopped, restarted, and deleted safely | ⚪ Not implemented |
+| CLI-BROWSER-006 | Browser CLI evidence | CLI evidence identifies sandbox/profile state without leaking secrets | ⚪ Not implemented |
+| CLI-BROWSER-007 | Persistent CDP relay lifecycle | Browser viewport/input relay uses one page-scoped persistent relay process rather than spawning a Node/CDP session per input event | ⚪ Not implemented |
+| CLI-BROWSER-008 | Screencast backpressure | CDP screencast uses bounded in-flight frames and does not accumulate unbounded frame work | ⚪ Not implemented |
+| CLI-BROWSER-009 | Input relay reuse | Repeated click/move/scroll/type/key operations reuse the page-scoped relay and Unix socket | ⚪ Not implemented |
+| CLI-BROWSER-010 | Relay recovery | A failed persistent relay is detected and restarted without changing the target page | ⚪ Not implemented |
+| CLI-BROWSER-011 | Input/frame load stability | Sustained browser input does not cause unbounded sandbox command-process growth or viewport starvation | ⚪ Not implemented |
+| CLI-CLONE-001 | Clone preview prerequisite | Browser page can be opened and previewed without unintended file writes | ⚪ Not implemented |
+| CLI-CLONE-002 | Clone selected region | Valid selector produces a sanitized `index.html` | ⚪ Not implemented |
+| CLI-CLONE-003 | Clone full page | Full page produces the expected sanitized artifact | ⚪ Not implemented |
+| CLI-CLONE-004 | Clone invalid selector | Invalid/missing selector fails without unintended output | ⚪ Not implemented |
+| CLI-CLONE-005 | Clone sanitization | Scripts, iframes, event handlers, and dangerous URLs are removed/neutralized | ⚪ Not implemented |
+| CLI-CLONE-006 | Clone CSS sanitization | CSS limits are enforced and style breakout is prevented | ⚪ Not implemented |
+| CLI-CLONE-007 | Clone filesystem safety | Generated slug/title cannot escape the target workspace | ⚪ Not implemented |
+| CLI-CLONE-008 | External asset reporting | External stylesheets/assets are reported according to current V1 behavior | ⚪ Not implemented |
+| CLI-CLONE-009 | End-to-end website clone | Navigate → inspect → preview → clone produces a usable sanitized artifact | ⚪ Not implemented |
+| CLI-CLONE-010 | Clone cleanup/isolation | Test-created browser/clone resources are cleaned without touching unrelated resources | ⚪ Not implemented |

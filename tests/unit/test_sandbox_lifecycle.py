@@ -206,6 +206,32 @@ def test_sandbox_start_unresumable_supervisor_failure_reports_guidance(
     assert "mcpctl sandbox recreate --yes crashed-sbx" in captured.err
 
 
+def test_sandbox_start_stale_volume_mount_failure_reports_guidance(
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    monkeypatch.setattr(cli, "_command_exists", lambda command: None)
+    fake_completed = cli.subprocess.CompletedProcess(
+        args=["openshell", "sandbox", "start", "jupyter-dev"],
+        returncode=1,
+        stdout="",
+        stderr=(
+            "Error:   × code: 'Internal error', message: \"start sandbox failed: stage Docker sandbox bundle: "
+            "Docker responded with status code 500: error while mounting volume '/var/lib/docker/volumes/mcp-ws-123/_data': "
+            "failed to mount local volume: mount /run/desktop/mnt/host/wsl/docker-desktop-bind-mounts/Ubuntu/abc:/var/lib/docker/volumes/mcp-ws-123/_data, flags: 0x1000: no such file or directory\""
+        ),
+    )
+    monkeypatch.setattr(cli, "_run_capture", lambda *args, **kwargs: fake_completed)
+
+    result = cli._sandbox_start("jupyter-dev")
+
+    assert result == cli.EXIT_ERROR
+    captured = capsys.readouterr()
+    assert "ERROR: Sandbox 'jupyter-dev' is in an unrecoverable Error phase and cannot be started directly." in captured.err
+    assert "The host-backed workspace volume mount is invalid or stale" in captured.err
+    assert "mcpctl sandbox recreate --yes jupyter-dev" in captured.err
+
+
 def test_sandbox_restart_unresumable_supervisor_failure_reports_guidance(
     monkeypatch: pytest.MonkeyPatch,
     capsys: pytest.CaptureFixture[str],
