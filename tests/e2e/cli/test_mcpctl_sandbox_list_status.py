@@ -200,10 +200,10 @@ def test_cli_sbx_021_list_help(
     assert result.returncode == 0
     assert "usage: mcpctl sandbox list" in result.stdout
     assert "-h, --help" in result.stdout
-    assert "--json" not in result.stdout
+    assert "--json" in result.stdout
 
 
-def test_cli_sbx_022_list_rejects_json(
+def test_cli_sbx_022_list_supports_json(
     mcpctl_executable: str,
     sandbox_cli_environment: dict[str, str],
 ) -> None:
@@ -213,9 +213,10 @@ def test_cli_sbx_022_list_rejects_json(
         sandbox_cli_environment,
     )
 
-    assert result.returncode == 2
-    assert "unrecognized arguments: --json" in result.stderr
-    assert result.stdout == ""
+    assert result.returncode == 0
+    assert result.stderr == ""
+    data = json.loads(result.stdout)
+    assert isinstance(data, list)
 
 
 def test_cli_sbx_023_status_displays_named_sandbox(

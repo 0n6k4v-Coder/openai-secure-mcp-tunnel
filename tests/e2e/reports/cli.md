@@ -101,7 +101,7 @@ Supported arguments and options: `name`, exactly one of `--workspace` or `--stan
 |---|---|---|---|
 | CLI-SBX-020 | `mcpctl sandbox list` | Delegates list and returns the sandbox collection | 🟢 Pass |
 | CLI-SBX-021 | `mcpctl sandbox list --help` | Displays list help | 🟢 Pass |
-| CLI-SBX-022 | `mcpctl sandbox list --json` | Currently unsupported by the `mcpctl` parser; rejects the option | 🟢 Pass |
+| CLI-SBX-022 | `mcpctl sandbox list --json` | Forwards `--json` and emits valid JSON array | 🟢 Pass |
 | CLI-SBX-023 | `mcpctl sandbox status <name>` | Delegates status for the specified sandbox | 🟢 Pass |
 | CLI-SBX-024 | `mcpctl sandbox status <name> --json` | Forwards `--json` and returns valid JSON | 🟢 Pass |
 | CLI-SBX-025 | `mcpctl sandbox status <name>` with no matching sandbox | Returns a clear failure and non-zero exit code | 🟢 Pass |
@@ -240,22 +240,22 @@ Workspace operations are delegated by `mcpctl` to the workspace service.
 
 | ID | Test | Expected Result | Status |
 |---|---|---|---|
-| CLI-WS-001 | `mcpctl workspace authorize <host_path>` | Authorizes the specified isolated host directory and returns workspace details | 🔴 Fail |
+| CLI-WS-001 | `mcpctl workspace authorize <host_path>` | Authorizes the specified isolated host directory and returns workspace details | 🟢 Pass |
 | CLI-WS-002 | Omit `host_path` | Parser rejects the command | 🟢 Pass |
 | CLI-WS-003 | Authorize a nonexistent path | Fails clearly without creating an invalid grant | 🟢 Pass |
 | CLI-WS-004 | Authorize a protected or disallowed path | Enforces workspace security policy | 🟢 Pass |
 | CLI-WS-005 | `mcpctl workspace authorize --help` | Displays authorize usage | 🟢 Pass |
-| CLI-WS-006 | `mcpctl workspace list` | Returns authorized workspace grants | 🔴 Fail |
-| CLI-WS-007 | `mcpctl workspace list --json` | Forwards `--json` to the broker and returns valid JSON | 🔴 Fail |
+| CLI-WS-006 | `mcpctl workspace list` | Returns authorized workspace grants | 🟢 Pass |
+| CLI-WS-007 | `mcpctl workspace list --json` | Forwards `--json` to the broker and returns valid JSON | 🟢 Pass |
 | CLI-WS-008 | `mcpctl workspace list --help` | Displays list usage and JSON option | 🟢 Pass |
-| CLI-WS-009 | `mcpctl workspace revoke <workspace_id>` | Revokes the requested workspace grant | 🔴 Fail |
+| CLI-WS-009 | `mcpctl workspace revoke <workspace_id>` | Revokes the requested workspace grant | 🟢 Pass |
 | CLI-WS-010 | Omit `workspace_id` | Parser rejects the command | 🟢 Pass |
 | CLI-WS-011 | Revoke a nonexistent workspace ID | Returns an accurate failure result | 🟢 Pass |
 | CLI-WS-012 | `mcpctl workspace revoke --help` | Displays revoke usage | 🟢 Pass |
-| CLI-WS-013 | Authorize, list, revoke, list | The grant appears after authorization and disappears after revocation | 🔴 Fail |
+| CLI-WS-013 | Authorize, list, revoke, list | The grant appears after authorization and disappears after revocation | 🟢 Pass |
 | CLI-WS-014 | `mcpctl workspace --help` | Displays workspace subcommands | 🟢 Pass |
 | CLI-WS-015 | Unknown workspace subcommand | Returns a non-zero argument error | 🟢 Pass |
-| CLI-WS-016 | Workspace JSON output | Output is valid JSON and contains no unrelated data | 🔴 Fail |
+| CLI-WS-016 | Workspace JSON output | Output is valid JSON and contains no unrelated data | 🟢 Pass |
 
 ## 9. `mcpctl config`
 
@@ -459,3 +459,26 @@ Required order:
 Any unexpected failure in a production-critical path blocks release until resolved or explicitly dispositioned.
 
 If CLI E2E and MCP E2E both pass but production fails, investigate differences between the tested environment and production—including configuration, credentials, network policy, gateway version, container images, and deployment settings—before attributing the issue to the application.
+
+
+## 19. NEW GROUP — Browser & Website Clone CLI E2E Coverage
+
+| ID | Test | Expected Result | Status |
+|---|---|---|---|
+| CLI-BROWSER-NEW-001 | Create browser sandbox with `--profile browser`  | Creates a browser-capable sandbox that reaches ready state | ⚪ Not implemented |
+| CLI-BROWSER-NEW-002 | Browser runtime readiness | Chrome/DevTools runtime is available | ⚪ Not implemented |
+| CLI-BROWSER-NEW-003 | Browser network allow policy | Allowed public HTTP/HTTPS destinations are reachable | ⚪ Not implemented |
+| CLI-BROWSER-NEW-004 | Browser network deny policy | Loopback/private/link-local/reserved targets are blocked | ⚪ Not implemented |
+| CLI-BROWSER-NEW-005 | Browser navigation | A real page can be opened and navigated | ⚪ Not implemented |
+| CLI-BROWSER-NEW-006 | Browser inspection | Page listing, snapshot, selector inspection, and evaluation work | ⚪ Not implemented |
+| CLI-BROWSER-NEW-007 | Browser screenshot | Screenshot succeeds and temporary artifacts are cleaned up | ⚪ Not implemented |
+| CLI-CLONE-NEW-001 | Clone preview | Preview is returned without unexpected file writes | ⚪ Not implemented |
+| CLI-CLONE-NEW-002 | Clone selected region | Valid selector produces a sanitized  | ⚪ Not implemented |
+| CLI-CLONE-NEW-003 | Clone full page | Full page produces the expected sanitized artifact | ⚪ Not implemented |
+| CLI-CLONE-NEW-004 | Clone invalid selector | Invalid/missing selector fails without unintended output | ⚪ Not implemented |
+| CLI-CLONE-NEW-005 | Clone sanitization | Scripts, iframes, event handlers, and dangerous URLs are removed/neutralized | ⚪ Not implemented |
+| CLI-CLONE-NEW-006 | Clone CSS sanitization | CSS limits are enforced and style breakout is prevented | ⚪ Not implemented |
+| CLI-CLONE-NEW-007 | Clone filesystem safety | Generated slug/title cannot escape the target workspace | ⚪ Not implemented |
+| CLI-CLONE-NEW-008 | External asset reporting | External stylesheets/assets are reported according to current V1 behavior | ⚪ Not implemented |
+| CLI-CLONE-NEW-009 | End-to-end website clone | Navigate → inspect → preview → clone produces a usable sanitized artifact | ⚪ Not implemented |
+| CLI-CLONE-NEW-010 | Clone cleanup/isolation | Test-created browser/clone resources are cleaned without touching unrelated resources | ⚪ Not implemented |

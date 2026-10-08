@@ -181,16 +181,42 @@ def _print_table(headers: list[str], rows: list[list[str]]) -> None:
         print("  ".join(value.ljust(widths[index]) for index, value in enumerate(row)))
 
 
+_STATUS_LABELS: dict[int | str, str] = {
+    0: "UNSPECIFIED",
+    1: "PROVISIONING",
+    2: "READY",
+    3: "ERROR",
+    4: "DELETING",
+    5: "UNKNOWN",
+    6: "STOPPING",
+    7: "STOPPED",
+    8: "STARTING",
+    9: "COMPLETED",
+    "0": "UNSPECIFIED",
+    "1": "PROVISIONING",
+    "2": "READY",
+    "3": "ERROR",
+    "4": "DELETING",
+    "5": "UNKNOWN",
+    "6": "STOPPING",
+    "7": "STOPPED",
+    "8": "STARTING",
+    "9": "COMPLETED",
+}
+
+
 def _status_value(record: dict[str, object]) -> str:
-    status = record.get("status")
+    raw_status = record.get("status")
+    if raw_status not in (None, ""):
+        if raw_status in _STATUS_LABELS:
+            return _STATUS_LABELS[raw_status]
+        return str(raw_status)
 
-    if status not in (None, ""):
-        return str(status)
-
-    phase = record.get("phase")
-
-    if phase not in (None, ""):
-        return str(phase)
+    raw_phase = record.get("phase")
+    if raw_phase not in (None, ""):
+        if raw_phase in _STATUS_LABELS:
+            return _STATUS_LABELS[raw_phase]
+        return str(raw_phase)
 
     return "UNKNOWN"
 
