@@ -93,11 +93,8 @@ async function pollFrame() {
   }
 }
 
-function startPolling() {
-  stopPolling();
-  pollFrame();
-  pollTimer = setInterval(pollFrame, 90);
-}
+
+
 
 async function startViewport() {
   const id = pageId();
@@ -225,6 +222,16 @@ async function clonePage() {
   }
 }
 
+// Fire-and-forget: queue input commands but don't block the UI on responses.
+// Responses from the backend come back instantly (backend uses background dispatch).
+function fireInput(name, args) {
+  const id = pageId();
+  if (id == null) return;
+  call(name, { sandbox_name: window.__browserSandbox, page_id: id, ...args }).catch((error) => {
+    setStatus(error.message || String(error), "error");
+  });
+}
+
 function sendInput(name, args) {
   const id = pageId();
   if (id == null) return inputChain;
@@ -236,16 +243,49 @@ function sendInput(name, args) {
   return inputChain;
 }
 
-async function sendRealtimeInput(name, args) {
-  const id = pageId();
-  if (id == null) return;
-  try {
-    await call(name, { sandbox_name: window.__browserSandbox, page_id: id, ...args });
-  } catch (error) {
-    setStatus(error.message || String(error), "error");
-  }
+// ---------------------------------------------------------------------------
+// Adaptive frame polling
+// ---------------------------------------------------------------------------
+// Frame polling competes with input for the execute_sandbox_argv pipeline.
+// During active interaction we slow down frame polling to leave bandwidth
+// for input commands, and speed back up when the user goes idle.
+// ---------------------------------------------------------------------------
+let interactionTimer = null;
+let pollInterval = 150;
+
+function startPolling() {
+  stopPolling();
+  pollInterval = 150;
+  pollFrame();
+  pollTimer = setInterval(pollFrame, pollInterval);
 }
 
+function setPollSpeed(interval) {
+  if (interval === pollInterval || !pollTimer) return;
+  pollInterval = interval;
+  clearInterval(pollTimer);
+  pollTimer = setInterval(pollFrame, pollInterval);
+}
+
+function markInteraction() {
+  // Slow frame polling during active interaction to prioritize input
+  setPollSpeed(400);
+  clearTimeout(interactionTimer);
+  interactionTimer = setTimeout(() => {
+    // Resume faster polling after idle period
+    setPollSpeed(150);
+    pollFrame();
+  }, 250);
+}
+
+function scheduleFrameAfterInput() {
+  // Poll a frame shortly after input to show its effect
+  setTimeout(pollFrame, 200);
+}
+
+// ---------------------------------------------------------------------------
+// Pointer move: only during drag (hover moves are suppressed entirely)
+// ---------------------------------------------------------------------------
 function queueMove(point) {
   pendingMove = point;
   if (moveTimer || moveBusy) return;
@@ -259,13 +299,16 @@ async function flushMove() {
   pendingMove = null;
   moveBusy = true;
   try {
-    await sendRealtimeInput("browser_move", { ...point, button_name: pointer ? "left" : "none", buttons: pointer ? 1 : 0 });
+    fireInput("browser_move", { ...point, button_name: "left", buttons: 1 });
   } finally {
     moveBusy = false;
     if (pendingMove) queueMove(pendingMove);
   }
 }
 
+// ---------------------------------------------------------------------------
+// Scroll: coalesce deltas, only one in-flight at a time
+// ---------------------------------------------------------------------------
 function queueWheel(point, deltaX, deltaY) {
   if (pendingWheel) {
     pendingWheel.deltaX += deltaX;
@@ -284,18 +327,26 @@ async function flushWheel() {
   const wheel = pendingWheel;
   pendingWheel = null;
   wheelBusy = true;
+  markInteraction();
   try {
-    await sendRealtimeInput("browser_scroll", {
+    fireInput("browser_scroll", {
       x: wheel.x, y: wheel.y, delta_x: Math.round(wheel.deltaX), delta_y: Math.round(wheel.deltaY),
     });
+    // Small delay to allow backend to process before sending next batch
+    await new Promise((r) => setTimeout(r, 80));
   } finally {
     wheelBusy = false;
     if (pendingWheel) {
-      setTimeout(flushWheel, 20);
+      setTimeout(flushWheel, 40);
+    } else {
+      scheduleFrameAfterInput();
     }
   }
 }
 
+// ---------------------------------------------------------------------------
+// Pointer events
+// ---------------------------------------------------------------------------
 viewport.addEventListener("pointerdown", (event) => {
   viewport.focus();
   const point = viewportPoint(event);
@@ -304,28 +355,23 @@ viewport.addEventListener("pointerdown", (event) => {
 });
 
 viewport.addEventListener("pointermove", (event) => {
-  const point = viewportPoint(event);
-  if (!pointer) {
-    // When no button is held, throttle hover move to at least 150ms to keep relay free
-    const now = performance.now();
-    if (now - moveAt > 150) {
-      moveAt = now;
-      queueMove(point);
-    }
-    return;
-  }
+  // Hover moves are completely suppressed — they have no visible effect in
+  // a screencast viewer but waste ~70-100ms per exec call.
+  if (!pointer) return;
 
+  const point = viewportPoint(event);
   const dx = event.clientX - pointer.clientX;
   const dy = event.clientY - pointer.clientY;
   if (!pointer.moved && Math.hypot(dx, dy) > 5) {
     pointer.moved = true;
     pointer.sentDown = true;
+    markInteraction();
     sendInput("browser_pointer_down", { x: pointer.x, y: pointer.y });
   }
 
   if (pointer.sentDown) {
     const now = performance.now();
-    if (now - moveAt > 60) {
+    if (now - moveAt > 80) {
       moveAt = now;
       queueMove(point);
     }
@@ -338,15 +384,15 @@ viewport.addEventListener("pointerup", async (event) => {
   pointer = null;
   if (start?.pointerId != null) viewport.releasePointerCapture?.(start.pointerId);
 
+  markInteraction();
   if (start && start.sentDown) {
     await sendInput("browser_pointer_up", { x: point.x, y: point.y });
   } else {
-    // Fast path: Atomic click (single roundtrip instead of pointer_down + pointer_up)
+    // Fast path: fire-and-forget atomic click
     const clickPoint = start || point;
-    await sendInput("browser_click", { x: clickPoint.x, y: clickPoint.y, button_name: "left" });
+    fireInput("browser_click", { x: clickPoint.x, y: clickPoint.y, button_name: "left" });
   }
-  // Schedule an immediate frame poll to show the effect of the click without waiting for next tick
-  setTimeout(pollFrame, 50);
+  scheduleFrameAfterInput();
 });
 
 viewport.addEventListener("pointercancel", async (event) => {
@@ -365,8 +411,12 @@ viewport.addEventListener("wheel", (event) => {
   queueWheel(point, event.deltaX, event.deltaY);
 }, { passive: false });
 
-viewport.addEventListener("keydown", async (event) => {
+// ---------------------------------------------------------------------------
+// Keyboard
+// ---------------------------------------------------------------------------
+viewport.addEventListener("keydown", (event) => {
   event.preventDefault();
+  markInteraction();
   const modifiers = [];
   if (event.ctrlKey) modifiers.push("Control");
   if (event.shiftKey) modifiers.push("Shift");
@@ -374,10 +424,11 @@ viewport.addEventListener("keydown", async (event) => {
   if (event.metaKey) modifiers.push("Meta");
   const printable = event.key.length === 1 && !event.ctrlKey && !event.altKey && !event.metaKey;
   if (printable) {
-    await sendInput("browser_type", { text: event.key });
+    fireInput("browser_type", { text: event.key });
   } else {
-    await sendInput("browser_key", { key: [...modifiers, event.key].join("+") });
+    fireInput("browser_key", { key: [...modifiers, event.key].join("+") });
   }
+  scheduleFrameAfterInput();
 });
 
 app.ontoolresult = (result) => {

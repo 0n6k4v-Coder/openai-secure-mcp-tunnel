@@ -350,6 +350,10 @@ def test_browser_scroll_uses_persistent_relay(monkeypatch):
     result = browser_service.browser_scroll(sandbox, page_id, 0, 800, x=100, y=200)
 
     assert result["page_id"] == page_id
+    # _fire_cdp_input dispatches in a background thread; wait for it to drain.
+    worker = browser_service._INPUT_WORKER
+    if worker is not None:
+        worker.join(timeout=5)
     assert len(sends) == 1
     assert sends[0][1] == browser_service._CDP_INPUT_PATH
     assert sends[0][2][1] == "scroll"
@@ -437,6 +441,10 @@ def test_browser_input_uses_persistent_cdp_relay(monkeypatch):
     result = browser_service.browser_click("sandbox-1", 3, 10, 20)
 
     assert result["page_id"] == 3
+    # _fire_cdp_input dispatches in a background thread; wait for it to drain.
+    worker = browser_service._INPUT_WORKER
+    if worker is not None:
+        worker.join(timeout=5)
     assert len(calls) == 1
     assert calls[0][1] == browser_service._CDP_INPUT_PATH
     assert calls[0][2][0].endswith("mcp-browser-input-3.sock")
@@ -466,6 +474,10 @@ def test_browser_input_reuses_socket_without_rechecking_each_event(monkeypatch):
     browser_service.browser_move(sandbox, page_id, 1, 2)
     browser_service.browser_move(sandbox, page_id, 3, 4)
 
+    worker = browser_service._INPUT_WORKER
+    if worker is not None:
+        worker.join(timeout=5)
+
     assert checks == []
     assert len(sends) == 2
 
@@ -493,6 +505,10 @@ def test_browser_input_recovers_when_persistent_relay_dies(monkeypatch):
     )
 
     result = browser_service.browser_move(sandbox, page_id, 1, 2)
+
+    worker = browser_service._INPUT_WORKER
+    if worker is not None:
+        worker.join(timeout=5)
 
     assert result["page_id"] == page_id
     assert len(starts) == 1
@@ -536,6 +552,10 @@ def test_browser_pointer_lifecycle_uses_persistent_relay(monkeypatch):
     browser_service.browser_pointer_down("sandbox-1", 9, 10, 20)
     browser_service.browser_move("sandbox-1", 9, 20, 30, button_name="left", buttons=1)
     browser_service.browser_pointer_up("sandbox-1", 9, 20, 30)
+    # _fire_cdp_input dispatches in a background thread; wait for it to drain.
+    worker = browser_service._INPUT_WORKER
+    if worker is not None:
+        worker.join(timeout=5)
     assert [item[2][1] for item in sends] == ["pointerDown", "move", "pointerUp"]
 
 

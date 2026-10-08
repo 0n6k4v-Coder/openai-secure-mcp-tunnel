@@ -3,7 +3,9 @@ from __future__ import annotations
 import base64
 import ipaddress
 import json
+import logging
 import subprocess
+import threading
 import urllib.parse
 import uuid
 
@@ -106,6 +108,50 @@ def _run(sandbox_name: str, command: str, arguments: list[str] | None = None) ->
 _ALLOWED_ENDPOINTS_CACHE: set[tuple[str, str, int]] = set()
 _CDP_INPUT_READY: set[str] = set()
 _CDP_INPUT_SOCKET_READY: set[tuple[str, int]] = set()
+
+_log = logging.getLogger(__name__)
+
+# ---------------------------------------------------------------------------
+# Fire-and-forget background input dispatch
+# ---------------------------------------------------------------------------
+# Interactive input commands (click, scroll, type, key, move, pointer) are
+# dispatched in a daemon background thread so MCP tool handlers can return
+# immediately.  A single worker thread with a bounded queue preserves
+# chronological ordering while keeping the MCP pipeline free.
+# ---------------------------------------------------------------------------
+
+_INPUT_QUEUE: list[tuple] = []
+_INPUT_LOCK = threading.Lock()
+_INPUT_WORKER: threading.Thread | None = None
+
+
+def _input_worker_loop() -> None:
+    """Drain queued input commands sequentially in a background thread."""
+    while True:
+        with _INPUT_LOCK:
+            if not _INPUT_QUEUE:
+                # Nothing left to do — exit and allow a new worker to be
+                # spawned when the next command arrives.
+                global _INPUT_WORKER
+                _INPUT_WORKER = None
+                return
+            item = _INPUT_QUEUE.pop(0)
+        sandbox_name, page_id, operation, payload = item
+        try:
+            _run_cdp_input(sandbox_name, page_id, operation, payload)
+        except Exception:
+            _log.debug("Background input dispatch failed: %s %s", operation, payload, exc_info=True)
+
+
+def _fire_cdp_input(sandbox_name: str, page_id: int, operation: str, payload: dict[str, object]) -> None:
+    """Queue a CDP input command for fire-and-forget background dispatch."""
+    global _INPUT_WORKER
+    with _INPUT_LOCK:
+        _INPUT_QUEUE.append((sandbox_name, page_id, operation, payload))
+        if _INPUT_WORKER is None or not _INPUT_WORKER.is_alive():
+            _INPUT_WORKER = threading.Thread(target=_input_worker_loop, daemon=True)
+            _INPUT_WORKER.start()
+
 
 
 def _ensure_browser_endpoint_allowed(sandbox_name: str, url: str) -> None:
@@ -772,7 +818,7 @@ def viewport_stop(sandbox_name: str, page_id: int) -> dict[str, object]:
 
 def browser_click(sandbox_name: str, page_id: int, x: float, y: float, *, button_name: str = "left", double: bool = False) -> dict[str, object]:
     if button_name not in {"left", "middle", "right"}: raise BrowserError("button_name must be left, middle, or right.")
-    _run_cdp_input(sandbox_name, page_id, "click", {"x": _validate_coordinate(x, "x"), "y": _validate_coordinate(y, "y"), "button": button_name, "double": double})
+    _fire_cdp_input(sandbox_name, page_id, "click", {"x": _validate_coordinate(x, "x"), "y": _validate_coordinate(y, "y"), "button": button_name, "double": double})
     return {"page_id": validate_page_id(page_id), "x": x, "y": y, "button": button_name, "double": double}
 
 def browser_move(sandbox_name: str, page_id: int, x: float, y: float, *, button_name: str = "none", buttons: int = 0) -> dict[str, object]:
@@ -780,7 +826,7 @@ def browser_move(sandbox_name: str, page_id: int, x: float, y: float, *, button_
         raise BrowserError("button_name must be none, left, middle, or right.")
     if not isinstance(buttons, int) or buttons < 0 or buttons > 7:
         raise BrowserError("buttons must be an integer between 0 and 7.")
-    _run_cdp_input(sandbox_name, page_id, "move", {
+    _fire_cdp_input(sandbox_name, page_id, "move", {
         "x": _validate_coordinate(x, "x"), "y": _validate_coordinate(y, "y"),
         "button": button_name, "buttons": buttons,
     })
@@ -789,7 +835,7 @@ def browser_move(sandbox_name: str, page_id: int, x: float, y: float, *, button_
 def browser_pointer_down(sandbox_name: str, page_id: int, x: float, y: float, *, button_name: str = "left") -> dict[str, object]:
     if button_name not in {"left", "middle", "right"}:
         raise BrowserError("button_name must be left, middle, or right.")
-    _run_cdp_input(sandbox_name, page_id, "pointerDown", {
+    _fire_cdp_input(sandbox_name, page_id, "pointerDown", {
         "x": _validate_coordinate(x, "x"), "y": _validate_coordinate(y, "y"), "button": button_name,
     })
     return {"page_id": validate_page_id(page_id), "x": x, "y": y, "button": button_name, "state": "down"}
@@ -797,27 +843,28 @@ def browser_pointer_down(sandbox_name: str, page_id: int, x: float, y: float, *,
 def browser_pointer_up(sandbox_name: str, page_id: int, x: float, y: float, *, button_name: str = "left") -> dict[str, object]:
     if button_name not in {"left", "middle", "right"}:
         raise BrowserError("button_name must be left, middle, or right.")
-    _run_cdp_input(sandbox_name, page_id, "pointerUp", {
+    _fire_cdp_input(sandbox_name, page_id, "pointerUp", {
         "x": _validate_coordinate(x, "x"), "y": _validate_coordinate(y, "y"), "button": button_name,
     })
     return {"page_id": validate_page_id(page_id), "x": x, "y": y, "button": button_name, "state": "up"}
 
 def browser_scroll(sandbox_name: str, page_id: int, delta_x: float, delta_y: float, *, x: float = 1, y: float = 1) -> dict[str, object]:
-    _run_cdp_input(sandbox_name, page_id, "scroll", {"x": _validate_coordinate(x, "x"), "y": _validate_coordinate(y, "y"), "deltaX": delta_x, "deltaY": delta_y})
+    _fire_cdp_input(sandbox_name, page_id, "scroll", {"x": _validate_coordinate(x, "x"), "y": _validate_coordinate(y, "y"), "deltaX": delta_x, "deltaY": delta_y})
     return {"page_id": validate_page_id(page_id), "delta_x": delta_x, "delta_y": delta_y}
 
 def browser_type(sandbox_name: str, page_id: int, text: str) -> dict[str, object]:
     text = _validate_input_text(text)
-    _run_cdp_input(sandbox_name, page_id, "type", {"text": text})
+    _fire_cdp_input(sandbox_name, page_id, "type", {"text": text})
     return {"page_id": validate_page_id(page_id), "text_length": len(text)}
 
 def browser_key(sandbox_name: str, page_id: int, key: str) -> dict[str, object]:
     key = _validate_input_text(key)
     if len(key) > 128: raise BrowserError("key exceeds 128 characters.")
-    _run_cdp_input(sandbox_name, page_id, "key", {"key": key})
+    _fire_cdp_input(sandbox_name, page_id, "key", {"key": key})
     return {"page_id": validate_page_id(page_id), "key": key}
 
 def browser_drag(sandbox_name: str, page_id: int, from_x: float, from_y: float, to_x: float, to_y: float, *, steps: int = 8) -> dict[str, object]:
     if not isinstance(steps, int) or not 2 <= steps <= 64: raise BrowserError("steps must be an integer between 2 and 64.")
     _run_cdp_input(sandbox_name, page_id, "drag", {"fromX": _validate_coordinate(from_x, "from_x"), "fromY": _validate_coordinate(from_y, "from_y"), "toX": _validate_coordinate(to_x, "to_x"), "toY": _validate_coordinate(to_y, "to_y"), "steps": steps})
     return {"page_id": validate_page_id(page_id), "from": [from_x, from_y], "to": [to_x, to_y], "steps": steps}
+
