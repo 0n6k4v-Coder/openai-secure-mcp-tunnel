@@ -424,3 +424,56 @@ The MCP E2E report is complete when:
 - Every result is backed by an actual test execution.
 - Blocked or skipped tests include an explicit reason.
 - All test-created resources are cleaned up or explicitly accounted for.
+
+
+## 19. NEW GROUP — Browser & Website Clone E2E Coverage
+
+### Browser / MCP App
+
+| ID | Test | Expected Result | Status |
+|---|---|---|---|
+| MCP-BROWSER-NEW-001 | Browser App resource registration | ui://browser/view is registered and returns the Browser App resource | ⚪ Not implemented |
+| MCP-BROWSER-NEW-002 | browser_open App flow | Opens the requested browser sandbox/page and returns expected App metadata/resource | ⚪ Not implemented |
+| MCP-BROWSER-NEW-003 | browser_pages | Lists browser pages with page IDs, URLs, and titles | ⚪ Not implemented |
+| MCP-BROWSER-NEW-004 | browser_navigate valid public URL | Navigates the selected page successfully | ⚪ Not implemented |
+| MCP-BROWSER-NEW-005 | browser_navigate unsafe URL | Rejects loopback/private/link-local/reserved, invalid-scheme, and credential-bearing URLs | ⚪ Not implemented |
+| MCP-BROWSER-NEW-006 | browser_snapshot | Returns a usable page snapshot | ⚪ Not implemented |
+| MCP-BROWSER-NEW-007 | browser_inspect valid selector | Returns inspection data for the requested element | ⚪ Not implemented |
+| MCP-BROWSER-NEW-008 | browser_inspect invalid/oversized selector | Returns validation error without unintended browser side effects | ⚪ Not implemented |
+| MCP-BROWSER-NEW-009 | browser_evaluate valid script | Evaluates the script and returns the result | ⚪ Not implemented |
+| MCP-BROWSER-NEW-010 | browser_evaluate empty/oversized script | Rejects invalid input before execution | ⚪ Not implemented |
+| MCP-BROWSER-NEW-011 | browser_screenshot | Returns a valid image and cleans temporary artifacts | ⚪ Not implemented |
+| MCP-BROWSER-NEW-012 | Invalid browser sandbox/page ID | Returns a clear validation error without touching an unintended page | ⚪ Not implemented |
+| MCP-BROWSER-NEW-013 | Browser App action flow | Snapshot, inspect, screenshot, and clone actions invoke intended server tools | ⚪ Not implemented |
+| MCP-BROWSER-NEW-014 | Browser App CSP/resource loading | App loads without undeclared external resource dependencies | ⚪ Not implemented |
+
+### Website Clone
+
+| ID | Test | Expected Result | Status |
+|---|---|---|---|
+| MCP-CLONE-NEW-001 | clone_preview full page | Returns clone metadata/payload without unexpected file writes | ⚪ Not implemented |
+| MCP-CLONE-NEW-002 | clone_preview valid selector | Returns preview for the selected DOM region | ⚪ Not implemented |
+| MCP-CLONE-NEW-003 | clone_preview missing selector | Returns a clear validation error | ⚪ Not implemented |
+| MCP-CLONE-NEW-004 | clone_region valid selector | Writes a sanitized index.html for the selected region | ⚪ Not implemented |
+| MCP-CLONE-NEW-005 | clone_page | Writes a sanitized full-page clone with expected output metadata | ⚪ Not implemented |
+| MCP-CLONE-NEW-006 | Clone preserves safe markup | Expected structural HTML and safe attributes are retained | ⚪ Not implemented |
+| MCP-CLONE-NEW-007 | Clone strips executable content | Scripts, iframes, inline event handlers, and other executable content are removed | ⚪ Not implemented |
+| MCP-CLONE-NEW-008 | Clone sanitizes dangerous URLs | Dangerous URL schemes are removed or neutralized | ⚪ Not implemented |
+| MCP-CLONE-NEW-009 | Clone sanitizes CSS | CSS size/breakout constraints are enforced | ⚪ Not implemented |
+| MCP-CLONE-NEW-010 | Clone title/filename safety | Generated title and filesystem slug cannot cause HTML/path injection | ⚪ Not implemented |
+| MCP-CLONE-NEW-011 | Clone output isolation | Output is written only inside the requested sandbox workspace | ⚪ Not implemented |
+| MCP-CLONE-NEW-012 | External asset reporting | External stylesheet/assets are surfaced according to current V1 behavior | ⚪ Not implemented |
+| MCP-CLONE-NEW-013 | End-to-end website clone | Navigate → inspect → preview → clone produces a usable sanitized artifact | ⚪ Not implemented |
+
+### Registry / Integration / Security
+
+| ID | Test | Expected Result | Status |
+|---|---|---|---|
+| MCP-REG-NEW-001 | Browser and clone tools in MCP registry | New tools expose expected names and schemas alongside existing tools | ⚪ Not implemented |
+| MCP-REG-NEW-002 | Browser tool annotations | Read-only browser tools expose accurate read-only annotations | ⚪ Not implemented |
+| MCP-REG-NEW-003 | Clone tool annotations | Clone write tools expose accurate write/destructive semantics | ⚪ Not implemented |
+| MCP-REG-NEW-004 | Browser validation round trip | Invalid URL/page input returns service validation error without false success | ⚪ Not implemented |
+| MCP-REG-NEW-005 | Clone validation round trip | Invalid selector/page input returns expected validation error | ⚪ Not implemented |
+| MCP-REG-NEW-006 | Browser + clone coexistence | Existing terminal/MCP tool behavior remains unchanged | ⚪ Not implemented |
+| MCP-REG-NEW-007 | Browser sandbox network policy | Allowed HTTP/HTTPS destinations work and disallowed targets remain blocked | ⚪ Not implemented |
+| MCP-REG-NEW-008 | Full MCP website-cloning flow | Real page can be opened, inspected, previewed, and cloned without bypassing sandbox/security boundaries | ⚪ Not implemented |

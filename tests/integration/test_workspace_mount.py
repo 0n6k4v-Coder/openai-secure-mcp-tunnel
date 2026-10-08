@@ -110,7 +110,7 @@ def test_host_backed_workspace_round_trip(
         }
 
         mcp_client.call_tool(
-            "create_workspace_file",
+            "write_to_file",
             {
                 "sandbox_name": sandbox_name,
                 "relative_path": relative_path,
@@ -128,7 +128,7 @@ def test_host_backed_workspace_round_trip(
         )
 
         content = mcp_client.call_tool(
-            "read_workspace_text_file",
+            "read_file",
             {
                 "sandbox_name": sandbox_name,
                 "relative_path": relative_path,
@@ -138,18 +138,19 @@ def test_host_backed_workspace_round_trip(
         assert content == "written-by-host"
 
         mcp_client.call_tool(
-            "write_workspace_file",
+            "write_to_file",
             {
                 "sandbox_name": sandbox_name,
                 "relative_path": relative_path,
                 "content": "rewritten-by-sandbox",
+                "overwrite": True,
             },
         )
 
         assert host_file.read_text(encoding="utf-8") == "rewritten-by-sandbox"
 
         mcp_client.call_tool(
-            "delete_workspace_file",
+            "delete_file",
             {
                 "sandbox_name": sandbox_name,
                 "relative_path": relative_path,
@@ -157,6 +158,7 @@ def test_host_backed_workspace_round_trip(
         )
 
         assert not host_file.exists()
+
 
     finally:
         if created:

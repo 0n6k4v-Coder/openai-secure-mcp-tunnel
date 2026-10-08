@@ -109,7 +109,7 @@ def test_standalone_sandbox_lifecycle_and_workspace(
         assert "standalone-integration-ok" in str(execution)
 
         mcp_client.call_tool(
-            "create_workspace_file",
+            "write_to_file",
             {
                 "sandbox_name": sandbox_name,
                 "relative_path": relative_path,
@@ -118,7 +118,7 @@ def test_standalone_sandbox_lifecycle_and_workspace(
         )
 
         content = mcp_client.call_tool(
-            "read_workspace_text_file",
+            "read_file",
             {
                 "sandbox_name": sandbox_name,
                 "relative_path": relative_path,
@@ -177,7 +177,7 @@ def test_standalone_sandbox_lifecycle_and_workspace(
 
         recreated_path = f".recreated-{uuid.uuid4().hex}.txt"
         mcp_client.call_tool(
-            "create_workspace_file",
+            "write_to_file",
             {
                 "sandbox_name": sandbox_name,
                 "relative_path": recreated_path,
@@ -186,8 +186,9 @@ def test_standalone_sandbox_lifecycle_and_workspace(
         )
 
         recreated_content = mcp_client.call_tool(
-            "read_workspace_text_file",
+            "read_file",
             {
+
                 "sandbox_name": sandbox_name,
                 "relative_path": recreated_path,
             },

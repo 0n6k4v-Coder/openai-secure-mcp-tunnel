@@ -173,13 +173,10 @@ def test_cli_ws_001_authorize_returns_workspace_details(
     host_path.mkdir()
     result = _authorize(mcpctl_executable, workspace_e2e_environment, host_path)
 
-    assert re.fullmatch(r"ws_[0-9a-f]{32}", result["workspace_id"])
+    assert re.fullmatch(r"ws_[0-9a-f]{32}", result["id"])
     assert result["host_path"] == str(host_path.resolve())
-    assert result["volume_name"] == f"mcp-ws-{result['workspace_id'][3:]}"
-    assert result["target"] == "/workspace/project"
+    assert result["sandbox_path"] == "/workspace/project"
     assert result["read_only"] is False
-    assert result["host_uid"] == os.getuid()
-    assert result["host_gid"] == os.getgid()
     assert [event["operation"] for event in _events(workspace_e2e_environment)] == [
         "provision-sandbox-acl",
         "create-volume",
@@ -243,8 +240,9 @@ def test_cli_ws_006_list_includes_authorized_grant(
     host_path.mkdir()
     grant = _authorize(mcpctl_executable, workspace_e2e_environment, host_path)
     result = _run(mcpctl_executable, ["workspace", "list"], workspace_e2e_environment)
-    grants = _json_stdout(result)
-    assert grant["workspace_id"] in {item["workspace_id"] for item in grants}
+    assert result.returncode == 0
+    assert grant["id"] in result.stdout
+    assert str(host_path.resolve()) in result.stdout
 
 
 def test_cli_ws_007_list_json_returns_valid_json(
@@ -257,7 +255,7 @@ def test_cli_ws_007_list_json_returns_valid_json(
         mcpctl_executable, ["workspace", "list", "--json"], workspace_e2e_environment
     )
     grants = _json_stdout(result)
-    assert any(item["workspace_id"] == grant["workspace_id"] for item in grants)
+    assert any(item["id"] == grant["id"] for item in grants)
 
 
 def test_cli_ws_008_list_help_documents_json_option(
@@ -279,16 +277,16 @@ def test_cli_ws_009_revoke_removes_existing_grant(
     grant = _authorize(mcpctl_executable, workspace_e2e_environment, host_path)
     result = _run(
         mcpctl_executable,
-        ["workspace", "revoke", grant["workspace_id"]],
+        ["workspace", "revoke", grant["id"]],
         workspace_e2e_environment,
     )
     revoked = _json_stdout(result)
-    assert revoked["workspace_id"] == grant["workspace_id"]
+    assert revoked["workspace_id"] == grant["id"]
     assert revoked["revoked"] is True
     grants = json.loads(
         _grant_file(workspace_e2e_environment).read_text(encoding="utf-8")
     )
-    assert grant["workspace_id"] not in grants
+    assert grant["id"] not in grants
     assert [event["operation"] for event in _events(workspace_e2e_environment)] == [
         "provision-sandbox-acl",
         "create-volume",
@@ -337,20 +335,20 @@ def test_cli_ws_013_authorize_list_revoke_list_round_trip(
     host_path.mkdir()
     grant = _authorize(mcpctl_executable, workspace_e2e_environment, host_path)
     before = _json_stdout(
-        _run(mcpctl_executable, ["workspace", "list"], workspace_e2e_environment)
+        _run(mcpctl_executable, ["workspace", "list", "--json"], workspace_e2e_environment)
     )
-    assert any(item["workspace_id"] == grant["workspace_id"] for item in before)
+    assert any(item["id"] == grant["id"] for item in before)
     _json_stdout(
         _run(
             mcpctl_executable,
-            ["workspace", "revoke", grant["workspace_id"]],
+            ["workspace", "revoke", grant["id"]],
             workspace_e2e_environment,
         )
     )
     after = _json_stdout(
-        _run(mcpctl_executable, ["workspace", "list"], workspace_e2e_environment)
+        _run(mcpctl_executable, ["workspace", "list", "--json"], workspace_e2e_environment)
     )
-    assert all(item["workspace_id"] != grant["workspace_id"] for item in after)
+    assert all(item["id"] != grant["id"] for item in after)
 
 
 def test_cli_ws_014_workspace_help_lists_subcommands(
@@ -388,13 +386,13 @@ def test_cli_ws_016_authorize_list_revoke_json_output_contract(
             workspace_e2e_environment,
         )
     )
-    assert any(item["workspace_id"] == grant["workspace_id"] for item in listed)
+    assert any(item["id"] == grant["id"] for item in listed)
     revoked = _json_stdout(
         _run(
             mcpctl_executable,
-            ["workspace", "revoke", grant["workspace_id"]],
+            ["workspace", "revoke", grant["id"]],
             workspace_e2e_environment,
         )
     )
     assert revoked["revoked"] is True
-    assert revoked["workspace_id"] == grant["workspace_id"]
+    assert revoked["workspace_id"] == grant["id"]

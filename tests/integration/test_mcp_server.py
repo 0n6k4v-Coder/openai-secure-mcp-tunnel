@@ -22,17 +22,27 @@ EXPECTED_TOOLS = {
     "recreate_sandbox",
     "delete_sandbox",
     "execute_sandbox_command",
-    "list_workspace_files",
-    "read_workspace_text_file",
-    "create_workspace_file",
-    "write_workspace_file",
-    "create_workspace_directory",
-    "rename_workspace_path",
-    "delete_workspace_file",
-    "delete_workspace_directory",
+    "list_files",
+    "read_file",
+    "write_to_file",
+    "replace_file_content",
+    "create_directory",
+    "rename_path",
+    "delete_file",
+    "delete_directory",
     "list_authorized_host_workspaces",
     "execute_chrome_devtools_command",
+    "browser_pages",
+    "browser_navigate",
+    "browser_snapshot",
+    "browser_screenshot",
+    "browser_inspect",
+    "browser_evaluate",
+    "clone_preview",
+    "clone_region",
+    "clone_page",
 }
+
 
 
 @pytest.mark.integration
@@ -131,3 +141,34 @@ def test_mcp_hides_package_installation_but_keeps_sandbox_execution(
     names = {tool.name for tool in result.tools}
     assert "request_tool_installation" not in names
     assert "execute_sandbox_command" in names
+
+
+@pytest.mark.integration
+def test_browser_tool_validation_round_trip(
+    mcp_client: MCPIntegrationClient,
+) -> None:
+    result = mcp_client.call_tool_expect_error(
+        "browser_navigate",
+        {
+            "sandbox_name": "project-jupyter",
+            "page_id": 0,
+            "url": "http://127.0.0.1:8000",
+        },
+    )
+    payload = str(result.content)
+    assert "Private" in payload or "loopback" in payload.lower()
+
+
+@pytest.mark.integration
+def test_clone_tool_validation_round_trip(
+    mcp_client: MCPIntegrationClient,
+) -> None:
+    result = mcp_client.call_tool_expect_error(
+        "clone_preview",
+        {
+            "sandbox_name": "project-jupyter",
+            "page_id": -1,
+        },
+    )
+    payload = str(result.content)
+    assert "page_id" in payload

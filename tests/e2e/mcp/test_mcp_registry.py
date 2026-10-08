@@ -19,34 +19,50 @@ EXPECTED_ARGUMENTS: dict[str, tuple[set[str], set[str]]] = {
     "recreate_sandbox": ({"name"}, set()),
     "delete_sandbox": ({"name"}, set()),
     "execute_sandbox_command": ({"name", "command"}, set()),
-    "list_workspace_files": ({"sandbox_name"}, set()),
-    "read_workspace_text_file": ({"sandbox_name", "relative_path"}, set()),
-    "create_workspace_file": (
+    "list_files": ({"sandbox_name"}, set()),
+    "read_file": ({"sandbox_name", "relative_path"}, set()),
+    "write_to_file": (
         {"sandbox_name", "relative_path", "content"},
-        set(),
+        {"overwrite"},
     ),
-    "write_workspace_file": (
-        {"sandbox_name", "relative_path", "content"},
-        set(),
+    "replace_file_content": (
+        {"sandbox_name", "relative_path", "target_content", "replacement_content"},
+        {"allow_multiple"},
     ),
-    "create_workspace_directory": ({"sandbox_name", "relative_path"}, set()),
-    "rename_workspace_path": (
+    "create_directory": ({"sandbox_name", "relative_path"}, set()),
+    "rename_path": (
         {"sandbox_name", "relative_path", "new_relative_path"},
         set(),
     ),
-    "delete_workspace_file": ({"sandbox_name", "relative_path"}, set()),
-    "delete_workspace_directory": ({"sandbox_name", "relative_path"}, set()),
+    "delete_file": ({"sandbox_name", "relative_path"}, set()),
+    "delete_directory": ({"sandbox_name", "relative_path"}, set()),
     "list_authorized_host_workspaces": (set(), set()),
     "execute_chrome_devtools_command": (
         {"sandbox_name", "command"},
         {"arguments"},
     ),
+    "browser_pages": ({"sandbox_name"}, set()),
+    "browser_navigate": ({"sandbox_name", "page_id", "url"}, set()),
+    "browser_snapshot": ({"sandbox_name", "page_id"}, {"verbose"}),
+    "browser_screenshot": ({"sandbox_name", "page_id"}, {"full_page"}),
+    "browser_inspect": ({"sandbox_name", "page_id", "selector"}, set()),
+    "browser_evaluate": ({"sandbox_name", "page_id", "function"}, set()),
+    "clone_preview": ({"sandbox_name", "page_id"}, {"selector"}),
+    "clone_region": ({"sandbox_name", "page_id", "selector"}, {"output_dir"}),
+    "clone_page": ({"sandbox_name", "page_id"}, {"output_dir"}),
 }
 
 EXPECTED_DEFAULTS: dict[str, dict[str, Any]] = {
     "create_sandbox": {"host_workspace_id": None, "profile": "default"},
     "sandbox_logs": {"since": "5m"},
     "execute_chrome_devtools_command": {"arguments": None},
+    "browser_snapshot": {"verbose": False},
+    "browser_screenshot": {"full_page": False},
+    "clone_preview": {"selector": None},
+    "clone_region": {"output_dir": "clones"},
+    "clone_page": {"output_dir": "clones"},
+    "write_to_file": {"overwrite": True},
+    "replace_file_content": {"allow_multiple": False},
 }
 
 EXPECTED_DESCRIPTION_FRAGMENTS = {
@@ -62,16 +78,25 @@ EXPECTED_DESCRIPTION_FRAGMENTS = {
     "recreate_sandbox": "delete and recreate",
     "delete_sandbox": "permanently delete",
     "execute_sandbox_command": "execute a normal command",
-    "list_workspace_files": "list regular files",
-    "read_workspace_text_file": "read a utf-8 text file",
-    "create_workspace_file": "create a new utf-8 text file",
-    "write_workspace_file": "replace the contents",
-    "create_workspace_directory": "create a directory",
-    "rename_workspace_path": "rename a file or directory",
-    "delete_workspace_file": "delete a regular file",
-    "delete_workspace_directory": "delete a directory tree",
+    "list_files": "list regular files",
+    "read_file": "read a utf-8 text file",
+    "write_to_file": "create a new file or overwrite",
+    "replace_file_content": "replace target content",
+    "create_directory": "create a directory",
+    "rename_path": "rename a file or directory",
+    "delete_file": "delete a regular file",
+    "delete_directory": "delete a directory tree",
     "list_authorized_host_workspaces": "list human-authorized host workspace grants",
     "execute_chrome_devtools_command": "execute a chrome devtools cli command",
+    "browser_pages": "list pages currently open",
+    "browser_navigate": "navigate a browser page",
+    "browser_snapshot": "capture the current page accessibility snapshot",
+    "browser_screenshot": "capture the current browser page as a png image",
+    "browser_inspect": "inspect a css-selected dom element",
+    "browser_evaluate": "evaluate a bounded javascript function",
+    "clone_preview": "preview a page or selected dom region",
+    "clone_region": "create a sanitized static clone of one dom region",
+    "clone_page": "create a sanitized static clone of the current browser page",
 }
 
 # Values are (readOnlyHint, destructiveHint, idempotentHint, openWorldHint).
@@ -89,17 +114,27 @@ EXPECTED_ANNOTATIONS: dict[str, tuple[bool, bool, bool, bool]] = {
     "recreate_sandbox": (False, True, False, False),
     "delete_sandbox": (False, True, False, False),
     "execute_sandbox_command": (False, True, False, False),
-    "list_workspace_files": (True, False, True, False),
-    "read_workspace_text_file": (True, False, True, False),
-    "create_workspace_file": (False, False, False, False),
-    "write_workspace_file": (False, True, False, False),
-    "create_workspace_directory": (False, False, False, False),
-    "rename_workspace_path": (False, False, False, False),
-    "delete_workspace_file": (False, True, False, False),
-    "delete_workspace_directory": (False, True, False, False),
+    "list_files": (True, False, True, False),
+    "read_file": (True, False, True, False),
+    "write_to_file": (False, False, True, False),
+    "replace_file_content": (False, False, False, False),
+    "create_directory": (False, False, False, False),
+    "rename_path": (False, False, False, False),
+    "delete_file": (False, True, False, False),
+    "delete_directory": (False, True, False, False),
     "list_authorized_host_workspaces": (True, False, True, False),
     "execute_chrome_devtools_command": (False, True, False, True),
+    "browser_pages": (True, False, True, True),
+    "browser_navigate": (False, False, False, True),
+    "browser_snapshot": (True, False, True, True),
+    "browser_screenshot": (True, False, True, True),
+    "browser_inspect": (True, False, True, True),
+    "browser_evaluate": (True, False, True, True),
+    "clone_preview": (True, False, True, True),
+    "clone_region": (False, True, False, True),
+    "clone_page": (False, True, False, True),
 }
+
 
 
 def _list_tools(mcp_client) -> list[Any]:
@@ -122,7 +157,7 @@ def test_MCP_REG_001_list_all_registered_tools(mcp_client) -> None:
 
 @pytest.mark.integration
 def test_MCP_REG_002_verify_exact_tool_count(mcp_client) -> None:
-    assert len(_list_tools(mcp_client)) == 22
+    assert len(_list_tools(mcp_client)) == 31
 
 
 @pytest.mark.integration

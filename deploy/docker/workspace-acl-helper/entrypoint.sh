@@ -98,8 +98,8 @@ if [ "$operation" = "provision-sandbox-acl" ]; then
             -o -name '__pycache__' \
         \) -prune -o \
         -type d \
-        -exec setfacl -m "u:$sandbox_uid:rwx" {} + \
-        -exec setfacl -m "d:u:$sandbox_uid:rwx" {} +
+        -exec setfacl -m "u:$sandbox_uid:rwx,m:rwx" {} + \
+        -exec setfacl -m "d:u:$sandbox_uid:rwx,d:m:rwx" {} +
 
     if [ "$host_uid" != "$sandbox_uid" ]; then
         find -P "$root" -xdev -mindepth 1 \
@@ -128,8 +128,8 @@ if [ "$operation" = "provision-sandbox-acl" ]; then
                 -o -name '__pycache__' \
             \) -prune -o \
             -type d \
-            -exec setfacl -m "u:$host_uid:rwx" {} + \
-            -exec setfacl -m "d:u:$host_uid:rwx" {} +
+            -exec setfacl -m "u:$host_uid:rwx,m:rwx" {} + \
+            -exec setfacl -m "d:u:$host_uid:rwx,d:m:rwx" {} +
     fi
 
     find -P "$root" -xdev -mindepth 1 \
@@ -158,7 +158,7 @@ if [ "$operation" = "provision-sandbox-acl" ]; then
             -o -name '__pycache__' \
         \) -prune -o \
         -type f \
-        -exec setfacl -m "u:$sandbox_uid:rwX" {} +
+        -exec setfacl -m "u:$sandbox_uid:rwX,m:rwX" {} +
 
     if [ "$host_uid" != "$sandbox_uid" ]; then
         find -P "$root" -xdev -mindepth 1 \

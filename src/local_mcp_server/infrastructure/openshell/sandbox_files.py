@@ -63,12 +63,13 @@ except UnicodeDecodeError as exc:
 sys.stdout.write(content)
 """.strip()
 
-_CREATE_FILE_SCRIPT = r"""
+_WRITE_TO_FILE_SCRIPT = r"""
 import os
 import sys
 
 root = os.path.realpath("/workspace/project")
 relative_path = sys.argv[1]
+overwrite = sys.argv[2].lower() == "true"
 
 if not relative_path:
     raise SystemExit("Path must not be empty.")
@@ -89,7 +90,10 @@ if common != root:
     raise SystemExit("Requested path is outside the workspace.")
 
 if os.path.exists(resolved):
-    raise SystemExit("A file or directory already exists at that path.")
+    if not os.path.isfile(resolved):
+        raise SystemExit("Requested path already exists and is not a regular file.")
+    if not overwrite:
+        raise SystemExit("File already exists and overwrite is set to False.")
 
 content = sys.stdin.buffer.read()
 if len(content) > 1_000_000:
@@ -104,12 +108,14 @@ with open(resolved, "wb") as handle:
 sys.stdout.write(os.path.relpath(resolved, root))
 """.strip()
 
-_WRITE_FILE_SCRIPT = r"""
+_REPLACE_FILE_CONTENT_SCRIPT = r"""
+import json
 import os
 import sys
 
 root = os.path.realpath("/workspace/project")
 relative_path = sys.argv[1]
+allow_multiple = sys.argv[2].lower() == "true"
 
 if not relative_path:
     raise SystemExit("Path must not be empty.")
@@ -130,17 +136,39 @@ if common != root:
     raise SystemExit("Requested path is outside the workspace.")
 
 if not os.path.isfile(resolved):
-    raise SystemExit("Requested path is not a regular file.")
+    raise SystemExit("Target file does not exist or is not a regular file.")
 
-content = sys.stdin.buffer.read()
-if len(content) > 1_000_000:
-    raise SystemExit("Content is too large.")
+raw_payload = sys.stdin.buffer.read().decode("utf-8")
+payload = json.loads(raw_payload)
+target_content = payload["target_content"]
+replacement_content = payload["replacement_content"]
 
-with open(resolved, "wb") as handle:
-    handle.write(content)
+if not target_content:
+    raise SystemExit("target_content must not be empty.")
+
+try:
+    with open(resolved, "r", encoding="utf-8") as handle:
+        original = handle.read()
+except UnicodeDecodeError as exc:
+    raise SystemExit("Target file is not valid UTF-8 text.") from exc
+
+count = original.count(target_content)
+if count == 0:
+    raise SystemExit("target_content not found in file.")
+if count > 1 and not allow_multiple:
+    raise SystemExit(f"target_content occurred {count} times in file. Provide more context or set allow_multiple=True.")
+
+updated = original.replace(target_content, replacement_content) if allow_multiple else original.replace(target_content, replacement_content, 1)
+
+if len(updated.encode("utf-8")) > 1_000_000:
+    raise SystemExit("Updated content exceeds maximum allowed size.")
+
+with open(resolved, "w", encoding="utf-8") as handle:
+    handle.write(updated)
 
 sys.stdout.write(os.path.relpath(resolved, root))
 """.strip()
+
 
 _CREATE_DIRECTORY_SCRIPT = r"""
 import os
@@ -355,36 +383,56 @@ def read_sandbox_workspace_text_file(sandbox_name: str, relative_path: str) -> s
     return _execute_workspace_command(sandbox_name, command)
 
 
-def create_sandbox_workspace_file(
+def write_sandbox_file(
     sandbox_name: str,
     relative_path: str,
     content: str,
+    overwrite: bool = True,
 ) -> str:
     _validate_relative_path(relative_path)
     encoded = _validate_content(content)
     command = (
         "python -c "
-        + shlex.quote(_CREATE_FILE_SCRIPT)
+        + shlex.quote(_WRITE_TO_FILE_SCRIPT)
         + " "
         + shlex.quote(relative_path)
+        + " "
+        + ("true" if overwrite else "false")
     )
     return _execute_workspace_command(sandbox_name, command, stdin=encoded)
 
 
-def write_sandbox_workspace_file(
+def replace_sandbox_file_content(
     sandbox_name: str,
     relative_path: str,
-    content: str,
+    target_content: str,
+    replacement_content: str,
+    allow_multiple: bool = False,
 ) -> str:
     _validate_relative_path(relative_path)
-    encoded = _validate_content(content)
+    if not isinstance(target_content, str):
+        raise ValueError("target_content must be a string.")
+    if not isinstance(replacement_content, str):
+        raise ValueError("replacement_content must be a string.")
+    if not target_content:
+        raise ValueError("target_content must not be empty.")
+
+    payload = json.dumps(
+        {
+            "target_content": target_content,
+            "replacement_content": replacement_content,
+        }
+    ).encode("utf-8")
+
     command = (
         "python -c "
-        + shlex.quote(_WRITE_FILE_SCRIPT)
+        + shlex.quote(_REPLACE_FILE_CONTENT_SCRIPT)
         + " "
         + shlex.quote(relative_path)
+        + " "
+        + ("true" if allow_multiple else "false")
     )
-    return _execute_workspace_command(sandbox_name, command, stdin=encoded)
+    return _execute_workspace_command(sandbox_name, command, stdin=payload)
 
 
 def create_sandbox_workspace_directory(
