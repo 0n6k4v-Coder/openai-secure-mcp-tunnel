@@ -1,6 +1,6 @@
 services:
   openshell-gateway:
-    image: ghcr.io/nvidia/openshell/gateway:${OPENSHELL_IMAGE_TAG:-latest}
+    image: ghcr.io/nvidia/openshell/gateway:${OPENSHELL_IMAGE_TAG:-0.1.2}
     restart: unless-stopped
     command: []
     user: "0"
@@ -111,7 +111,6 @@ services:
     networks:
       - mcp-internal
       - openshell-internal
-      - mcp-host-publish
 
     depends_on:
       openshell-gateway:
@@ -120,6 +119,7 @@ services:
     environment:
       OPENSHELL_WORKSPACE: ${OPENSHELL_WORKSPACE:-default}
       OPENSHELL_GATEWAY: ${OPENSHELL_GATEWAY:-local}
+      OPENSHELL_IMAGE_TAG: ${OPENSHELL_IMAGE_TAG:-0.1.2}
       OPENSHELL_CLI_GATEWAY: ${OPENSHELL_CONTAINER_GATEWAY:-https://openshell-gateway:8080}
 
       XDG_CONFIG_HOME: /config
@@ -193,9 +193,6 @@ networks:
 
   openshell-internal:
     internal: true
-
-  mcp-host-publish:
-    driver: bridge
 
   openshell-gateway:
     driver: bridge

@@ -10,7 +10,7 @@ from pathlib import Path
 
 
 OPEN_SHELL_GATEWAY_IMAGE = "ghcr.io/nvidia/openshell/gateway:" + os.environ.get(
-    "OPENSHELL_IMAGE_TAG", "latest"
+    "OPENSHELL_IMAGE_TAG", "0.1.2"
 )
 
 OPEN_SHELL_CLI_GATEWAY_NAME = "local"
