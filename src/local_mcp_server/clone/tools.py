@@ -23,6 +23,11 @@ from .pipeline import (
     trace_interactions as trace_interactions_impl,
     verify_clone as verify_clone_impl,
 )
+from .visual import (
+    capture_screenshot_artifact as capture_screenshot_artifact_impl,
+    compare_screenshot_artifacts as compare_screenshot_artifacts_impl,
+    verify_clone_with_visual as verify_clone_with_visual_impl,
+)
 
 
 def register_tools(mcp: MCPServer) -> None:
@@ -107,3 +112,59 @@ def register_tools(mcp: MCPServer) -> None:
     def run_clone_workflow(workflow: str, inputs: dict[str, Any]) -> dict[str, Any]:
         """Run a named clone workflow: quick, accurate, forensic, or verify."""
         return run_clone_workflow_impl(workflow, inputs)
+
+    @mcp.tool(annotations=ToolAnnotations(readOnlyHint=False, destructiveHint=False, idempotentHint=False, openWorldHint=False))
+    def capture_screenshot_artifact(
+        sandbox_name: str,
+        page_id: int,
+        output_path: str,
+        full_page: bool = False,
+    ) -> dict[str, Any]:
+        """Capture a PNG from an existing page into a new relative workspace path."""
+        return capture_screenshot_artifact_impl(
+            sandbox_name, page_id, output_path, full_page=full_page
+        )
+
+    @mcp.tool(annotations=ToolAnnotations(readOnlyHint=True, destructiveHint=False, idempotentHint=True, openWorldHint=False))
+    def compare_screenshot_artifacts(
+        sandbox_name: str,
+        reference_path: str,
+        candidate_path: str,
+        pixel_threshold: int = 16,
+        max_changed_pixel_ratio: float = 0.05,
+        max_mean_absolute_error: float = 8.0,
+    ) -> dict[str, Any]:
+        """Compare two saved PNG screenshots using pixel difference metrics."""
+        return compare_screenshot_artifacts_impl(
+            sandbox_name,
+            reference_path,
+            candidate_path,
+            pixel_threshold=pixel_threshold,
+            max_changed_pixel_ratio=max_changed_pixel_ratio,
+            max_mean_absolute_error=max_mean_absolute_error,
+        )
+
+    @mcp.tool(annotations=ToolAnnotations(readOnlyHint=False, destructiveHint=False, idempotentHint=False, openWorldHint=False))
+    def verify_clone_with_visual(
+        sandbox_name: str,
+        reference_page_id: int,
+        candidate_page_id: int,
+        evidence: dict[str, Any] | None = None,
+        output_dir: str = "research/visual-comparison",
+        full_page: bool = False,
+        pixel_threshold: int = 16,
+        max_changed_pixel_ratio: float = 0.05,
+        max_mean_absolute_error: float = 8.0,
+    ) -> dict[str, Any]:
+        """Capture two already-open pages and combine visual comparison with clone evidence."""
+        return verify_clone_with_visual_impl(
+            sandbox_name,
+            reference_page_id,
+            candidate_page_id,
+            evidence,
+            output_dir=output_dir,
+            full_page=full_page,
+            pixel_threshold=pixel_threshold,
+            max_changed_pixel_ratio=max_changed_pixel_ratio,
+            max_mean_absolute_error=max_mean_absolute_error,
+        )
