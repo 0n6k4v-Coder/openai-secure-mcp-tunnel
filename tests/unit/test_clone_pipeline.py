@@ -182,3 +182,43 @@ def test_repair_never_claims_unapplied_patches():
     assert result['status'] == 'manual_action_required'
     assert result['repairs_applied'] == 0
     assert result['actionable_mismatches'] == ['Missing screenshot comparison']
+
+
+def test_generate_project_formats_each_generated_text_file(monkeypatch):
+    from local_mcp_server.clone import pipeline
+
+    formatted_paths = []
+
+    def fake_format(sandbox_name, relative_path, content):
+        formatted_paths.append(relative_path)
+        return content, "formatted with test formatter"
+
+    def fake_exec(sandbox_name, argv, *, stdin=None, timeout_seconds=120):
+        if argv[0] == "realpath":
+            return {
+                "stdout": "/workspace/project/clones/test",
+                "stderr": "",
+                "return_code": 0,
+            }
+        return {"stdout": "", "stderr": "", "return_code": 0}
+
+    monkeypatch.setattr(pipeline, "format_text_in_sandbox", fake_format)
+    monkeypatch.setattr(pipeline, "execute_sandbox_argv", fake_exec)
+
+    result = pipeline.generate_project(
+        "focused",
+        "clones/test",
+        {"site": {"url": "https://example.com", "title": "Example"}},
+    )
+
+    assert set(formatted_paths) == {
+        "clones/test/clone-manifest.json",
+        "clones/test/index.html",
+        "clones/test/styles.css",
+        "clones/test/package.json",
+        "clones/test/README.md",
+    }
+    assert result["formatting"] == {
+        path.rsplit("/", 1)[-1]: "formatted with test formatter"
+        for path in formatted_paths
+    }

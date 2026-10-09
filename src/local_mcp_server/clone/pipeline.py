@@ -20,6 +20,7 @@ from .chrome import (
 )
 from ..infrastructure.openshell.sandbox import execute_sandbox_argv
 from ..sandbox.policy import validate_name
+from ..workspace.formatting import format_text_in_sandbox
 from .workflow.engine import WorkflowEngine
 
 
@@ -1029,6 +1030,14 @@ Title: {manifest.get('site', {}).get('title', 'Untitled site')}
     resolved = execute_sandbox_argv(name, ["realpath", "-e", remote_dir], timeout_seconds=10)
     if int(resolved.get("return_code", 1)) != 0 or str(resolved.get("stdout", "")).strip() != remote_dir:
         raise ValueError("Clone output directory resolves outside its approved path or contains a symlink.")
+
+    formatting_results: dict[str, str] = {}
+    for fname, content in list(files.items()):
+        formatted, status = format_text_in_sandbox(name, f"{output_dir}/{fname}", content)
+        files[fname] = formatted
+        if status is not None:
+            formatting_results[fname] = status
+
     for fname, content in files.items():
         written = execute_sandbox_argv(
             name, ["tee", f"{remote_dir}/{fname}"],
@@ -1042,7 +1051,8 @@ Title: {manifest.get('site', {}).get('title', 'Untitled site')}
         "manifest": f"{output_dir}/clone-manifest.json",
         "entrypoint": f"{output_dir}/index.html",
         "files_generated": list(files.keys()),
-        "html_size_bytes": len(html_code.encode("utf-8")),
+        "formatting": formatting_results,
+        "html_size_bytes": len(files["index.html"].encode("utf-8")),
     }
 
 
@@ -1126,6 +1136,9 @@ const server = http.createServer((req, res) => {{
 server.on('error', err => {{ console.error('Server error:', err.message); process.exit(1); }});
 server.listen(port, '0.0.0.0', () => {{ fs.writeFileSync({pid_literal}, String(process.pid), {{mode: 0o600}}); }});
 """
+    server_js, server_formatting = format_text_in_sandbox(
+        name, f"{project_dir}/serve_4173.js", server_js
+    )
     execute_sandbox_argv(name, ["tee", server_path], stdin=server_js.encode("utf-8"), timeout_seconds=10)
     execute_sandbox_argv(name, ["sh", "-c", 'nohup node "$1" </dev/null >"$2" 2>&1 &', "sh", server_path, log_path], timeout_seconds=5)
     healthy = False
@@ -1138,7 +1151,14 @@ server.listen(port, '0.0.0.0', () => {{ fs.writeFileSync({pid_literal}, String(p
             pid_res = execute_sandbox_argv(name, ["cat", pid_path], timeout_seconds=3)
             pid = str(pid_res.get("stdout", "")).strip()
             break
-    return {"project_dir": project_dir, "port": port, "pid": pid, "url": f"http://127.0.0.1:{port}", "healthy": healthy}
+    return {
+        "project_dir": project_dir,
+        "port": port,
+        "pid": pid,
+        "url": f"http://127.0.0.1:{port}",
+        "healthy": healthy,
+        "formatting": server_formatting,
+    }
 
 
 def verify_clone(**evidence: Any) -> dict[str, Any]:
