@@ -294,6 +294,7 @@ def extract_clone_payload(
     metadata_only: bool = False,
 ) -> dict[str, object]:
     selector_json = json.dumps(selector) if selector is not None else "null"
+    metadata_only_js = "true" if metadata_only else "false"
     script = f"""() => {{
       const selector = {selector_json};
       const target = selector ? document.querySelector(selector) : document.documentElement;
@@ -307,22 +308,19 @@ def extract_clone_payload(
           }}
         }});
       }});
-      const styles = [];
-      for (const sheet of document.styleSheets) {{
-        try {{
-          styles.push([...sheet.cssRules].map(rule => rule.cssText).join("\\n"));
-        }} catch (_) {{}}
-      }}
+      const styleTexts = [...document.querySelectorAll('style')].map(s => s.textContent || '').filter(Boolean);
       return {{
         found: true,
         selector,
         url: location.href,
         title: document.title,
-        ...(metadata_only
-          ? {{html_bytes: clone.outerHTML.length, css_bytes: styles.join("\\n").length}}
-          : {{html: clone.outerHTML, css: styles.join("\\n")}}),
+        ...({metadata_only_js}
+          ? {{html_bytes: clone.outerHTML.length, css_bytes: styleTexts.join('').length}}
+          : {{html: clone.outerHTML, css: styleTexts.join('\\n')}}),
         externalStylesheets: [...document.querySelectorAll('link[rel~="stylesheet"]')].map(link => link.href),
         assets: [...document.querySelectorAll('img[src], source[src], video[src]')].map(node => node.src).filter(Boolean)
       }};
     }}"""
-    return evaluate(sandbox_name, page_id, script)["result"]
+    eval_res = evaluate(sandbox_name, page_id, script)
+    res = eval_res.get("result")
+    return res if isinstance(res, dict) else {"found": False, "error": str(res)}
