@@ -22,6 +22,10 @@ def open_terminal(
 ) -> dict[str, Any]:
     sandbox = validate_name(sandbox)
     cmd = command or ["sh", "-l"]
+    if isinstance(cols, bool) or not isinstance(cols, int) or not 20 <= cols <= 300:
+        raise TerminalError("Terminal columns must be between 20 and 300.")
+    if isinstance(rows, bool) or not isinstance(rows, int) or not 5 <= rows <= 200:
+        raise TerminalError("Terminal rows must be between 5 and 200.")
     terminal_id = str(uuid.uuid4())
 
     session = OpenShellTerminalSession(
@@ -43,7 +47,11 @@ def open_terminal(
     )
 
     registry = get_terminal_registry()
-    registry.register(info, session)
+    try:
+        registry.register(info, session)
+    except RuntimeError as exc:
+        session.close()
+        raise TerminalError(str(exc)) from exc
 
     return info.to_dict()
 
@@ -54,8 +62,14 @@ def write_terminal(terminal_id: str, data: str) -> dict[str, Any]:
     if session is None:
         raise TerminalError(f"Terminal session '{terminal_id}' not found.")
 
-    session.write(data)
-    return {"terminal_id": terminal_id, "bytes_written": len(data.encode("utf-8"))}
+    raw = data.encode("utf-8") if isinstance(data, str) else bytes(data)
+    if len(raw) > 64 * 1024:
+        raise TerminalError("Terminal input exceeds the 64 KiB per-write limit.")
+    try:
+        session.write(data)
+    except Exception as exc:
+        raise TerminalError(str(exc)) from exc
+    return {"terminal_id": terminal_id, "bytes_written": len(raw)}
 
 
 def resize_terminal(terminal_id: str, cols: int, rows: int) -> dict[str, Any]:
@@ -64,6 +78,10 @@ def resize_terminal(terminal_id: str, cols: int, rows: int) -> dict[str, Any]:
     if session is None:
         raise TerminalError(f"Terminal session '{terminal_id}' not found.")
 
+    if isinstance(cols, bool) or not isinstance(cols, int) or not 20 <= cols <= 300:
+        raise TerminalError("Terminal columns must be between 20 and 300.")
+    if isinstance(rows, bool) or not isinstance(rows, int) or not 5 <= rows <= 200:
+        raise TerminalError("Terminal rows must be between 5 and 200.")
     session.resize(cols=cols, rows=rows)
     info = registry.get_info(terminal_id)
     if info:

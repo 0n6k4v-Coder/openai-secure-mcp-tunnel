@@ -29,8 +29,11 @@ class OpenShellTerminalSession:
         self.rows = rows
         self.workspace = workspace or OPENSHELL_WORKSPACE
 
-        self._input_queue: queue.Queue[openshell_pb2.ExecSandboxInput | None] = queue.Queue()
-        self._output_buffer: deque[bytes] = deque(maxlen=2000)
+        self._input_queue: queue.Queue[openshell_pb2.ExecSandboxInput | None] = queue.Queue(maxsize=256)
+        self._output_buffer: deque[bytes] = deque()
+        self._output_buffer_bytes = 0
+        self._max_output_buffer_bytes = 1024 * 1024
+        self._max_output_chunks = 2000
         self._exit_code: int | None = None
         self._closed = threading.Event()
         self._lock = threading.Lock()
@@ -70,12 +73,10 @@ class OpenShellTerminalSession:
                     payload = event.WhichOneof("payload")
                     if payload == "stdout":
                         data = bytes(event.stdout.data)
-                        with self._lock:
-                            self._output_buffer.append(data)
+                        self._append_output(data)
                     elif payload == "stderr":
                         data = bytes(event.stderr.data)
-                        with self._lock:
-                            self._output_buffer.append(data)
+                        self._append_output(data)
                     elif payload == "exit":
                         with self._lock:
                             self._exit_code = int(event.exit.exit_code)
@@ -93,6 +94,21 @@ class OpenShellTerminalSession:
         )
         self._worker_thread.start()
 
+    def _append_output(self, data: bytes) -> None:
+        if not data:
+            return
+        if len(data) > self._max_output_buffer_bytes:
+            data = data[-self._max_output_buffer_bytes:]
+        with self._lock:
+            self._output_buffer.append(data)
+            self._output_buffer_bytes += len(data)
+            while self._output_buffer and (
+                self._output_buffer_bytes > self._max_output_buffer_bytes
+                or len(self._output_buffer) > self._max_output_chunks
+            ):
+                removed = self._output_buffer.popleft()
+                self._output_buffer_bytes -= len(removed)
+
     def write(self, data: bytes | str) -> None:
         """Send stdin input to the interactive shell."""
         if self._closed.is_set():
@@ -103,19 +119,31 @@ class OpenShellTerminalSession:
         else:
             raw = bytes(data)
 
+        if len(raw) > 64 * 1024:
+            raise SandboxError("Terminal input exceeds the 64 KiB per-write limit")
         msg = openshell_pb2.ExecSandboxInput(stdin=raw)
-        self._input_queue.put(msg)
+        try:
+            self._input_queue.put_nowait(msg)
+        except queue.Full as exc:
+            raise SandboxError("Terminal input queue is full; retry after it drains") from exc
 
     def resize(self, cols: int, rows: int) -> None:
         """Send window resize event to the interactive shell."""
         if self._closed.is_set():
             raise SandboxError("Terminal session is closed")
 
-        self.cols = cols
-        self.rows = rows
+        if isinstance(cols, bool) or not isinstance(cols, int) or not 20 <= cols <= 300:
+            raise SandboxError("Terminal columns must be between 20 and 300")
+        if isinstance(rows, bool) or not isinstance(rows, int) or not 5 <= rows <= 200:
+            raise SandboxError("Terminal rows must be between 5 and 200")
         resize_msg = openshell_pb2.ExecSandboxWindowResize(cols=cols, rows=rows)
         msg = openshell_pb2.ExecSandboxInput(resize=resize_msg)
-        self._input_queue.put(msg)
+        try:
+            self._input_queue.put_nowait(msg)
+        except queue.Full as exc:
+            raise SandboxError("Terminal input queue is full; retry after it drains") from exc
+        self.cols = cols
+        self.rows = rows
 
     def read_output(self, clear: bool = True) -> bytes:
         """Read accumulated terminal output bytes."""
@@ -125,6 +153,7 @@ class OpenShellTerminalSession:
             combined = b"".join(self._output_buffer)
             if clear:
                 self._output_buffer.clear()
+                self._output_buffer_bytes = 0
             return combined
 
     def is_alive(self) -> bool:
@@ -143,4 +172,14 @@ class OpenShellTerminalSession:
     def close(self) -> None:
         """Close the interactive session."""
         self._closed.set()
-        self._input_queue.put(None)
+        try:
+            self._input_queue.put_nowait(None)
+        except queue.Full:
+            try:
+                self._input_queue.get_nowait()
+            except queue.Empty:
+                pass
+            try:
+                self._input_queue.put_nowait(None)
+            except queue.Full:
+                pass

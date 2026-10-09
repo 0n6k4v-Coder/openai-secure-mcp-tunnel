@@ -7,7 +7,11 @@ from .model import TerminalSessionInfo, TerminalSessionStatus
 
 
 class TerminalRegistry:
-    """Thread-safe registry of active terminal sessions."""
+    """Thread-safe registry with global and per-sandbox session quotas."""
+
+    MAX_ACTIVE_SESSIONS = 16
+    MAX_SESSIONS_PER_SANDBOX = 8
+    MAX_RETAINED_SESSIONS = 256
 
     def __init__(self) -> None:
         self._sessions: dict[str, OpenShellTerminalSession] = {}
@@ -20,6 +24,38 @@ class TerminalRegistry:
         session: OpenShellTerminalSession,
     ) -> None:
         with self._lock:
+            # Release dead stream objects and cap retained history for long-running servers.
+            for terminal_id, existing_session in list(self._sessions.items()):
+                if not existing_session.is_alive():
+                    existing_info = self._info.get(terminal_id)
+                    if existing_info is not None:
+                        existing_info.status = (
+                            TerminalSessionStatus.TERMINATED
+                            if existing_session.error is None
+                            else TerminalSessionStatus.ERROR
+                        )
+                        existing_info.exit_code = existing_session.exit_code
+                        existing_info.error = existing_session.error
+                    self._sessions.pop(terminal_id, None)
+            while len(self._info) >= self.MAX_RETAINED_SESSIONS:
+                oldest_inactive = next(
+                    (terminal_id for terminal_id in self._info if terminal_id not in self._sessions),
+                    None,
+                )
+                if oldest_inactive is None:
+                    break
+                self._info.pop(oldest_inactive, None)
+            active = [
+                current for terminal_id, current in self._info.items()
+                if terminal_id in self._sessions and self._sessions[terminal_id].is_alive()
+            ]
+            sandbox_count = sum(current.sandbox == info.sandbox for current in active)
+            if len(active) >= self.MAX_ACTIVE_SESSIONS:
+                session.close()
+                raise RuntimeError("Maximum active terminal session limit reached.")
+            if sandbox_count >= self.MAX_SESSIONS_PER_SANDBOX:
+                session.close()
+                raise RuntimeError("Maximum active terminal sessions for this sandbox reached.")
             self._info[info.terminal_id] = info
             self._sessions[info.terminal_id] = session
 
