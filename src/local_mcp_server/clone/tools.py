@@ -23,6 +23,10 @@ from .pipeline import (
     trace_interactions as trace_interactions_impl,
     verify_clone as verify_clone_impl,
 )
+from .preserve import (
+    capture_raw_snapshot as capture_raw_snapshot_impl,
+    convert_raw_snapshot as convert_raw_snapshot_impl,
+)
 from .visual import (
     capture_screenshot_artifact as capture_screenshot_artifact_impl,
     compare_screenshot_artifacts as compare_screenshot_artifacts_impl,
@@ -67,6 +71,28 @@ def register_tools(mcp: MCPServer) -> None:
     def capture_screenshot(sandbox_name: str, page_id: int, full_page: bool = True) -> dict[str, Any]:
         """Capture a reference screenshot of the live page."""
         return capture_screenshot_impl(sandbox_name, page_id, full_page)
+
+    @mcp.tool(annotations=ToolAnnotations(readOnlyHint=False, destructiveHint=False, idempotentHint=False, openWorldHint=True))
+    def capture_raw_snapshot(
+        sandbox_name: str,
+        page_id: int,
+        full_page_screenshot: bool = True,
+    ) -> dict[str, Any]:
+        """Preserve rendered DOM, accessible CSS, runtime inventory, and screenshot without conversion."""
+        return capture_raw_snapshot_impl(
+            sandbox_name,
+            page_id,
+            full_page_screenshot=full_page_screenshot,
+        )
+
+    @mcp.tool(annotations=ToolAnnotations(readOnlyHint=False, destructiveHint=False, idempotentHint=False, openWorldHint=False))
+    def convert_raw_snapshot(
+        sandbox_name: str,
+        capture_dir: str,
+        output_dir: str = "clones/from-raw-snapshot",
+    ) -> dict[str, Any]:
+        """Convert a saved raw snapshot after verifying its manifest and file hashes."""
+        return convert_raw_snapshot_impl(sandbox_name, capture_dir, output_dir)
 
     @mcp.tool(annotations=ToolAnnotations(readOnlyHint=True, destructiveHint=False, idempotentHint=True, openWorldHint=False))
     def analyze_structure(evidence: dict[str, Any]) -> dict[str, Any]:
