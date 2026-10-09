@@ -1,0 +1,1 @@
+{"name":"verify","version":"1","steps":[{"id":"serve","operation":"serve_project","inputs":{"sandbox_name":"$input.sandbox_name","project_dir":"$input.output_dir","port":"$input.port"}},{"id":"verify","operation":"verify_clone","depends_on":["serve"],"inputs":{"serve":"$step.serve.output"}}]}

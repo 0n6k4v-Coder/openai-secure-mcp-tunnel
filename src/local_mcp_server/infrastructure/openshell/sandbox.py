@@ -509,6 +509,7 @@ def execute_sandbox_argv(
     name: str,
     argv: list[str],
     *,
+    stdin: bytes | str | None = None,
     timeout_seconds: int = 120,
 ) -> dict[str, object]:
     name = validate_name(name)
@@ -519,6 +520,12 @@ def execute_sandbox_argv(
     if any(not isinstance(argument, str) or "\x00" in argument for argument in argv):
         raise ValueError("argv contains an invalid argument.")
 
+    stdin_bytes: bytes | None = None
+    if isinstance(stdin, str):
+        stdin_bytes = stdin.encode("utf-8")
+    elif isinstance(stdin, (bytes, bytearray)):
+        stdin_bytes = bytes(stdin)
+
     try:
         with _client() as client:
             result = client.exec(
@@ -527,6 +534,7 @@ def execute_sandbox_argv(
                 workspace=OPENSHELL_WORKSPACE,
                 timeout_seconds=timeout_seconds,
                 no_login_shell=True,
+                stdin=stdin_bytes,
             )
 
             return {

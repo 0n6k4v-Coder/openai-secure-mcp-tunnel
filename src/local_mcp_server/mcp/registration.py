@@ -2,7 +2,6 @@ from __future__ import annotations
 
 from mcp.server import MCPServer
 
-from ..browser.tools import register_tools as register_browser_tools
 from ..chrome_devtools.tools import register_tools as register_chrome_devtools_tools
 from ..clone.tools import register_tools as register_clone_tools
 from ..sandbox.tools import register_tools as register_sandbox_tools
@@ -15,6 +14,5 @@ def register_all_tools(mcp: MCPServer) -> None:
     register_workspace_tools(mcp)
     register_sandbox_tools(mcp)
     register_chrome_devtools_tools(mcp)
-    register_browser_tools(mcp)
     register_clone_tools(mcp)
     register_terminal_tools(mcp)

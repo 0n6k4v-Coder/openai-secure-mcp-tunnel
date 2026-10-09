@@ -461,9 +461,9 @@ Any unexpected failure in a production-critical path blocks release until resolv
 If CLI E2E and MCP E2E both pass but production fails, investigate differences between the tested environment and production—including configuration, credentials, network policy, gateway version, container images, and deployment settings—before attributing the issue to the application.
 
 
-## 19. Browser, Live Viewport & Website Clone CLI E2E Coverage
+## 19. Browser Runtime & Website Clone CLI E2E Coverage
 
-Browser live viewport functionality is exposed through MCP tools rather than a dedicated `mcpctl browser` command. CLI coverage therefore focuses on sandbox/browser runtime prerequisites and CLI-level lifecycle behavior; the interactive CDP viewport/input contract is covered by MCP E2E tests.
+CLI coverage focuses on sandbox/browser runtime prerequisites and CLI-level lifecycle behavior for browser sandboxes.
 
 | ID | Test | Expected Result | Status |
 |---|---|---|---|
@@ -473,16 +473,6 @@ Browser live viewport functionality is exposed through MCP tools rather than a d
 | CLI-BROWSER-004 | Browser network deny policy | Loopback/private/link-local/reserved targets are blocked | ⚪ Not implemented |
 | CLI-BROWSER-005 | Browser lifecycle | Browser sandbox can be created, inspected, stopped, restarted, and deleted safely | ⚪ Not implemented |
 | CLI-BROWSER-006 | Browser CLI evidence | CLI evidence identifies sandbox/profile state without leaking secrets | ⚪ Not implemented |
-| CLI-BROWSER-007 | Persistent CDP relay lifecycle | Browser viewport/input relay uses one page-scoped persistent relay process rather than spawning a Node/CDP session per input event | ⚪ Not implemented |
-| CLI-BROWSER-008 | Screencast backpressure | CDP screencast uses bounded in-flight frames and does not accumulate unbounded frame work | ⚪ Not implemented |
-| CLI-BROWSER-009 | Input relay reuse | Repeated click/move/scroll/type/key operations reuse the page-scoped relay and Unix socket | ⚪ Not implemented |
-| CLI-BROWSER-010 | Relay recovery | A failed persistent relay is detected and restarted without changing the target page | ⚪ Not implemented |
-| CLI-BROWSER-011 | Input/frame load stability | Sustained browser input does not cause unbounded sandbox command-process growth or viewport starvation | ⚪ Not implemented |
-| CLI-BROWSER-012 | Scroll relay helper recreation | After browser sandbox/relay recreation, the input helper is re-materialized despite stale in-memory readiness state | ⚪ Not implemented |
-| CLI-BROWSER-013 | Repeated scroll relay stability | Consecutive wheel operations reuse the page-scoped relay and preserve browser/page responsiveness | ⚪ Not implemented |
-| CLI-BROWSER-014 | Low-latency CDP input dispatch | Pointer, wheel, and keyboard input is dispatched through the persistent relay without per-event CDP response waits | ⚪ Not implemented |
-| CLI-BROWSER-015 | Pointer press/release lifecycle | Pointer down → move → up preserves pressed-button state and supports real drag semantics | ⚪ Not implemented |
-| CLI-BROWSER-016 | Logical page target resolution | Viewport relay attaches to the correct Chrome target even when DevTools target ordering differs from logical MCP page ordering | ⚪ Not implemented |
 | CLI-CLONE-001 | Clone preview prerequisite | Browser page can be opened and previewed without unintended file writes | ⚪ Not implemented |
 | CLI-CLONE-002 | Clone selected region | Valid selector produces a sanitized `index.html` | ⚪ Not implemented |
 | CLI-CLONE-003 | Clone full page | Full page produces the expected sanitized artifact | ⚪ Not implemented |
