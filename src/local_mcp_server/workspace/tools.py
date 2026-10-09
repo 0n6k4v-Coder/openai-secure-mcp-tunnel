@@ -74,6 +74,9 @@ def register_tools(mcp: MCPServer) -> None:
         """
         Create a new file or overwrite an existing file in the selected OpenShell sandbox.
 
+        Supported code, markup, style, JSON/YAML, and Markdown files are formatted automatically when Prettier or Ruff
+        is available in the target sandbox. The result reports whether formatting ran or
+        was skipped; a missing formatter does not prevent the write.
         Parent directories are created automatically if they do not exist.
         Set overwrite=False to prevent replacing existing files.
         """
@@ -102,6 +105,9 @@ def register_tools(mcp: MCPServer) -> None:
         """
         Replace target content within an existing file in the selected OpenShell sandbox.
 
+        Supported code, markup, style, JSON/YAML, and Markdown files are formatted automatically when Prettier or Ruff
+        is available in the target sandbox. The result reports whether formatting ran or
+        was skipped; a missing formatter does not prevent the edit.
         target_content must match existing text in the file.
         By default (allow_multiple=False), replaces exactly one unique occurrence.
         Set allow_multiple=True to replace all occurrences.

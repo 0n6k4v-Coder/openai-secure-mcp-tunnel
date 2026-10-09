@@ -4,6 +4,8 @@ import json
 import os
 import shlex
 
+from ...workspace.formatting import _FORMATTER_HELPER
+
 SANDBOX_WORKSPACE_ROOT = "/workspace/project"
 MAX_READ_BYTES = 1_000_000
 MAX_WRITE_BYTES = 1_000_000
@@ -63,7 +65,7 @@ except UnicodeDecodeError as exc:
 sys.stdout.write(content)
 """.strip()
 
-_WRITE_TO_FILE_SCRIPT = r"""
+_WRITE_TO_FILE_SCRIPT = _FORMATTER_HELPER + r"""
 import os
 import sys
 
@@ -99,16 +101,25 @@ content = sys.stdin.buffer.read()
 if len(content) > 1_000_000:
     raise SystemExit("Content is too large.")
 
+try:
+    content_text = content.decode("utf-8")
+except UnicodeDecodeError as exc:
+    raise SystemExit("Content is not valid UTF-8 text.") from exc
+content_text, format_status = _format_text(relative_path, content_text)
+content = content_text.encode("utf-8")
+if len(content) > 1_000_000:
+    raise SystemExit("Formatted content exceeds maximum allowed size.")
+
 parent = os.path.dirname(resolved)
 os.makedirs(parent, exist_ok=True)
 
 with open(resolved, "wb") as handle:
     handle.write(content)
 
-sys.stdout.write(os.path.relpath(resolved, root))
+sys.stdout.write(json.dumps({"path": os.path.relpath(resolved, root), "formatting": format_status}))
 """.strip()
 
-_REPLACE_FILE_CONTENT_SCRIPT = r"""
+_REPLACE_FILE_CONTENT_SCRIPT = _FORMATTER_HELPER + r"""
 import json
 import os
 import sys
@@ -159,6 +170,7 @@ if count > 1 and not allow_multiple:
     raise SystemExit(f"target_content occurred {count} times in file. Provide more context or set allow_multiple=True.")
 
 updated = original.replace(target_content, replacement_content) if allow_multiple else original.replace(target_content, replacement_content, 1)
+updated, format_status = _format_text(relative_path, updated)
 
 if len(updated.encode("utf-8")) > 1_000_000:
     raise SystemExit("Updated content exceeds maximum allowed size.")
@@ -166,7 +178,7 @@ if len(updated.encode("utf-8")) > 1_000_000:
 with open(resolved, "w", encoding="utf-8") as handle:
     handle.write(updated)
 
-sys.stdout.write(os.path.relpath(resolved, root))
+sys.stdout.write(json.dumps({"path": os.path.relpath(resolved, root), "formatting": format_status}))
 """.strip()
 
 
@@ -362,6 +374,22 @@ def _execute_workspace_command(
     return stdout
 
 
+def _formatting_result(output: str) -> str:
+    try:
+        payload = json.loads(output)
+    except json.JSONDecodeError:
+        return output
+    if not isinstance(payload, dict) or not isinstance(payload.get("path"), str):
+        return output
+    path = payload["path"]
+    status = payload.get("formatting")
+    if status is None:
+        return path
+    if not isinstance(status, str):
+        raise RuntimeError("Sandbox write returned an invalid formatting status.")
+    return f"{path}\nFormatting: {status}"
+
+
 def list_sandbox_workspace_files(sandbox_name: str) -> list[str]:
     output = _execute_workspace_command(sandbox_name, _LIST_FILES_COMMAND)
     try:
@@ -399,7 +427,9 @@ def write_sandbox_file(
         + " "
         + ("true" if overwrite else "false")
     )
-    return _execute_workspace_command(sandbox_name, command, stdin=encoded)
+    return _formatting_result(
+        _execute_workspace_command(sandbox_name, command, stdin=encoded)
+    )
 
 
 def replace_sandbox_file_content(
@@ -432,7 +462,9 @@ def replace_sandbox_file_content(
         + " "
         + ("true" if allow_multiple else "false")
     )
-    return _execute_workspace_command(sandbox_name, command, stdin=payload)
+    return _formatting_result(
+        _execute_workspace_command(sandbox_name, command, stdin=payload)
+    )
 
 
 def create_sandbox_workspace_directory(
