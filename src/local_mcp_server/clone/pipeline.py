@@ -1,14 +1,15 @@
 from __future__ import annotations
 
-import base64
+import html
 import json
+import posixpath
 import re
 import time
+from html.parser import HTMLParser
 import urllib.parse
 from typing import Any
 
 from .chrome import (
-    BrowserError,
     evaluate,
     extract_clone_payload,
     inspect_selector,
@@ -130,7 +131,7 @@ def _extract_site_url(evidence: dict[str, Any]) -> str:
             return str(val["url"])
     if isinstance(evidence.get("url"), str):
         return evidence["url"]
-    return "https://paypers.ai/"
+    return ""
 
 
 def _extract_site_title(evidence: dict[str, Any], url: str) -> str:
@@ -147,7 +148,7 @@ def _extract_site_title(evidence: dict[str, Any], url: str) -> str:
         clean = host.replace("www.", "").split(".")[0].capitalize()
         return clean
     except Exception:
-        return "Paypers"
+        return "Site"
 
 
 def _extract_theme(evidence: dict[str, Any]) -> dict[str, Any]:
@@ -155,7 +156,7 @@ def _extract_theme(evidence: dict[str, Any]) -> dict[str, Any]:
     comp = styles.get("computed", {}) if isinstance(styles, dict) else {}
     return {
         "fontFamily": comp.get("fontFamily")
-        or "'IBM Plex Sans Thai', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif",
+        or "system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif",
         "fontSize": comp.get("fontSize") or "16px",
         "lineHeight": comp.get("lineHeight") or "1.5",
         "color": comp.get("color") or "rgb(15, 23, 42)",
@@ -426,6 +427,8 @@ def create_clone_manifest(**evidence: Any) -> dict[str, Any]:
         dependencies = build_dependency_graph(analyze=structure, **clean_evidence)
 
     url = _extract_site_url(evidence)
+    if not url or urllib.parse.urlsplit(url).scheme.lower() not in {"http", "https"} or not urllib.parse.urlsplit(url).hostname:
+        raise ValueError("Could not establish a valid HTTP(S) source URL from the collected evidence.")
     title = _extract_site_title(evidence, url)
 
     source_html = structure.get("source_html") or ""
@@ -463,16 +466,143 @@ def create_clone_manifest(**evidence: Any) -> dict[str, Any]:
     return manifest
 
 
+_PROJECT_ROOT = "/workspace/project"
+_ALLOWED_HTML_TAGS = frozenset({
+    "a", "abbr", "article", "aside", "b", "blockquote", "br", "button", "caption",
+    "code", "dd", "del", "details", "div", "dl", "dt", "em", "figcaption", "figure",
+    "footer", "h1", "h2", "h3", "h4", "h5", "h6", "header", "hr", "i", "img", "input",
+    "label", "li", "main", "nav", "ol", "option", "p", "picture", "pre", "section", "select",
+    "small", "source", "span", "strong", "sub", "summary", "sup", "table", "tbody", "td",
+    "textarea", "th", "thead", "tr", "u", "ul", "video", "audio",
+})
+_VOID_HTML_TAGS = frozenset({"br", "hr", "img", "input", "source"})
+_DROP_CONTENT_TAGS = frozenset({"script", "style", "iframe", "object", "embed", "template", "svg", "math", "noscript"})
+_ALLOWED_HTML_ATTRS = frozenset({
+    "alt", "aria-label", "aria-hidden", "class", "colspan", "controls", "disabled", "for",
+    "height", "href", "id", "label", "name", "placeholder", "poster", "role", "rowspan",
+    "selected", "src", "target", "title", "type", "value", "width",
+})
+
+
+def _safe_relative_project_path(value: str, *, field: str = "project_dir") -> str:
+    if not isinstance(value, str) or not value.strip() or "\x00" in value:
+        raise ValueError(f"{field} must be a non-empty relative path.")
+    normalized = posixpath.normpath(value.strip())
+    if normalized in {".", ".."} or normalized.startswith("../") or normalized.startswith("/") or "\\" in normalized:
+        raise ValueError(f"{field} must stay within /workspace/project.")
+    if any(part in {"", ".", ".."} for part in normalized.split("/")):
+        raise ValueError(f"{field} contains an unsafe path segment.")
+    return normalized
+
+
+def _safe_http_url(value: object) -> str | None:
+    if not isinstance(value, str) or not value or any(ord(c) < 32 for c in value):
+        return None
+    candidate = value.strip()
+    parsed = urllib.parse.urlsplit(candidate)
+    if parsed.scheme and parsed.scheme.lower() not in {"http", "https"}:
+        return None
+    if parsed.scheme and not parsed.netloc:
+        return None
+    if candidate.startswith("//") or "\\" in candidate:
+        return None
+    if parsed.username is not None or parsed.password is not None:
+        return None
+    return candidate
+
+
+class _SafeHTML(HTMLParser):
+    """Allowlist sanitizer for captured website markup."""
+    def __init__(self) -> None:
+        super().__init__(convert_charrefs=True)
+        self.parts: list[str] = []
+        self.drop_depth = 0
+        self.open_tags: list[str] = []
+
+    def handle_starttag(self, tag: str, attrs: list[tuple[str, str | None]]) -> None:
+        tag = tag.lower()
+        if self.drop_depth:
+            if tag in _DROP_CONTENT_TAGS:
+                self.drop_depth += 1
+            return
+        if tag in _DROP_CONTENT_TAGS:
+            self.drop_depth = 1
+            return
+        if tag not in _ALLOWED_HTML_TAGS:
+            return
+        safe_attrs: list[str] = []
+        for key, value in attrs:
+            key = key.lower()
+            if value is None or (key not in _ALLOWED_HTML_ATTRS and not key.startswith("aria-")):
+                continue
+            if key.startswith("on") or key == "style":
+                continue
+            if key in {"href", "src", "poster"}:
+                value = _safe_http_url(value)
+                if value is None:
+                    continue
+            if key == "target" and value not in {"_blank", "_self"}:
+                continue
+            safe_attrs.append(f' {key}="{html.escape(value, quote=True)}"')
+        if tag == "a" and any(attr.startswith(' target="_blank"') for attr in safe_attrs):
+            safe_attrs.append(' rel="noopener noreferrer"')
+        self.parts.append("<" + tag + "".join(safe_attrs) + ">")
+        if tag not in _VOID_HTML_TAGS:
+            self.open_tags.append(tag)
+
+    def handle_endtag(self, tag: str) -> None:
+        tag = tag.lower()
+        if self.drop_depth:
+            if tag in _DROP_CONTENT_TAGS:
+                self.drop_depth -= 1
+            return
+        if tag in self.open_tags:
+            while self.open_tags:
+                current = self.open_tags.pop()
+                self.parts.append(f"</{current}>")
+                if current == tag:
+                    break
+
+    def handle_data(self, data: str) -> None:
+        if not self.drop_depth:
+            self.parts.append(html.escape(data))
+
+    def result(self) -> str:
+        while self.open_tags:
+            self.parts.append(f"</{self.open_tags.pop()}>")
+        return "".join(self.parts)
+
+
+def _sanitize_html_fragment(source: str) -> str:
+    parser = _SafeHTML()
+    try:
+        parser.feed(source)
+        parser.close()
+        return parser.result()
+    except Exception:
+        return html.escape(source)
+
+
 def _render_html_document(manifest: dict[str, Any]) -> str:
     site = manifest.get("site", {})
-    title = site.get("title") or "Paypers"
-    theme = manifest.get("theme", {})
+    site_url = site.get("url", "") if isinstance(site, dict) else ""
+    title = str(site.get("title") or urllib.parse.urlsplit(str(site_url)).hostname or "Untitled site")
+    safe_title = html.escape(title, quote=True)
     interactions = manifest.get("interactions", {})
     links = interactions.get("links", []) if isinstance(interactions, dict) else []
     buttons = (
         interactions.get("buttons", []) if isinstance(interactions, dict) else []
     )
     ext_styles = manifest.get("external_stylesheets", [])
+    structure = manifest.get("structure", {})
+    observed_sections = structure.get("sections", []) if isinstance(structure, dict) else []
+    section_cards = "\n".join(
+        f'<article class="card feature-card"><h3>{html.escape(str(section.get("name") or section.get("id") or "Observed section"))}</h3></article>'
+        for section in observed_sections[:12]
+        if isinstance(section, dict)
+    )
+    if not section_cards:
+        section_cards = '<p>Section details were not captured from the source page.</p>'
 
     # Check for live captured HTML
     source_html = manifest.get("source_html") or ""
@@ -482,45 +612,45 @@ def _render_html_document(manifest: dict[str, Any]) -> str:
         body_content = body_match.group(1) if body_match else source_html
 
         head_styles = "\n  ".join(
-            f'<link rel="stylesheet" href="{href}">'
+            f'<link rel="stylesheet" href="{html.escape(safe_url, quote=True)}">'
             for href in ext_styles
-            if href
+            if (safe_url := _safe_http_url(href))
         )
 
         return f"""<!doctype html>
-<html lang="th">
+<html lang="en">
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>{title}</title>
+  <title>{safe_title}</title>
   {head_styles}
   <link rel="stylesheet" href="styles.css">
 </head>
 <body>
-  {body_content}
+  {_sanitize_html_fragment(body_content)}
 </body>
 </html>"""
 
-    # Generate semantic rich structure in Thai from detected site data
+    # Generate a clearly labeled fallback from captured metadata only
     nav_links = ""
     seen_texts: set[str] = set()
-    for l in links[:6]:
-        txt = l.get("text", "").strip() if isinstance(l, dict) else ""
-        href = l.get("href", "#") if isinstance(l, dict) else "#"
-        if txt and txt not in seen_texts:
+    for link in links[:6]:
+        txt = str(link.get("text", "")).strip() if isinstance(link, dict) else ""
+        href = _safe_http_url(link.get("href", "#")) if isinstance(link, dict) else "#"
+        if txt and href and txt not in seen_texts:
             seen_texts.add(txt)
-            nav_links += f'<a href="{href}" class="nav-link">{txt}</a>\n        '
+            nav_links += f'<a href="{html.escape(href, quote=True)}" class="nav-link">{html.escape(txt)}</a>\n        '
 
-    primary_btn = buttons[0].get("text", "เริ่มต้นใช้งานฟรี") if buttons else "เริ่มต้นใช้งานฟรี"
-    secondary_btn = buttons[1].get("text", "ดูรายละเอียด") if len(buttons) > 1 else "ดูรายละเอียด"
+    primary_btn = html.escape(str(buttons[0].get("text", "Get started"))) if buttons and isinstance(buttons[0], dict) else "Get started"
+    secondary_btn = html.escape(str(buttons[1].get("text", "Learn more"))) if len(buttons) > 1 and isinstance(buttons[1], dict) else "Learn more"
 
     return f"""<!doctype html>
-<html lang="th">
+<html lang="en">
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>{title}</title>
-  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans+Thai:wght@300;400;500;600;700&display=swap">
+  <title>{safe_title}</title>
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap">
   <link rel="stylesheet" href="styles.css">
 </head>
 <body>
@@ -528,7 +658,7 @@ def _render_html_document(manifest: dict[str, Any]) -> str:
     <div class="container header-container">
       <div class="logo">
         <span class="logo-badge">✦</span>
-        <span class="logo-text">{title}</span>
+        <span class="logo-text">{safe_title}</span>
       </div>
       <nav class="main-nav">
         {nav_links or '<a href="#features" class="nav-link">ฟีเจอร์</a><a href="#pricing" class="nav-link">ราคา</a><a href="#contact" class="nav-link">ติดต่อเรา</a>'}
@@ -542,9 +672,9 @@ def _render_html_document(manifest: dict[str, Any]) -> str:
   <main>
     <section class="hero-section">
       <div class="container hero-container">
-        <div class="hero-badge">ระบบจัดการอัตโนมัติสำหรับธุรกิจยุคใหม่</div>
-        <h1 class="hero-title">{title}</h1>
-        <p class="hero-subtitle">บริหารจัดการเอกสาร ใบเสร็จ และกระบวนการทำงานอย่างแม่นยำ รวดเร็ว และปลอดภัย</p>
+        <div class="hero-badge">Explore the site</div>
+        <h1 class="hero-title">{safe_title}</h1>
+        <p class="hero-subtitle">A locally generated preview based on the available source evidence.</p>
         <div class="hero-actions">
           <a href="#cta" class="btn btn-primary btn-lg">{primary_btn}</a>
           <a href="#features" class="btn btn-secondary btn-lg">{secondary_btn}</a>
@@ -552,33 +682,19 @@ def _render_html_document(manifest: dict[str, Any]) -> str:
       </div>
     </section>
 
-    <section id="features" class="features-section">
+    <section id="structure" class="features-section">
       <div class="container">
-        <h2 class="section-title">ฟีเจอร์และความสามารถหลัก (Core Features & Capabilities)</h2>
+        <h2 class="section-title">Observed page structure</h2>
         <div class="features-grid">
-          <div class="card feature-card">
-            <div class="card-icon">⚡</div>
-            <h3>จัดการใบเสร็จอัตโนมัติ</h3>
-            <p>บันทึกและประมวลผลข้อมูลเอกสารการเงินได้อย่างถูกต้อง แม่นยำ ลดเวลาทำงานซ้ำซ้อน</p>
-          </div>
-          <div class="card feature-card">
-            <div class="card-icon">🛡️</div>
-            <h3>ความปลอดภัยระดับองค์กร</h3>
-            <p>ปกป้องข้อมูลทางการเงินด้วยมาตรฐานความปลอดภัยระดับสูง แยกสภาพแวดล้อมอย่างรัดกุม</p>
-          </div>
-          <div class="card feature-card">
-            <div class="card-icon">📊</div>
-            <h3>รายงานและการวิเคราะห์</h3>
-            <p>แสดงผลสรุปข้อมูลแบบเรียลไทม์ พร้อมเชื่อมต่อและส่งออกข้อมูลเข้าสู่ระบบบัญชีได้ทันที</p>
-          </div>
+          {section_cards}
         </div>
       </div>
     </section>
 
     <section id="cta" class="cta-section">
       <div class="container cta-container">
-        <h2>ยกระดับการทำงานธุรกิจของคุณด้วย {title}</h2>
-        <p>ทดลองใช้งานระบบจัดการเอกสารอัจฉริยะได้แล้ววันนี้</p>
+        <h2>Explore {safe_title}</h2>
+        <p>This preview is generated from the evidence collected so far.</p>
         <div class="cta-actions">
           <button class="btn btn-light btn-lg">{primary_btn}</button>
         </div>
@@ -588,10 +704,10 @@ def _render_html_document(manifest: dict[str, Any]) -> str:
 
   <footer class="site-footer">
     <div class="container footer-container">
-      <p>&copy; 2026 {title}. สงวนลิขสิทธิ์ทั้งหมด</p>
+      <p>&copy; 2026 {safe_title}. All rights reserved</p>
       <div class="footer-links">
-        <a href="#">นโยบายความเป็นส่วนตัว</a>
-        <a href="#">ข้อกำหนดการใช้งาน</a>
+        <a href="#">Privacy</a>
+        <a href="#">Terms</a>
       </div>
     </div>
   </footer>
@@ -599,12 +715,29 @@ def _render_html_document(manifest: dict[str, Any]) -> str:
 </html>"""
 
 
+def _safe_css_token(value: object, fallback: str) -> str:
+    if not isinstance(value, str) or any(ch in value for ch in "{};<>\\\n\\r"):
+        return fallback
+    lowered = value.lower()
+    if "url(" in lowered or "expression" in lowered or "@import" in lowered or "javascript:" in lowered:
+        return fallback
+    return value
+
+
+def _sanitize_css(source: str) -> str:
+    # Captured styles are untrusted; drop import rules and legacy executable CSS.
+    source = re.sub(r"@import\s+[^;]+;?", "", source, flags=re.IGNORECASE)
+    source = re.sub(r"expression\s*\([^)]*\)", "", source, flags=re.IGNORECASE)
+    source = re.sub(r"url\s*\(\s*(['\"]?)\s*javascript:[^)]*\)", "none", source, flags=re.IGNORECASE)
+    return source
+
+
 def _render_css_document(manifest: dict[str, Any]) -> str:
     theme = manifest.get("theme", {})
-    font = theme.get("fontFamily") or "'IBM Plex Sans Thai', system-ui, sans-serif"
-    color = theme.get("color") or "#0f172a"
-    bg = theme.get("backgroundColor") or "#ffffff"
-    source_css = manifest.get("source_css") or ""
+    font = _safe_css_token(theme.get("fontFamily"), "system-ui, sans-serif")
+    color = _safe_css_token(theme.get("color"), "#0f172a")
+    bg = _safe_css_token(theme.get("backgroundColor"), "#ffffff")
+    source_css = _sanitize_css(str(manifest.get("source_css") or ""))
 
     base_css = f"""/* Cloned Site Base Stylesheet */
 :root {{
@@ -845,7 +978,13 @@ def generate_project(
     manifest: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
     name = validate_name(sandbox_name)
+    output_dir = _safe_relative_project_path(output_dir, field="output_dir")
     manifest = manifest or {}
+    site = manifest.get("site", {})
+    source_url = site.get("url") if isinstance(site, dict) else None
+    parsed_source_url = urllib.parse.urlsplit(source_url) if isinstance(source_url, str) else None
+    if parsed_source_url is None or parsed_source_url.scheme.lower() not in {"http", "https"} or not parsed_source_url.hostname:
+        raise ValueError("Manifest must include a valid HTTP(S) source URL before project generation.")
 
     manifest_json = json.dumps(manifest, indent=2, default=str)
     html_code = _render_html_document(manifest)
@@ -865,7 +1004,7 @@ def generate_project(
     readme_md = f"""# Cloned Website
 
 Generated from: {manifest.get('site', {}).get('url', 'N/A')}
-Title: {manifest.get('site', {}).get('title', 'Paypers')}
+Title: {manifest.get('site', {}).get('title', 'Untitled site')}
 
 ## Artifacts
 - `index.html`: Rendered semantic markup
@@ -882,13 +1021,21 @@ Title: {manifest.get('site', {}).get('title', 'Paypers')}
         "README.md": readme_md,
     }
 
-    # Write each file using tee via stdin to support arbitrarily large files
-    # without exceeding the 32 KB command-line limit
+    # Use argv-only file operations and keep all artifacts under one approved root.
+    remote_dir = f"{_PROJECT_ROOT}/{output_dir}"
+    mkdir_result = execute_sandbox_argv(name, ["mkdir", "-p", remote_dir], timeout_seconds=30)
+    if int(mkdir_result.get("return_code", 1)) != 0:
+        raise RuntimeError(f"Could not create clone output directory: {mkdir_result.get('stderr', '')}")
+    resolved = execute_sandbox_argv(name, ["realpath", "-e", remote_dir], timeout_seconds=10)
+    if int(resolved.get("return_code", 1)) != 0 or str(resolved.get("stdout", "")).strip() != remote_dir:
+        raise ValueError("Clone output directory resolves outside its approved path or contains a symlink.")
     for fname, content in files.items():
-        cmd = f"mkdir -p /workspace/project/{output_dir} /workspace/{output_dir} && tee /workspace/project/{output_dir}/{fname} > /workspace/{output_dir}/{fname}"
-        execute_sandbox_argv(
-            name, ["sh", "-c", cmd], stdin=content.encode("utf-8"), timeout_seconds=30
+        written = execute_sandbox_argv(
+            name, ["tee", f"{remote_dir}/{fname}"],
+            stdin=content.encode("utf-8"), timeout_seconds=30,
         )
+        if int(written.get("return_code", 1)) != 0:
+            raise RuntimeError(f"Could not write clone artifact {fname}: {written.get('stderr', '')}")
 
     return {
         "output_dir": output_dir,
@@ -903,44 +1050,34 @@ def build_project(
     sandbox_name: str, project_dir: str = "clones"
 ) -> dict[str, Any]:
     name = validate_name(sandbox_name)
-    cmd = f"""
-if [ -d "/workspace/project/{project_dir}" ]; then
-  DIR="/workspace/project/{project_dir}"
-elif [ -d "/workspace/{project_dir}" ]; then
-  DIR="/workspace/{project_dir}"
-else
-  DIR="{project_dir}"
+    project_dir = _safe_relative_project_path(project_dir)
+    remote_dir = f"{_PROJECT_ROOT}/{project_dir}"
+    script = r"""
+set -eu
+DIR=$(realpath -e -- "$1")
+case "$DIR" in /workspace/project/*) ;; *) echo "Project path escapes the approved root" >&2; exit 2 ;; esac
+[ -f "$DIR/index.html" ] || { echo "Missing index.html" >&2; exit 1; }
+[ -f "$DIR/clone-manifest.json" ] || { echo "Missing clone-manifest.json" >&2; exit 1; }
+[ -f "$DIR/styles.css" ] || { echo "Missing styles.css" >&2; exit 1; }
+HTML_SIZE=$(wc -c < "$DIR/index.html")
+[ "$HTML_SIZE" -ge 50 ] || { echo "Validation failed: index.html is too small ($HTML_SIZE bytes)" >&2; exit 1; }
+if [ -f "$DIR/package.json" ] && command -v npm >/dev/null 2>&1; then
+  (cd "$DIR" && npm run build)
 fi
-cd "$DIR" || {{ echo "Cannot cd into $DIR" >&2; exit 1; }}
-
-test -f index.html || {{ echo "Missing index.html" >&2; exit 1; }}
-test -f clone-manifest.json || {{ echo "Missing clone-manifest.json" >&2; exit 1; }}
-
-HTML_SIZE=$(wc -c < index.html 2>/dev/null || echo 0)
-if [ "$HTML_SIZE" -lt 50 ]; then
-  echo "Validation failed: index.html is too small ($HTML_SIZE bytes)" >&2
-  exit 1
-fi
-
-if [ -f package.json ] && command -v npm >/dev/null 2>&1; then
-  npm run build || true
-fi
-
-echo "Build check passed: index.html ($HTML_SIZE bytes), styles.css, and clone-manifest.json verified."
+printf 'Build check passed: index.html (%s bytes), styles.css, and clone-manifest.json verified.\n' "$HTML_SIZE"
 """
-    result = execute_sandbox_argv(name, ["sh", "-c", cmd], timeout_seconds=120)
+    result = execute_sandbox_argv(name, ["sh", "-c", script, "sh", remote_dir], timeout_seconds=120)
     ret_code = int(result.get("return_code", 1))
+    stdout = str(result.get("stdout", ""))
+    stderr = str(result.get("stderr", ""))
+    success = ret_code == 0
     return {
         "project_dir": project_dir,
         "return_code": ret_code,
-        "status": "success" if ret_code == 0 else "failed",
-        "stdout": result.get("stdout", ""),
-        "stderr": result.get("stderr", ""),
-        "artifacts": {
-            "index.html": True,
-            "clone-manifest.json": True,
-            "styles.css": True,
-        },
+        "status": "success" if success else "failed",
+        "stdout": stdout,
+        "stderr": stderr,
+        "artifacts": {key: success for key in ("index.html", "clone-manifest.json", "styles.css")},
     }
 
 
@@ -948,152 +1085,102 @@ def serve_project(
     sandbox_name: str, project_dir: str = "clones", port: int = 4173
 ) -> dict[str, Any]:
     name = validate_name(sandbox_name)
-    port_int = int(port)
-
-    # 1. Kill any previously running server on this port cleanly
-    execute_sandbox_argv(
-        name,
-        ["sh", "-c", f'pkill -f "[n]ode /tmp/serve_{port_int}.js" 2>/dev/null || true'],
-        timeout_seconds=5,
-    )
-
-    # 2. Write standalone Node HTTP server script via stdin
+    project_dir = _safe_relative_project_path(project_dir)
+    if isinstance(port, bool) or not isinstance(port, int) or not 1024 <= port <= 65535:
+        raise ValueError("port must be an integer between 1024 and 65535")
+    remote_dir = f"{_PROJECT_ROOT}/{project_dir}"
+    server_path = f"/tmp/serve_{port}.js"
+    pid_path = f"/tmp/serve_{port}.pid"
+    log_path = f"/tmp/serve_{port}.log"
+    execute_sandbox_argv(name, ["sh", "-c", 'pkill -f "$1" 2>/dev/null || true', "sh", f"node {server_path}"], timeout_seconds=5)
+    root_literal = json.dumps(remote_dir)
+    pid_literal = json.dumps(pid_path)
     server_js = f"""
 const http = require('http');
 const fs = require('fs');
 const path = require('path');
-
-const candidates = [
-  path.resolve('/workspace/project/{project_dir}'),
-  path.resolve('/workspace/{project_dir}'),
-  path.resolve('{project_dir}')
-];
-const dir = candidates.find(p => fs.existsSync(p)) || candidates[0];
-const port = {port_int};
-
-const mime = {{
-  '.html': 'text/html; charset=utf-8',
-  '.css': 'text/css; charset=utf-8',
-  '.js': 'application/javascript; charset=utf-8',
-  '.json': 'application/json; charset=utf-8',
-  '.png': 'image/png',
-  '.jpg': 'image/jpeg',
-  '.svg': 'image/svg+xml',
-  '.ico': 'image/x-icon'
-}};
-
+const allowedRoot = fs.realpathSync('/workspace/project');
+const root = fs.realpathSync({root_literal});
+const rootRel = path.relative(allowedRoot, root);
+if (rootRel === '..' || rootRel.startsWith('..' + path.sep) || path.isAbsolute(rootRel) || root === allowedRoot) process.exit(2);
+const port = {port};
+const mime = {{'.html':'text/html; charset=utf-8','.css':'text/css; charset=utf-8','.js':'application/javascript; charset=utf-8','.json':'application/json; charset=utf-8','.png':'image/png','.jpg':'image/jpeg','.jpeg':'image/jpeg','.webp':'image/webp','.gif':'image/gif','.svg':'image/svg+xml','.ico':'image/x-icon','.woff2':'font/woff2'}};
 const server = http.createServer((req, res) => {{
-  let p = path.join(dir, req.url.split('?')[0]);
-  if (fs.existsSync(p) && fs.statSync(p).isDirectory()) p = path.join(p, 'index.html');
-  if (!fs.existsSync(p)) {{
-    res.writeHead(404, {{'Content-Type': 'text/plain'}});
-    return res.end('Not Found');
-  }}
-  const ext = path.extname(p).toLowerCase();
-  res.writeHead(200, {{'Content-Type': mime[ext] || 'application/octet-stream'}});
-  fs.createReadStream(p).pipe(res);
-}});
-
-server.on('error', err => {{
-  console.error('Server err:', err.message);
-  process.exit(1);
-}});
-
-server.listen(port, '0.0.0.0', () => {{
+  let decoded;
+  try {{ decoded = decodeURIComponent((req.url || '/').split('?')[0]); }} catch (_) {{ res.writeHead(400); return res.end('Bad Request'); }}
+  if (decoded.includes(String.fromCharCode(92)) || decoded.includes(String.fromCharCode(0))) {{ res.writeHead(400); return res.end('Bad Request'); }}
+  const candidate = path.resolve(root, '.' + (decoded.startsWith('/') ? decoded : '/' + decoded));
+  const rel = path.relative(root, candidate);
+  if (rel === '..' || rel.startsWith('..' + path.sep) || path.isAbsolute(rel)) {{ res.writeHead(403); return res.end('Forbidden'); }}
+  let target = candidate;
   try {{
-    fs.writeFileSync('/tmp/serve_{port_int}.pid', String(process.pid));
-  }} catch (_) {{}}
+    if (fs.existsSync(target) && fs.statSync(target).isDirectory()) target = path.join(target, 'index.html');
+    const actual = fs.realpathSync(target);
+    const actualRel = path.relative(root, actual);
+    if (actualRel === '..' || actualRel.startsWith('..' + path.sep) || path.isAbsolute(actualRel) || !fs.statSync(actual).isFile()) {{ res.writeHead(403); return res.end('Forbidden'); }}
+    const ext = path.extname(actual).toLowerCase();
+    res.writeHead(200, {{'Content-Type': mime[ext] || 'application/octet-stream', 'X-Content-Type-Options':'nosniff', 'Content-Security-Policy': "default-src 'self'; script-src 'none'; object-src 'none'; base-uri 'none'; frame-ancestors 'none'; img-src 'self' https: data:; style-src 'self' https:; font-src 'self' https: data:; connect-src 'self' https:;"}});
+    fs.createReadStream(actual).pipe(res);
+  }} catch (_) {{ res.writeHead(404, {{'Content-Type':'text/plain; charset=utf-8','X-Content-Type-Options':'nosniff'}}); res.end('Not Found'); }}
 }});
+server.on('error', err => {{ console.error('Server error:', err.message); process.exit(1); }});
+server.listen(port, '0.0.0.0', () => {{ fs.writeFileSync({pid_literal}, String(process.pid), {{mode: 0o600}}); }});
 """
-    execute_sandbox_argv(
-        name,
-        ["sh", "-c", f"cat > /tmp/serve_{port_int}.js"],
-        stdin=server_js.encode("utf-8"),
-        timeout_seconds=10,
-    )
-
-    # 3. Start server detached in background with stdin redirected from /dev/null
-    execute_sandbox_argv(
-        name,
-        ["sh", "-c", f"nohup node /tmp/serve_{port_int}.js </dev/null >/tmp/serve_{port_int}.log 2>&1 &"],
-        timeout_seconds=5,
-    )
-
-    # 4. Poll and verify HTTP response using Python loop
+    execute_sandbox_argv(name, ["tee", server_path], stdin=server_js.encode("utf-8"), timeout_seconds=10)
+    execute_sandbox_argv(name, ["sh", "-c", 'nohup node "$1" </dev/null >"$2" 2>&1 &', "sh", server_path, log_path], timeout_seconds=5)
     healthy = False
     pid = ""
     for _ in range(12):
         time.sleep(0.3)
-        check = execute_sandbox_argv(
-            name,
-            ["curl", "-s", "-o", "/dev/null", "-w", "%{http_code}", f"http://127.0.0.1:{port_int}/"],
-            timeout_seconds=3,
-        )
-        code = str(check.get("stdout", "")).strip()
-        if code in ("200", "301", "302"):
+        check = execute_sandbox_argv(name, ["curl", "-s", "-o", "/dev/null", "-w", "%{http_code}", f"http://127.0.0.1:{port}/"], timeout_seconds=3)
+        if str(check.get("stdout", "")).strip() == "200":
             healthy = True
-            pid_res = execute_sandbox_argv(
-                name, ["cat", f"/tmp/serve_{port_int}.pid"], timeout_seconds=3
-            )
+            pid_res = execute_sandbox_argv(name, ["cat", pid_path], timeout_seconds=3)
             pid = str(pid_res.get("stdout", "")).strip()
             break
-
-    return {
-        "project_dir": project_dir,
-        "port": port_int,
-        "pid": pid,
-        "url": f"http://127.0.0.1:{port_int}",
-        "healthy": healthy,
-    }
+    return {"project_dir": project_dir, "port": port, "pid": pid, "url": f"http://127.0.0.1:{port}", "healthy": healthy}
 
 
 def verify_clone(**evidence: Any) -> dict[str, Any]:
     structure = evidence.get("analyze", {})
-    sections = structure.get("sections", []) if isinstance(structure, dict) else []
     pages = structure.get("pages", []) if isinstance(structure, dict) else []
-    serve = evidence.get("serve", {})
     build = evidence.get("build", {})
-
+    serve = evidence.get("serve", {})
     mismatches: list[str] = []
+    checks: dict[str, str] = {"structural": "not_evaluated", "assets": "not_evaluated", "visual": "not_evaluated", "behavior": "not_evaluated"}
 
-    # Check server availability if serve step occurred
-    if isinstance(serve, dict) and serve:
-        if not serve.get("healthy"):
-            mismatches.append(f"Preview server at {serve.get('url', 'local port')} is unreachable (healthy: false)")
+    if not isinstance(structure, dict) or not pages:
+        mismatches.append("Structure analysis returned no pages")
+    else:
+        checks["structural"] = "pass"
 
-    # Check build output if build step occurred
     if isinstance(build, dict) and build:
-        if build.get("return_code") != 0:
+        if build.get("return_code") == 0 and build.get("status") == "success":
+            artifacts = build.get("artifacts", {})
+            if isinstance(artifacts, dict) and all(artifacts.get(k) is True for k in ("index.html", "clone-manifest.json", "styles.css")):
+                checks["assets"] = "pass"
+            else:
+                checks["assets"] = "fail"
+                mismatches.append("Build output did not confirm all required artifacts")
+        else:
+            checks["assets"] = "fail"
             mismatches.append(f"Build step failed with return_code {build.get('return_code')}")
 
-    # Check structural pages
-    if not pages:
-        mismatches.append("Structure analysis returned no pages")
+    if isinstance(serve, dict) and serve:
+        if serve.get("healthy") is True:
+            checks["behavior"] = "partial"
+        else:
+            checks["behavior"] = "fail"
+            mismatches.append(f"Preview server at {serve.get('url', 'local port')} is unreachable")
 
-    is_passed = len(mismatches) == 0
-    score = 0.98 if is_passed else max(0.2, 0.98 - (0.35 * len(mismatches)))
-
+    all_required_pass = all(checks[key] == "pass" for key in ("structural", "assets", "visual", "behavior"))
     return {
-        "status": "passed" if is_passed else "failed",
-        "score": round(score, 2),
-        "structural": {
-            "status": "pass" if pages else "fail",
-            "sections_verified": len(sections),
-            "pages_verified": len(pages),
-        },
-        "assets": {
-            "status": "pass",
-            "stylesheet_present": True,
-            "manifest_present": True,
-        },
-        "visual": {
-            "status": "pass",
-            "responsive_meta": True,
-        },
-        "behavior": {
-            "status": "pass" if is_passed else "warn",
-            "interactive_elements_preserved": True,
-        },
+        "status": "passed" if all_required_pass and not mismatches else "incomplete" if not mismatches else "failed",
+        "score": None,
+        "structural": {"status": checks["structural"], "pages_verified": len(pages) if isinstance(pages, list) else 0},
+        "assets": {"status": checks["assets"]},
+        "visual": {"status": "not_evaluated", "reason": "No reference-versus-preview screenshot comparison was performed."},
+        "behavior": {"status": checks["behavior"], "reason": "Server health is not a substitute for interaction replay."},
         "mismatches": mismatches,
         "evidence_keys": sorted(evidence),
     }
@@ -1101,31 +1188,21 @@ def verify_clone(**evidence: Any) -> dict[str, Any]:
 
 def repair_clone(**evidence: Any) -> dict[str, Any]:
     verification = evidence.get("verification", {})
-    mismatches = (
-        verification.get("mismatches", []) if isinstance(verification, dict) else []
-    )
-
+    mismatches = verification.get("mismatches", []) if isinstance(verification, dict) else []
+    if not isinstance(mismatches, list):
+        mismatches = []
     if not mismatches:
         return {
-            "status": "clean",
-            "reason": "Clone verified successfully; all structural and asset criteria satisfied.",
+            "status": "no_actionable_repairs",
+            "reason": "No reported mismatches were supplied. No files were changed and no repair is claimed.",
             "repairs_applied": 0,
             "evidence_keys": sorted(evidence),
         }
-
-    repairs: list[str] = []
-    for mismatch in mismatches:
-        if "server" in mismatch.lower():
-            repairs.append("Re-materialized node static server daemon on target port.")
-        elif "build" in mismatch.lower():
-            repairs.append("Re-verified entrypoint files and regenerated clone artifacts.")
-        else:
-            repairs.append(f"Applied corrective patch for: {mismatch}")
-
     return {
-        "status": "repaired",
-        "repairs_applied": len(repairs),
-        "repairs": repairs,
+        "status": "manual_action_required",
+        "reason": "Automated patching is not implemented for these mismatches; no files were changed.",
+        "repairs_applied": 0,
+        "actionable_mismatches": [str(item) for item in mismatches],
         "evidence_keys": sorted(evidence),
     }
 

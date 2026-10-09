@@ -13,6 +13,27 @@ def test_registry_loads_all_clone_workflows() -> None:
         assert len(workflow.steps) == expected_steps
 
 
+def test_verification_workflows_pass_analysis_and_build_evidence() -> None:
+    registry = WorkflowRegistry()
+
+    accurate = registry.get("accurate")
+    accurate_verify = next(step for step in accurate.steps if step.id == "verify")
+    assert accurate_verify.inputs["analyze"] == "$step.analyze.output"
+    assert accurate_verify.inputs["build"] == "$step.build.output"
+
+    forensic = registry.get("forensic")
+    forensic_verify = next(step for step in forensic.steps if step.id == "verify")
+    assert forensic_verify.inputs["analyze"] == "$step.analyze.output"
+    assert forensic_verify.inputs["build"] == "$step.build.output"
+    assert forensic_verify.inputs["serve"] == "$step.serve.output"
+
+    verify = registry.get("verify")
+    verify_step = next(step for step in verify.steps if step.id == "verify")
+    assert verify_step.inputs["analyze"] == "$input.analyze"
+    assert verify_step.inputs["build"] == "$input.build"
+    assert verify_step.inputs["serve"] == "$step.serve.output"
+
+
 def test_registry_rejects_cycles() -> None:
     workflow = WorkflowDefinition(
         name="cycle",

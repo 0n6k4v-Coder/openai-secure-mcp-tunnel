@@ -5,6 +5,7 @@ import ipaddress
 import json
 import logging
 import subprocess
+import socket
 import urllib.parse
 import uuid
 
@@ -17,7 +18,7 @@ _MAX_SELECTOR_LENGTH = 2048
 _MAX_SCRIPT_LENGTH = 16 * 1024
 _MAX_SCREENSHOT_BYTES = 4 * 1024 * 1024
 _ALLOWED_SCHEMES = frozenset({"http", "https"})
-_PRIVATE_HOSTS = frozenset({"localhost", "localhost.localdomain", "0.0.0.0", "::1"})
+_PRIVATE_HOSTS = frozenset({"localhost", "localhost.localdomain", "host.openshell.internal", "0.0.0.0", "::1"})
 
 _ALLOWED_ENDPOINTS_CACHE: set[tuple[str, str, int]] = set()
 
@@ -42,8 +43,8 @@ def validate_url(url: str) -> str:
     if parsed.username is not None or parsed.password is not None:
         raise BrowserError("URLs containing embedded credentials are not allowed.")
     hostname = parsed.hostname.rstrip(".").lower()
-    if hostname in _PRIVATE_HOSTS:
-        raise BrowserError("Local or loopback browser targets are not allowed.")
+    if hostname in _PRIVATE_HOSTS or hostname.endswith((".internal", ".localhost", ".local", ".test", ".invalid")):
+        raise BrowserError("Local or non-public browser targets are not allowed.")
     try:
         address = ipaddress.ip_address(hostname)
     except ValueError:
@@ -113,62 +114,53 @@ def _run(sandbox_name: str, command: str, arguments: list[str] | None = None) ->
 
 
 def _ensure_browser_endpoint_allowed(sandbox_name: str, url: str) -> None:
+    """Grant one exact public endpoint; never broaden to parent-domain wildcards."""
+    parsed = urllib.parse.urlsplit(validate_url(url))
+    host = (parsed.hostname or "").rstrip(".").lower()
+    if not host:
+        raise BrowserError("Browser URL must contain a hostname.")
     try:
-        parsed = urllib.parse.urlsplit(url)
-        host = parsed.hostname
-        if not host:
-            return
-        port = parsed.port or (443 if parsed.scheme == "https" else 80)
-        cache_key = (sandbox_name, host, port)
-        if cache_key in _ALLOWED_ENDPOINTS_CACHE:
-            return
+        port = parsed.port or (443 if parsed.scheme.lower() == "https" else 80)
+    except ValueError as exc:
+        raise BrowserError("Browser URL contains an invalid port.") from exc
+    if not 1 <= port <= 65535:
+        raise BrowserError("Browser URL contains an invalid port.")
 
-        cmd = [
-            "openshell",
-            "policy",
-            "update",
-            sandbox_name,
-            "--add-endpoint",
-            f"{host}:{port}",
-            "--binary",
-            "/opt/chrome/chrome",
-            "--rule-name",
-            "browser_web",
-            "--wait",
-        ]
-        res = subprocess.run(cmd, capture_output=True, text=True, timeout=15)
-        if res.returncode == 0:
-            _ALLOWED_ENDPOINTS_CACHE.add(cache_key)
+    # Reject private and mixed public/private DNS answers before changing policy.
+    try:
+        answers = socket.getaddrinfo(host, port, type=socket.SOCK_STREAM)
+    except OSError as exc:
+        raise BrowserError(f"Could not resolve browser target hostname {host!r}.") from exc
+    addresses = {answer[4][0].split("%", 1)[0] for answer in answers}
+    if not addresses:
+        raise BrowserError("Browser target hostname did not resolve to an address.")
+    for raw_address in addresses:
+        try:
+            address = ipaddress.ip_address(raw_address)
+        except ValueError as exc:
+            raise BrowserError("DNS returned an invalid browser target address.") from exc
+        if not address.is_global:
+            raise BrowserError(
+                "Browser targets resolving to private, local, reserved, or non-public IP addresses are not allowed."
+            )
 
-            parts = host.split(".")
-            if len(parts) >= 2 and not all(p.isdigit() for p in parts):
-                domain = (
-                    ".".join(parts[-3:])
-                    if len(parts) > 2 and parts[-2] in {"co", "com", "org", "net", "gov", "edu"}
-                    else ".".join(parts[-2:])
-                )
-                wildcard_key = (sandbox_name, f"*.{domain}", port)
-                if wildcard_key not in _ALLOWED_ENDPOINTS_CACHE:
-                    subprocess.run(
-                        [
-                            "openshell",
-                            "policy",
-                            "update",
-                            sandbox_name,
-                            "--add-endpoint",
-                            f"*.{domain}:{port}",
-                            "--binary",
-                            "/opt/chrome/chrome",
-                            "--rule-name",
-                            "browser_web",
-                        ],
-                        capture_output=True,
-                        text=True,
-                        timeout=15,
-                    )
-                    _ALLOWED_ENDPOINTS_CACHE.add(wildcard_key)
-    except Exception:
-        pass
+    cache_key = (sandbox_name, host, port)
+    if cache_key in _ALLOWED_ENDPOINTS_CACHE:
+        return
+    cmd = [
+        "openshell", "policy", "update", sandbox_name,
+        "--add-endpoint", f"{host}:{port}",
+        "--binary", "/opt/chrome/chrome",
+        "--rule-name", "browser_web", "--wait",
+    ]
+    try:
+        result = subprocess.run(cmd, capture_output=True, text=True, timeout=15, check=False)
+    except (OSError, subprocess.SubprocessError) as exc:
+        raise BrowserError("Could not update the browser network policy.") from exc
+    if result.returncode != 0:
+        detail = (result.stderr or result.stdout or "").strip()[:500]
+        raise BrowserError(f"Browser network policy update failed: {detail or 'unknown error'}")
+    _ALLOWED_ENDPOINTS_CACHE.add(cache_key)
 
 
 def open_page(sandbox_name: str, url: str) -> dict[str, object]:
