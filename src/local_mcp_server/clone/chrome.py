@@ -280,8 +280,36 @@ def evaluate(sandbox_name: str, page_id: int, function: str) -> dict[str, object
     function = function.strip()
     if len(function) > _MAX_SCRIPT_LENGTH:
         raise BrowserError(f"function exceeds {_MAX_SCRIPT_LENGTH} characters.")
-    result = _run(sandbox_name, "evaluate_script", [function, "--pageId", str(page_id)])
-    return {"page_id": page_id, "result": result}
+
+    file_path = f"/tmp/mcp-eval-{uuid.uuid4().hex}.json"
+    args = [function, "--pageId", str(page_id), "--filePath", file_path]
+    _run(sandbox_name, "evaluate_script", args)
+
+    try:
+        read_res = execute_sandbox_argv(
+            validate_name(sandbox_name),
+            ["cat", file_path],
+            timeout_seconds=30,
+        )
+        if int(read_res.get("return_code", 1)) == 0:
+            out_str = read_res.get("stdout", "")
+            if isinstance(out_str, str) and out_str.strip():
+                try:
+                    parsed = json.loads(out_str)
+                    return {"page_id": page_id, "result": parsed}
+                except json.JSONDecodeError:
+                    return {"page_id": page_id, "result": out_str.strip()}
+    finally:
+        try:
+            execute_sandbox_argv(
+                validate_name(sandbox_name),
+                ["rm", "-f", file_path],
+                timeout_seconds=10,
+            )
+        except Exception:
+            pass
+
+    return {"page_id": page_id, "result": None}
 
 
 def screenshot(sandbox_name: str, page_id: int, *, full_page: bool = False) -> bytes:

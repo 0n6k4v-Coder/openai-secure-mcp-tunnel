@@ -87,12 +87,21 @@ def format_text_in_sandbox(
         or any(part == ".." for part in relative_path.split("/"))
     ):
         raise ValueError("Formatting requires a relative workspace path.")
-    result = execute_sandbox_argv(
-        sandbox_name,
-        ["python", "-c", _FORMAT_RUNNER, relative_path],
-        stdin=content,
-        timeout_seconds=25,
-    )
+    # Guard against gRPC message limit (1MB) and oversized payload
+    content_bytes = content.encode("utf-8")
+    if len(content_bytes) > 900_000:
+        return content, "skipped: content exceeds size limit for sandbox formatting"
+
+    try:
+        result = execute_sandbox_argv(
+            sandbox_name,
+            ["python", "-c", _FORMAT_RUNNER, relative_path],
+            stdin=content,
+            timeout_seconds=25,
+        )
+    except Exception as exc:
+        return content, f"skipped: formatting runner failed ({exc})"
+
     if int(result.get("return_code", 1)) != 0:
         stderr = str(result.get("stderr", "")).strip().splitlines()
         detail = stderr[0][:180] if stderr else "formatter runner failed"
