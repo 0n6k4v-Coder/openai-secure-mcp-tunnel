@@ -649,6 +649,31 @@ def execute_sandbox_argv(
         raise
 
     except Exception as exc:
+        if "sandbox is not ready" in str(exc).lower():
+            try:
+                start_sandbox(name)
+                with _client() as client:
+                    result = client.exec(
+                        name,
+                        argv,
+                        workspace=OPENSHELL_WORKSPACE,
+                        timeout_seconds=timeout_seconds,
+                        no_login_shell=True,
+                        stdin=stdin_bytes,
+                    )
+                    return {
+                        "stdout": result.stdout,
+                        "stderr": result.stderr,
+                        "return_code": result.exit_code,
+                    }
+            except Exception:
+                pass
+            from ...mcp.exceptions import SandboxNotReadyError
+            raise SandboxNotReadyError(
+                name,
+                hint=f"It may be stopped. Run 'mcpctl sandbox start {name}' to start it.",
+            ) from exc
+
         raise SandboxError(
             f"Failed to execute argv in sandbox '{name}': {type(exc).__name__}: {exc}"
         ) from exc
@@ -732,6 +757,41 @@ def run_command(
         raise
 
     except Exception as exc:
+        if "sandbox is not ready" in str(exc).lower():
+            try:
+                start_sandbox(name)
+                with _client() as client:
+                    result = client.exec(
+                        name,
+                        [
+                            "sh",
+                            "-lc",
+                            command,
+                        ],
+                        workspace=OPENSHELL_WORKSPACE,
+                        stdin=stdin_bytes,
+                        timeout_seconds=timeout_seconds,
+                        workdir=workdir,
+                        env=cmd_env,
+                    )
+                    return json.dumps(
+                        {
+                            "stdout": result.stdout,
+                            "stderr": result.stderr,
+                            "return_code": result.exit_code,
+                            "cwd": workdir,
+                        },
+                        ensure_ascii=False,
+                        indent=2,
+                    )
+            except Exception:
+                pass
+            from ...mcp.exceptions import SandboxNotReadyError
+            raise SandboxNotReadyError(
+                name,
+                hint=f"It may be stopped. Run 'mcpctl sandbox start {name}' to start it.",
+            ) from exc
+
         raise SandboxError(
             f"Failed to execute command in sandbox '{name}': "
             f"{type(exc).__name__}: {exc}"

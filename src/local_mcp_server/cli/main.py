@@ -221,8 +221,9 @@ def _status_value(record: dict[str, object]) -> str:
     return "UNKNOWN"
 
 
-def _gracefully_stop_active_sandboxes() -> None:
+def _gracefully_stop_active_sandboxes() -> list[str]:
     """Stop active sandboxes gracefully before shutting down or recreating gateway."""
+    stopped_sandboxes: list[str] = []
     try:
         from ..sandbox.service import list_sandboxes, stop_sandbox
 
@@ -237,10 +238,28 @@ def _gracefully_stop_active_sandboxes() -> None:
                 if isinstance(name, str):
                     try:
                         stop_sandbox(name)
+                        stopped_sandboxes.append(name)
                     except Exception:
                         pass
     except Exception:
         # Non-fatal if gateway is already unreachable
+        pass
+    return stopped_sandboxes
+
+
+def _resume_sandboxes(sandbox_names: list[str]) -> None:
+    """Resume sandboxes that were active before gateway shutdown or recreate."""
+    if not sandbox_names:
+        return
+    try:
+        from ..sandbox.service import start_sandbox
+
+        for name in sandbox_names:
+            try:
+                start_sandbox(name)
+            except Exception:
+                pass
+    except Exception:
         pass
 
 
@@ -266,7 +285,7 @@ def _heal_degraded_sandboxes() -> None:
         pass
 
 
-def _verify_started_stack(action: str) -> int:
+def _verify_started_stack(action: str, sandboxes_to_resume: list[str] | None = None) -> int:
     from . import lifecycle
     from ..infrastructure.openshell.tls import get_status as get_openshell_tls_status
 
@@ -281,6 +300,9 @@ def _verify_started_stack(action: str) -> int:
 
     # Automatically heal any sandboxes left in error state by supervisor disconnection
     _heal_degraded_sandboxes()
+
+    if sandboxes_to_resume:
+        _resume_sandboxes(sandboxes_to_resume)
 
     if status.ready:
         print(f"RESULT: {action} READY")
@@ -329,7 +351,7 @@ def _restart() -> int:
     from . import lifecycle
 
     print("Restarting local MCP application")
-    _gracefully_stop_active_sandboxes()
+    sandboxes_to_resume = _gracefully_stop_active_sandboxes()
     print("Preflight: custom images")
     lifecycle.ensure_local_images()
     result = _run_passthrough(
@@ -344,7 +366,7 @@ def _restart() -> int:
     if result != EXIT_OK:
         print(f"RESULT: RESTART FAILED (exit code {result})", file=sys.stderr)
         return result
-    return _verify_started_stack("RESTART")
+    return _verify_started_stack("RESTART", sandboxes_to_resume=sandboxes_to_resume)
 
 
 

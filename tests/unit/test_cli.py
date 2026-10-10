@@ -1229,3 +1229,25 @@ def test_started_stack_reports_verified_readiness(
     assert result == expected_code
     captured = capsys.readouterr()
     assert expected_result in captured.out + captured.err
+
+
+def test_verify_started_stack_resumes_sandboxes(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from types import SimpleNamespace
+    from local_mcp_server.cli import lifecycle
+    status = SimpleNamespace(infrastructure_ready=True, ready=True)
+    monkeypatch.setattr(lifecycle, "get_status", lambda tls_status: status)
+    monkeypatch.setattr(lifecycle, "print_status", lambda current: None)
+    monkeypatch.setattr(
+        "local_mcp_server.infrastructure.openshell.tls.get_status",
+        lambda: object(),
+    )
+    resumed = []
+    monkeypatch.setattr(cli, "_resume_sandboxes", lambda names: resumed.extend(names))
+    monkeypatch.setattr(cli, "_heal_degraded_sandboxes", lambda: None)
+
+    result = cli._verify_started_stack("RESTART", sandboxes_to_resume=["sbx-1", "sbx-2"])
+
+    assert result == cli.EXIT_OK
+    assert resumed == ["sbx-1", "sbx-2"]

@@ -34,9 +34,13 @@ def _wrap_call_tool(server: MCPServer) -> None:
     async def call_tool_with_diagnostics(*args, **kwargs):
         try:
             return await orig_call_tool(*args, **kwargs)
-        except UnexpectedToolError as exc:
+        except (UnexpectedToolError, ToolError) as exc:
             root_cause = getattr(exc, "__cause__", None) or exc
-            raise ToolError(str(root_cause)) from exc
+            msg = str(root_cause)
+            prefix = f"Error executing tool {args[0] if args else ''}: "
+            if msg.startswith(prefix):
+                msg = msg[len(prefix):]
+            raise ToolError(msg) from exc
 
     server.call_tool = call_tool_with_diagnostics
 
