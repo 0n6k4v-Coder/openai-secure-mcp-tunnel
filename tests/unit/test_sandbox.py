@@ -65,9 +65,25 @@ def test_default_sandbox_does_not_depend_on_external_browser_relay(
 
     assert set(spec.policy.network_policies) == {
         "npm_registry",
+        "python_package_index",
     }
 
     npm_policy = spec.policy.network_policies["npm_registry"]
+    python_policy = spec.policy.network_policies["python_package_index"]
+    assert python_policy.name == "python-package-index"
+    assert {
+        (endpoint.host, endpoint.port, endpoint.protocol)
+        for endpoint in python_policy.endpoints
+    } == {
+        ("pypi.org", 443, "rest"),
+        ("files.pythonhosted.org", 443, "rest"),
+    }
+    assert all(
+        {(rule.allow.method, rule.allow.path) for rule in endpoint.rules}
+        == {("GET", "/**"), ("HEAD", "/**")}
+        for endpoint in python_policy.endpoints
+    )
+    assert python_policy.binaries[0].path == policy._UV_BINARY
 
     assert npm_policy.name == "npm-registry"
 

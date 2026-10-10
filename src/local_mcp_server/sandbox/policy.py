@@ -53,6 +53,10 @@ _NPM_AUDIT_PATHS = (
     "/-/npm/v1/security/audits/quick",
 )
 
+_UV_BINARY = "/usr/local/bin/uv"
+_PYTHON_PACKAGE_HOSTS = ("pypi.org", "files.pythonhosted.org")
+_PYTHON_PACKAGE_PORT = 443
+
 _BROWSER_BINARY = "/opt/chrome/chrome"
 _CLI_CURL_BINARY = "/usr/bin/curl"
 
@@ -194,6 +198,29 @@ def _add_npm_policy(
     npm_binary.path = _NPM_NODE_BINARY
 
 
+def _add_python_package_policy(
+    spec: openshell_pb2.SandboxSpec,
+) -> None:
+    """Permit uv to read package metadata and download wheels from PyPI only."""
+    python_policy = spec.policy.network_policies["python_package_index"]
+    python_policy.name = "python-package-index"
+
+    for host in _PYTHON_PACKAGE_HOSTS:
+        endpoint = python_policy.endpoints.add()
+        endpoint.host = host
+        endpoint.port = _PYTHON_PACKAGE_PORT
+        endpoint.protocol = "rest"
+        endpoint.enforcement = "NETWORK_ENFORCEMENT_MODE_ENFORCE"
+
+        for method in ("GET", "HEAD"):
+            rule = endpoint.rules.add()
+            rule.allow.method = method
+            rule.allow.path = "/**"
+
+    binary = python_policy.binaries.add()
+    binary.path = _UV_BINARY
+
+
 def _add_browser_policy(
     spec: openshell_pb2.SandboxSpec,
 ) -> None:
@@ -331,6 +358,7 @@ def build_sandbox_spec(
         _add_browser_policy(spec)
     else:
         _add_npm_policy(spec)
+        _add_python_package_policy(spec)
 
     spec.policy.landlock.compatibility = "hard_requirement"
 

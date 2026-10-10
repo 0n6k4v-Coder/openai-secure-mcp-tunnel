@@ -28,7 +28,8 @@ RUN apt-get update \
     && rm -rf /var/lib/apt/lists/*
 
 RUN python -m pip install --no-cache-dir \
-        playwright==1.63.0
+        playwright==1.63.0 \
+        uv==0.12.21
 
 RUN groupadd \
         --gid 10001 \
