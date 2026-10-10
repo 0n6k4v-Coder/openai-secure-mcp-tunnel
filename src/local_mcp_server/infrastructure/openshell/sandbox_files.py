@@ -11,6 +11,154 @@ MAX_READ_BYTES = 1_000_000
 MAX_WRITE_BYTES = 1_000_000
 MAX_RELATIVE_PATH_BYTES = 4_096
 
+_NODE_FILE_HELPER = r"""
+const fs = require('fs');
+const path = require('path');
+const root = path.resolve('/workspace/project');
+
+function checkRelative(rel) {
+    if (!rel) { console.error('Path must not be empty.'); process.exit(1); }
+    if (path.isAbsolute(rel)) { console.error('Requested path must be relative.'); process.exit(1); }
+    const resolved = path.resolve(root, rel);
+    if (!resolved.startsWith(root + path.sep) && resolved !== root) {
+        console.error('Requested path is outside the workspace.'); process.exit(1);
+    }
+    return resolved;
+}
+
+const op = process.argv[1];
+const arg1 = process.argv[2];
+const arg2 = process.argv[3];
+
+if (op === 'list') {
+    let results = [];
+    function walk(dir) {
+        try {
+            const entries = fs.readdirSync(dir, { withFileTypes: true });
+            for (const entry of entries) {
+                const full = path.join(dir, entry.name);
+                if (entry.isDirectory()) {
+                    walk(full);
+                } else if (entry.isFile()) {
+                    const resolved = fs.realpathSync(full);
+                    if (resolved.startsWith(root + path.sep) || resolved === root) {
+                        results.push(path.relative(root, resolved));
+                    }
+                }
+            }
+        } catch (_) {}
+    }
+    walk(root);
+    console.log(JSON.stringify(Array.from(new Set(results)).sort()));
+} else if (op === 'read') {
+    const resolved = checkRelative(arg1);
+    let stat;
+    try { stat = fs.statSync(resolved); } catch (_) { console.error('Requested path is not a regular file.'); process.exit(1); }
+    if (!stat.isFile()) { console.error('Requested path is not a regular file.'); process.exit(1); }
+    if (stat.size > 1000000) { console.error('Requested file is too large.'); process.exit(1); }
+    try {
+        const content = fs.readFileSync(resolved, 'utf8');
+        process.stdout.write(content);
+    } catch (_) {
+        console.error('Requested file is not valid UTF-8 text.'); process.exit(1);
+    }
+} else if (op === 'write') {
+    const resolved = checkRelative(arg1);
+    const overwrite = arg2 === 'true';
+    try {
+        if (fs.lstatSync(path.join(root, arg1)).isSymbolicLink()) {
+            console.error('Requested path must not be a symbolic link.'); process.exit(1);
+        }
+    } catch (_) {}
+    if (fs.existsSync(resolved)) {
+        if (!fs.statSync(resolved).isFile()) {
+            console.error('Requested path already exists and is not a regular file.'); process.exit(1);
+        }
+        if (!overwrite) {
+            console.error('File already exists and overwrite is set to False.'); process.exit(1);
+        }
+    }
+    const chunks = [];
+    process.stdin.on('data', c => chunks.push(c));
+    process.stdin.on('end', () => {
+        const buf = Buffer.concat(chunks);
+        if (buf.length > 1000000) { console.error('Content is too large.'); process.exit(1); }
+        fs.mkdirSync(path.dirname(resolved), { recursive: true });
+        fs.writeFileSync(resolved, buf);
+        process.stdout.write(JSON.stringify({ path: path.relative(root, resolved), formatting: 'skipped: node environment' }));
+    });
+} else if (op === 'replace') {
+    const resolved = checkRelative(arg1);
+    const allowMultiple = arg2 === 'true';
+    try {
+        if (fs.lstatSync(path.join(root, arg1)).isSymbolicLink()) {
+            console.error('Requested path must not be a symbolic link.'); process.exit(1);
+        }
+    } catch (_) {}
+    if (!fs.existsSync(resolved) || !fs.statSync(resolved).isFile()) {
+        console.error('Target file does not exist or is not a regular file.'); process.exit(1);
+    }
+    const chunks = [];
+    process.stdin.on('data', c => chunks.push(c));
+    process.stdin.on('end', () => {
+        const rawPayload = Buffer.concat(chunks).toString('utf8');
+        const payload = JSON.parse(rawPayload);
+        const targetContent = payload.target_content;
+        const replacementContent = payload.replacement_content;
+        if (!targetContent) { console.error('target_content must not be empty.'); process.exit(1); }
+        let original;
+        try { original = fs.readFileSync(resolved, 'utf8'); } catch (_) { console.error('Target file is not valid UTF-8 text.'); process.exit(1); }
+        const count = original.split(targetContent).length - 1;
+        if (count === 0) { console.error('target_content not found in file.'); process.exit(1); }
+        if (count > 1 && !allowMultiple) {
+            console.error(`target_content occurred ${count} times in file. Provide more context or set allow_multiple=True.`);
+            process.exit(1);
+        }
+        const updated = allowMultiple ? original.replaceAll(targetContent, replacementContent) : original.replace(targetContent, replacementContent);
+        const updatedBuf = Buffer.from(updated, 'utf8');
+        if (updatedBuf.length > 1000000) { console.error('Updated content exceeds maximum allowed size.'); process.exit(1); }
+        fs.writeFileSync(resolved, updatedBuf);
+        process.stdout.write(JSON.stringify({ path: path.relative(root, resolved), formatting: 'skipped: node environment' }));
+    });
+} else if (op === 'mkdir') {
+    const resolved = checkRelative(arg1);
+    if (fs.existsSync(resolved)) {
+        console.error('A file or directory already exists at that path.'); process.exit(1);
+    }
+    fs.mkdirSync(resolved, { recursive: false });
+    process.stdout.write(path.relative(root, resolved));
+} else if (op === 'rename') {
+    const src = checkRelative(arg1);
+    const dst = checkRelative(arg2);
+    if (!fs.existsSync(src)) { console.error('Source path does not exist.'); process.exit(1); }
+    if (fs.existsSync(dst)) { console.error('Destination path already exists.'); process.exit(1); }
+    fs.mkdirSync(path.dirname(dst), { recursive: true });
+    fs.renameSync(src, dst);
+    process.stdout.write(path.relative(root, dst));
+} else if (op === 'delete_file') {
+    const resolved = checkRelative(arg1);
+    if (!fs.existsSync(resolved) || !fs.statSync(resolved).isFile()) {
+        console.error('Requested path is not a regular file.'); process.exit(1);
+    }
+    fs.unlinkSync(resolved);
+    process.stdout.write(path.relative(root, resolved));
+} else if (op === 'delete_dir') {
+    if (arg1 === '.' || path.join(root, arg1) === root) {
+        console.error('Deleting the workspace root is not allowed.'); process.exit(1);
+    }
+    const resolved = checkRelative(arg1);
+    try {
+        if (fs.lstatSync(path.join(root, arg1)).isSymbolicLink()) {
+            console.error('Requested path must not be a symbolic link.'); process.exit(1);
+        }
+    } catch (_) {}
+    if (!fs.existsSync(resolved)) { console.error('Requested directory does not exist.'); process.exit(1); }
+    if (!fs.statSync(resolved).isDirectory()) { console.error('Requested path is not a directory.'); process.exit(1); }
+    fs.rmSync(resolved, { recursive: true, force: true });
+    process.stdout.write(path.relative(root, resolved));
+}
+""".strip()
+
 _LIST_FILES_COMMAND = r"""python -c '
 import json
 import os
@@ -390,8 +538,30 @@ def _formatting_result(output: str) -> str:
     return f"{path}\nFormatting: {status}"
 
 
+def _wrap_polyglot_command(py_code: str, node_op: str, args: list[str]) -> str:
+    escaped_args = " ".join(shlex.quote(a) for a in args)
+    return (
+        "sh -c "
+        + shlex.quote(
+            f"""
+if command -v python3 >/dev/null 2>&1; then
+    python3 -c {shlex.quote(py_code)} {escaped_args}
+elif command -v python >/dev/null 2>&1; then
+    python -c {shlex.quote(py_code)} {escaped_args}
+elif command -v node >/dev/null 2>&1; then
+    node -e {shlex.quote(_NODE_FILE_HELPER)} {shlex.quote(node_op)} {escaped_args}
+else
+    echo "No supported python or node interpreter found in sandbox." >&2
+    exit 1
+fi
+"""
+        )
+    )
+
+
 def list_sandbox_workspace_files(sandbox_name: str) -> list[str]:
-    output = _execute_workspace_command(sandbox_name, _LIST_FILES_COMMAND)
+    command = _wrap_polyglot_command(_LIST_FILES_COMMAND.replace("python -c '", "").rstrip("'\n"), "list", [])
+    output = _execute_workspace_command(sandbox_name, command)
     try:
         result = json.loads(output)
     except json.JSONDecodeError as exc:
@@ -405,9 +575,7 @@ def list_sandbox_workspace_files(sandbox_name: str) -> list[str]:
 
 def read_sandbox_workspace_text_file(sandbox_name: str, relative_path: str) -> str:
     _validate_relative_path(relative_path)
-    command = (
-        "python -c " + shlex.quote(_READ_FILE_SCRIPT) + " " + shlex.quote(relative_path)
-    )
+    command = _wrap_polyglot_command(_READ_FILE_SCRIPT, "read", [relative_path])
     return _execute_workspace_command(sandbox_name, command)
 
 
@@ -419,14 +587,7 @@ def write_sandbox_file(
 ) -> str:
     _validate_relative_path(relative_path)
     encoded = _validate_content(content)
-    command = (
-        "python -c "
-        + shlex.quote(_WRITE_TO_FILE_SCRIPT)
-        + " "
-        + shlex.quote(relative_path)
-        + " "
-        + ("true" if overwrite else "false")
-    )
+    command = _wrap_polyglot_command(_WRITE_TO_FILE_SCRIPT, "write", [relative_path, "true" if overwrite else "false"])
     return _formatting_result(
         _execute_workspace_command(sandbox_name, command, stdin=encoded)
     )
@@ -454,13 +615,10 @@ def replace_sandbox_file_content(
         }
     ).encode("utf-8")
 
-    command = (
-        "python -c "
-        + shlex.quote(_REPLACE_FILE_CONTENT_SCRIPT)
-        + " "
-        + shlex.quote(relative_path)
-        + " "
-        + ("true" if allow_multiple else "false")
+    command = _wrap_polyglot_command(
+        _REPLACE_FILE_CONTENT_SCRIPT,
+        "replace",
+        [relative_path, "true" if allow_multiple else "false"],
     )
     return _formatting_result(
         _execute_workspace_command(sandbox_name, command, stdin=payload)
@@ -472,12 +630,7 @@ def create_sandbox_workspace_directory(
     relative_path: str,
 ) -> str:
     _validate_relative_path(relative_path)
-    command = (
-        "python -c "
-        + shlex.quote(_CREATE_DIRECTORY_SCRIPT)
-        + " "
-        + shlex.quote(relative_path)
-    )
+    command = _wrap_polyglot_command(_CREATE_DIRECTORY_SCRIPT, "mkdir", [relative_path])
     return _execute_workspace_command(sandbox_name, command)
 
 
@@ -488,14 +641,7 @@ def rename_sandbox_workspace_path(
 ) -> str:
     _validate_relative_path(relative_path)
     _validate_relative_path(new_relative_path)
-    command = (
-        "python -c "
-        + shlex.quote(_RENAME_PATH_SCRIPT)
-        + " "
-        + shlex.quote(relative_path)
-        + " "
-        + shlex.quote(new_relative_path)
-    )
+    command = _wrap_polyglot_command(_RENAME_PATH_SCRIPT, "rename", [relative_path, new_relative_path])
     return _execute_workspace_command(sandbox_name, command)
 
 
@@ -504,12 +650,7 @@ def delete_sandbox_workspace_file(
     relative_path: str,
 ) -> str:
     _validate_relative_path(relative_path)
-    command = (
-        "python -c "
-        + shlex.quote(_DELETE_FILE_SCRIPT)
-        + " "
-        + shlex.quote(relative_path)
-    )
+    command = _wrap_polyglot_command(_DELETE_FILE_SCRIPT, "delete_file", [relative_path])
     return _execute_workspace_command(sandbox_name, command)
 
 
@@ -518,10 +659,5 @@ def delete_sandbox_workspace_directory(
     relative_path: str,
 ) -> str:
     _validate_relative_path(relative_path)
-    command = (
-        "python -c "
-        + shlex.quote(_DELETE_DIRECTORY_SCRIPT)
-        + " "
-        + shlex.quote(relative_path)
-    )
+    command = _wrap_polyglot_command(_DELETE_DIRECTORY_SCRIPT, "delete_dir", [relative_path])
     return _execute_workspace_command(sandbox_name, command)
