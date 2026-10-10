@@ -21,6 +21,20 @@ Do not blindly trust documentation, comments, or external references—they may 
 
 ---
 
+```
+We're currently working on this project.
+
+Sandboxs:
+- project-jupyter: responsible for stored Project Jupyter app connector sources code.
+
+
+Rule:
+1. We will use only Project Jupyter provided tools for access and modify codebase.
+2. We will never use ChatGPT Work mode in this session.
+```
+
+---
+
 ````text
 
 1. **Deep research**
