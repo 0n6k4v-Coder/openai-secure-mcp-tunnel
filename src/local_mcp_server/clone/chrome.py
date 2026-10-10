@@ -84,6 +84,13 @@ def _parse_cli_output(result: dict[str, object]) -> object:
     try:
         outer = json.loads(raw)
     except json.JSONDecodeError:
+        if "```json" in raw:
+            parts = raw.split("```json", 1)[1].split("```", 1)
+            if parts:
+                try:
+                    return json.loads(parts[0].strip())
+                except json.JSONDecodeError:
+                    pass
         return raw
     if isinstance(outer, list) and outer and isinstance(outer[0], dict) and isinstance(outer[0].get("text"), str):
         text = outer[0]["text"]
@@ -95,6 +102,15 @@ def _parse_cli_output(result: dict[str, object]) -> object:
         msg = outer["message"]
         if "```json" in msg:
             parts = msg.split("```json", 1)[1].split("```", 1)
+            if parts:
+                try:
+                    return json.loads(parts[0].strip())
+                except json.JSONDecodeError:
+                    pass
+    if isinstance(outer, dict) and isinstance(outer.get("stdout"), str):
+        out_str = outer["stdout"]
+        if "```json" in out_str:
+            parts = out_str.split("```json", 1)[1].split("```", 1)
             if parts:
                 try:
                     return json.loads(parts[0].strip())
@@ -126,6 +142,10 @@ def _ensure_browser_endpoint_allowed(sandbox_name: str, url: str) -> None:
     if not 1 <= port <= 65535:
         raise BrowserError("Browser URL contains an invalid port.")
 
+    cache_key = (sandbox_name, host, port)
+    if cache_key in _ALLOWED_ENDPOINTS_CACHE:
+        return
+
     # Reject private and mixed public/private DNS answers before changing policy.
     try:
         answers = socket.getaddrinfo(host, port, type=socket.SOCK_STREAM)
@@ -144,9 +164,6 @@ def _ensure_browser_endpoint_allowed(sandbox_name: str, url: str) -> None:
                 "Browser targets resolving to private, local, reserved, or non-public IP addresses are not allowed."
             )
 
-    cache_key = (sandbox_name, host, port)
-    if cache_key in _ALLOWED_ENDPOINTS_CACHE:
-        return
     cmd = [
         "openshell", "policy", "update", sandbox_name,
         "--add-endpoint", f"{host}:{port}",
@@ -161,6 +178,42 @@ def _ensure_browser_endpoint_allowed(sandbox_name: str, url: str) -> None:
         detail = (result.stderr or result.stdout or "").strip()[:500]
         raise BrowserError(f"Browser network policy update failed: {detail or 'unknown error'}")
     _ALLOWED_ENDPOINTS_CACHE.add(cache_key)
+
+    cli_cache_key = (sandbox_name, "cli", host, port)
+    if cli_cache_key not in _ALLOWED_ENDPOINTS_CACHE:
+        cli_cmd = [
+            "openshell", "policy", "update", sandbox_name,
+            "--add-endpoint", f"{host}:{port}",
+            "--binary", "/usr/bin/curl",
+            "--rule-name", "browser_cli", "--wait",
+        ]
+        try:
+            cli_res = subprocess.run(cli_cmd, capture_output=True, text=True, timeout=15, check=False)
+            if cli_res.returncode == 0:
+                _ALLOWED_ENDPOINTS_CACHE.add(cli_cache_key)
+        except (OSError, subprocess.SubprocessError):
+            pass
+
+
+def ensure_subresource_endpoints_allowed(sandbox_name: str, urls: list[str]) -> list[str]:
+    """Inspect and grant public subresource endpoints discovered on a page."""
+    added: list[str] = []
+    seen: set[str] = set()
+    for raw_url in urls:
+        if not isinstance(raw_url, str):
+            continue
+        cleaned = raw_url.strip()
+        if not cleaned.startswith(("http://", "https://")):
+            continue
+        if cleaned in seen:
+            continue
+        seen.add(cleaned)
+        try:
+            _ensure_browser_endpoint_allowed(sandbox_name, cleaned)
+            added.append(cleaned)
+        except Exception as exc:
+            _log.debug("Skipping subresource endpoint %s: %s", cleaned, exc)
+    return added
 
 
 def open_page(sandbox_name: str, url: str) -> dict[str, object]:

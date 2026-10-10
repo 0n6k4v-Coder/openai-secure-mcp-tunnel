@@ -53,6 +53,7 @@ _NPM_AUDIT_PATHS = (
 )
 
 _BROWSER_BINARY = "/opt/chrome/chrome"
+_CLI_CURL_BINARY = "/usr/bin/curl"
 
 _DEFAULT_BROWSER_ENDPOINTS = (
     "host.openshell.internal:4173",
@@ -182,8 +183,9 @@ def _add_browser_policy(
         endpoint.host = host
         endpoint.port = port
 
-    browser_binary = browser_policy.binaries.add()
-    browser_binary.path = _BROWSER_BINARY
+    for bin_path in (_BROWSER_BINARY, _CLI_CURL_BINARY):
+        browser_binary = browser_policy.binaries.add()
+        browser_binary.path = bin_path
 
 
 def build_sandbox_spec(

@@ -19,8 +19,8 @@ from .pipeline import (
 )
 
 _PNG_SIGNATURE = b"\x89PNG\r\n\x1a\n"
-_MAX_SCREENSHOT_BYTES = 8 * 1024 * 1024
-_MAX_PIXELS = 8_000_000
+_MAX_SCREENSHOT_BYTES = 32 * 1024 * 1024
+_MAX_PIXELS = 32_000_000
 
 
 def _safe_artifact_relative_path(value: str, *, field: str) -> str:
@@ -339,27 +339,75 @@ def compare_png_bytes(
 
     pixels = ref_w * ref_h
     error_sum = changed = 0
+
+    # 3x3 Zonal Grid Tracking (Generic local difference detection)
+    grid_cols = 3
+    grid_rows = 3
+    zone_pixels = [0] * (grid_cols * grid_rows)
+    zone_changed = [0] * (grid_cols * grid_rows)
+    zone_error_sum = [0] * (grid_cols * grid_rows)
+
+    pixel_idx = 0
     for offset in range(0, len(ref_rgb), 3):
+        x = pixel_idx % ref_w
+        y = pixel_idx // ref_w
+        zone_x = min(grid_cols - 1, x * grid_cols // ref_w)
+        zone_y = min(grid_rows - 1, y * grid_rows // ref_h)
+        zone_idx = zone_y * grid_cols + zone_x
+
         errors = (
             abs(ref_rgb[offset] - cand_rgb[offset]),
             abs(ref_rgb[offset + 1] - cand_rgb[offset + 1]),
             abs(ref_rgb[offset + 2] - cand_rgb[offset + 2]),
         )
-        error_sum += sum(errors)
+        pixel_error = sum(errors)
+        error_sum += pixel_error
+        zone_error_sum[zone_idx] += pixel_error
+        zone_pixels[zone_idx] += 1
+
         if max(errors) > pixel_threshold:
             changed += 1
+            zone_changed[zone_idx] += 1
+        pixel_idx += 1
+
     mean_error = error_sum / (pixels * 3)
     changed_ratio = changed / pixels
-    passed = mean_error <= max_mean_absolute_error and changed_ratio <= max_changed_pixel_ratio
+
+    zones = []
+    max_zone_changed_ratio = 0.0
+    for z_idx in range(grid_cols * grid_rows):
+        z_count = zone_pixels[z_idx] or 1
+        z_ratio = zone_changed[z_idx] / z_count
+        z_mae = zone_error_sum[z_idx] / (z_count * 3)
+        if z_ratio > max_zone_changed_ratio:
+            max_zone_changed_ratio = z_ratio
+        zones.append({
+            "zone": z_idx,
+            "row": z_idx // grid_cols,
+            "col": z_idx % grid_cols,
+            "changed_ratio": z_ratio,
+            "mean_error": z_mae,
+        })
+
+    # A comparison passes only if both overall and local zones do not experience excessive localized discrepancy
+    # Local zone ratio allowed is at most max(0.20, max_changed_pixel_ratio * 3)
+    max_allowed_zone_ratio = max(0.20, float(max_changed_pixel_ratio) * 3)
+    passed = (
+        mean_error <= max_mean_absolute_error
+        and changed_ratio <= max_changed_pixel_ratio
+        and max_zone_changed_ratio <= max_allowed_zone_ratio
+    )
     return {
         "status": "pass" if passed else "fail",
-        "reason": "within_thresholds" if passed else "threshold_exceeded",
+        "reason": "within_thresholds" if passed else ("zonal_mismatch" if max_zone_changed_ratio > max_allowed_zone_ratio else "threshold_exceeded"),
         "width": ref_w,
         "height": ref_h,
         "pixels_compared": pixels,
         "mean_absolute_error": mean_error,
         "changed_pixels": changed,
         "changed_pixel_ratio": changed_ratio,
+        "max_zone_changed_ratio": max_zone_changed_ratio,
+        "zones": zones,
         "pixel_threshold": pixel_threshold,
         "max_changed_pixel_ratio": float(max_changed_pixel_ratio),
         "max_mean_absolute_error": float(max_mean_absolute_error),

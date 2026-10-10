@@ -39,9 +39,32 @@ def test_browser_policy_adds_only_exact_endpoint(monkeypatch: pytest.MonkeyPatch
 
     monkeypatch.setattr(chrome.subprocess, "run", fake_run)
     chrome._ensure_browser_endpoint_allowed("clone-test", "https://example.com/path")
-    assert len(calls) == 1
+    assert len(calls) == 2
     assert "example.com:443" in calls[0]
+    assert "browser_web" in calls[0]
+    assert "example.com:443" in calls[1]
+    assert "browser_cli" in calls[1]
     assert not any("*." in arg for arg in calls[0])
+    assert not any("*." in arg for arg in calls[1])
+
+
+def test_ensure_subresource_endpoints_allowed(monkeypatch: pytest.MonkeyPatch) -> None:
+    calls = []
+    monkeypatch.setattr(chrome, "_ALLOWED_ENDPOINTS_CACHE", set())
+    monkeypatch.setattr(chrome.socket, "getaddrinfo", lambda *args, **kwargs: _dns_answer("93.184.216.34"))
+
+    def fake_run(args, **kwargs):
+        calls.append(args)
+        return subprocess.CompletedProcess(args, 0, "ok", "")
+
+    monkeypatch.setattr(chrome.subprocess, "run", fake_run)
+    added = chrome.ensure_subresource_endpoints_allowed(
+        "clone-test",
+        ["https://example.com/a.png", "https://example.com/b.js", "data:image/png", "/relative/path"]
+    )
+    assert len(added) == 2
+    assert added[0] == "https://example.com/a.png"
+    assert len(calls) == 2
 
 
 def test_browser_policy_failure_is_not_cached(monkeypatch: pytest.MonkeyPatch) -> None:

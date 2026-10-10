@@ -162,6 +162,7 @@ def test_browser_sandbox_has_browser_specific_policy(
     }
 
     assert browser_policy.binaries[0].path == "/opt/chrome/chrome"
+    assert browser_policy.binaries[1].path == "/usr/bin/curl"
 
 
 def test_browser_profile_is_validated() -> None:

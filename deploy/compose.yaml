@@ -111,6 +111,7 @@ services:
     networks:
       - mcp-internal
       - openshell-internal
+      - openshell-gateway
 
     depends_on:
       openshell-gateway:

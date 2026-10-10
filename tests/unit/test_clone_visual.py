@@ -103,7 +103,7 @@ def test_png_decoder_rejects_bad_checksum() -> None:
 
 
 def test_png_decoder_rejects_excessive_dimensions() -> None:
-    header = struct.pack(">IIBBBBB", 3000, 3000, 8, 6, 0, 0, 0)
+    header = struct.pack(">IIBBBBB", 6000, 6000, 8, 6, 0, 0, 0)
     image = _PNG_SIGNATURE + _chunk(b"IHDR", header)
     with pytest.raises(ValueError, match="pixel limit"):
         _decode_png(image)
