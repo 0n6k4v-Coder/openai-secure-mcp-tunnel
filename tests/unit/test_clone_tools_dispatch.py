@@ -27,3 +27,6 @@ async def test_clone_tools_do_not_recurse() -> None:
         assert tool is not None, f"Tool {tool_name} not registered"
         result = await tool.run(arguments=args, context=ctx)
         assert result is not None
+
+    assert mcp._tool_manager.get_tool("decompose_live_proxy") is not None
+    assert mcp._tool_manager.get_tool("audit_decomposition_fidelity") is not None

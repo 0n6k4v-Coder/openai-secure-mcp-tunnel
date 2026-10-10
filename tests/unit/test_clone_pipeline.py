@@ -222,3 +222,166 @@ def test_generate_project_formats_each_generated_text_file(monkeypatch):
         path.rsplit("/", 1)[-1]: "formatted with test formatter"
         for path in formatted_paths
     }
+
+
+def test_compare_dom_trees_detects_mismatches(monkeypatch):
+    from local_mcp_server.clone import pipeline
+
+    ref_payload = {
+        "found": True,
+        "selector": "#hero",
+        "tree": {
+            "tag": "section",
+            "rect": {"width": 1200, "height": 500},
+            "fullText": "Hero Headline",
+            "children": [
+                {"tag": "h1", "rect": {"width": 600, "height": 80}, "children": []},
+                {"tag": "p", "rect": {"width": 600, "height": 40}, "children": []},
+                {"tag": "a", "rect": {"width": 120, "height": 40}, "children": []},
+            ],
+        },
+        "images": [{"src": "logo.png"}],
+        "links": [{"text": "CTA", "href": "https://example.com"}],
+        "buttons": [],
+    }
+
+    cand_payload = {
+        "found": True,
+        "selector": "#hero",
+        "tree": {
+            "tag": "section",
+            "rect": {"width": 1200, "height": 500},
+            "fullText": "Hero Headline",
+            "children": [
+                {"tag": "h1", "rect": {"width": 600, "height": 80}, "children": []},
+            ],
+        },
+        "images": [],
+        "links": [],
+        "buttons": [],
+    }
+
+    def fake_evaluate(sandbox_name, page_id, script):
+        if page_id == 2:
+            return {"result": ref_payload}
+        return {"result": cand_payload}
+
+    monkeypatch.setattr(pipeline, "evaluate", fake_evaluate)
+
+    res = pipeline.compare_dom_trees("test-box", 2, 4, selector="#hero")
+    assert res["status"] == "diff_detected"
+    assert res["diff_count"] >= 3
+    categories = [d["category"] for d in res["diffs"]]
+    assert "dom_node_count" in categories
+    assert "links_count" in categories
+    assert "images_missing" in categories
+
+
+def test_audit_resource_hints_detects_preloads(monkeypatch):
+    from local_mcp_server.clone import pipeline
+
+    hints_payload = {
+        "totalLinks": 5,
+        "preloadsCount": 2,
+        "preloads": [{"rel": "preload", "href": "https://example.com/icon.png", "as": "image"}],
+        "preconnectsCount": 1,
+        "preconnects": [{"rel": "preconnect", "href": "https://fonts.googleapis.com"}],
+        "stylesheetsCount": 1,
+        "iconsCount": 1,
+        "structuredDataCount": 2,
+        "structuredDataTypes": ["Organization", "WebPage"],
+    }
+
+    monkeypatch.setattr(pipeline, "evaluate", lambda s, p, sc: {"result": hints_payload})
+
+    res = pipeline.audit_resource_hints("test-box", 2)
+    assert res["preloadsCount"] == 2
+    assert res["preloads"][0]["href"] == "https://example.com/icon.png"
+    assert res["structuredDataTypes"] == ["Organization", "WebPage"]
+
+
+def test_audit_page_spec_unified(monkeypatch):
+    from local_mcp_server.clone import pipeline
+
+    spec_payload = {
+        "totalLinks": 5,
+        "preloadsCount": 2,
+        "preloads": [{"rel": "preload", "href": "https://example.com/icon.png", "as": "image"}],
+        "preconnectsCount": 1,
+        "preconnects": [{"rel": "preconnect", "href": "https://fonts.googleapis.com"}],
+        "stylesheetsCount": 1,
+        "iconsCount": 1,
+        "metaTags": [{"name": "description", "content": "Test description"}],
+        "metaCount": 1,
+        "title": "Test Page",
+        "structuredDataCount": 1,
+        "structuredDataTypes": ["Organization"],
+    }
+
+    monkeypatch.setattr(pipeline, "evaluate", lambda s, p, sc: {"result": spec_payload})
+
+    res = pipeline.audit_page_spec("test-box", 2, include_structured_data=True, include_resource_hints=True)
+    assert res["preloadsCount"] == 2
+    assert res["title"] == "Test Page"
+    assert res["metaCount"] == 1
+    assert "Organization" in res["structuredDataTypes"]
+
+
+def test_audit_element_fidelity_unified(monkeypatch):
+    from local_mcp_server.clone import pipeline
+
+    dom_res = {
+        "status": "pass",
+        "selector": "#hero",
+        "diff_count": 0,
+        "diffs": [],
+        "reference_node_count": 10,
+        "candidate_node_count": 10,
+        "reference_rect": {"width": 1000, "height": 400},
+        "candidate_rect": {"width": 1000, "height": 400},
+    }
+
+    ref_motion_payload = {
+        "webAnimsCount": 1,
+        "webAnims": [],
+        "islandTransitionsCount": 2,
+        "islandTransitions": [{"tag": "astro-island", "component": "FadeUp"}],
+        "motionStyleNodesCount": 2,
+        "motionStyleNodes": [],
+        "movingCount": 4,
+        "movingElements": [],
+        "targetCount": 4,
+        "mutatedCount": 3,
+        "probes": [{"hasMutation": True}],
+    }
+
+    cand_motion_payload = {
+        "webAnimsCount": 0,
+        "webAnims": [],
+        "islandTransitionsCount": 0,
+        "islandTransitions": [],
+        "motionStyleNodesCount": 0,
+        "motionStyleNodes": [],
+        "movingCount": 0,
+        "movingElements": [],
+        "targetCount": 4,
+        "mutatedCount": 0,
+        "probes": [],
+    }
+
+    monkeypatch.setattr(pipeline, "compare_dom_trees", lambda *a, **k: dom_res)
+
+    def fake_evaluate(sandbox_name, page_id, script):
+        if page_id == 2:
+            return {"result": ref_motion_payload}
+        return {"result": cand_motion_payload}
+
+    monkeypatch.setattr(pipeline, "evaluate", fake_evaluate)
+
+    res = pipeline.audit_element_fidelity("test-box", 2, 4, selector="#hero", check_motion=True, check_interactions=True)
+    assert res["status"] == "diff_detected"
+    categories = [d["category"] for d in res["diffs"]]
+    assert "continuous_motion_missing" in categories
+    assert "entrance_transitions_missing" in categories
+    assert "interaction_unresponsive" in categories
+

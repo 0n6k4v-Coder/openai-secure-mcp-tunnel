@@ -10,6 +10,7 @@ import urllib.parse
 from typing import Any
 
 from .chrome import (
+    ensure_subresource_endpoints_allowed,
     evaluate,
     extract_clone_payload,
     inspect_selector,
@@ -89,10 +90,25 @@ def inspect_styles(
       const el = document.querySelector({json.dumps(selector)});
       if (!el) return {{found:false, selector:{json.dumps(selector)}}};
       const s = getComputedStyle(el);
-      return {{found:true, selector:{json.dumps(selector)}, computed:Object.fromEntries([
-        'display','position','width','height','margin','padding','fontFamily','fontSize','fontWeight',
-        'lineHeight','letterSpacing','color','backgroundColor','border','borderRadius','boxShadow','transform'
-      ].map(k => [k, s[k]]))}};
+      const rect = el.getBoundingClientRect();
+      const children = Array.from(el.children).slice(0, 10).map(c => ({{
+        tag: c.tagName.toLowerCase(),
+        id: c.id || null,
+        className: (typeof c.className === 'string' ? c.className : '').slice(0, 100),
+        rect: {{ width: Math.round(c.getBoundingClientRect().width), height: Math.round(c.getBoundingClientRect().height) }}
+      }}));
+      return {{
+        found: true,
+        selector: {json.dumps(selector)},
+        rect: {{ x: Math.round(rect.x), y: Math.round(rect.y), width: Math.round(rect.width), height: Math.round(rect.height) }},
+        childrenCount: el.children.length,
+        textPreview: (el.innerText || '').trim().slice(0, 200),
+        children: children,
+        computed: Object.fromEntries([
+          'display','position','width','height','margin','padding','fontFamily','fontSize','fontWeight',
+          'lineHeight','letterSpacing','color','backgroundColor','border','borderRadius','boxShadow','transform'
+        ].map(k => [k, s[k]]))
+      }};
     }}"""
     return evaluate(sandbox_name, page_id, script)["result"]
 
@@ -105,7 +121,634 @@ def trace_assets(sandbox_name: str, page_id: int) -> dict[str, Any]:
       stylesheets: [...document.querySelectorAll('link[rel~="stylesheet"]')].map(x => x.href).filter(Boolean),
       scripts: [...document.scripts].map(x => x.src).filter(Boolean),
     })"""
+    res = evaluate(sandbox_name, page_id, script)["result"]
+    if isinstance(res, dict):
+        urls_to_allow: list[str] = []
+        for img in res.get("images", []):
+            if isinstance(img, dict) and img.get("src"):
+                urls_to_allow.append(img["src"])
+        for vid in res.get("videos", []):
+            if isinstance(vid, str):
+                urls_to_allow.append(vid)
+        for sheet in res.get("stylesheets", []):
+            if isinstance(sheet, str):
+                urls_to_allow.append(sheet)
+        for s in res.get("scripts", []):
+            if isinstance(s, str):
+                urls_to_allow.append(s)
+        if urls_to_allow:
+            try:
+                ensure_subresource_endpoints_allowed(sandbox_name, urls_to_allow)
+            except Exception:
+                pass
+    return res
+
+
+def audit_rendered_assets(sandbox_name: str, page_id: int) -> dict[str, Any]:
+    """Audit all rendered media, SVGs, background images, and out-of-flow absolute/fixed elements."""
+    script = """() => {
+      const images = [...document.querySelectorAll('img')].map(img => ({
+        src: img.currentSrc || img.src,
+        naturalWidth: img.naturalWidth,
+        naturalHeight: img.naturalHeight,
+        renderedWidth: Math.round(img.getBoundingClientRect().width),
+        renderedHeight: Math.round(img.getBoundingClientRect().height),
+        visible: img.getBoundingClientRect().width > 0 && img.getBoundingClientRect().height > 0
+      }));
+
+      const svgs = [...document.querySelectorAll('svg')].map(svg => ({
+        width: Math.round(svg.getBoundingClientRect().width),
+        height: Math.round(svg.getBoundingClientRect().height),
+        visible: svg.getBoundingClientRect().width > 0 && svg.getBoundingClientRect().height > 0
+      }));
+
+      // Detect all out-of-flow decorative and floating elements (position: absolute / fixed)
+      const outOfFlow = [...document.querySelectorAll('*')].filter(el => {
+        const pos = window.getComputedStyle(el).position;
+        return pos === 'absolute' || pos === 'fixed';
+      }).map(el => {
+        const rect = el.getBoundingClientRect();
+        return {
+          tag: el.tagName.toLowerCase(),
+          id: el.id || null,
+          className: (typeof el.className === 'string' ? el.className : '').slice(0, 100),
+          rect: { x: Math.round(rect.x), y: Math.round(rect.y), width: Math.round(rect.width), height: Math.round(rect.height) },
+          visible: rect.width > 0 && rect.height > 0
+        };
+      }).slice(0, 100);
+
+      return {
+        imageCount: images.length,
+        visibleImageCount: images.filter(i => i.visible).length,
+        svgCount: svgs.length,
+        visibleSvgCount: svgs.filter(s => s.visible).length,
+        outOfFlowCount: outOfFlow.length,
+        images: images,
+        outOfFlowElements: outOfFlow
+      };
+    }"""
     return evaluate(sandbox_name, page_id, script)["result"]
+
+
+def audit_element_fidelity(
+    sandbox_name: str,
+    reference_page_id: int,
+    candidate_page_id: int,
+    selector: str = "body",
+    *,
+    check_motion: bool = True,
+    check_interactions: bool = True,
+    sample_interval_ms: int = 500,
+    max_depth: int = 15,
+) -> dict[str, Any]:
+    """Unified element audit and comparison: verifies DOM hierarchy, layout, text, interactive elements, continuous motion, and entrance transition specs."""
+    # 1. Structural, text, and interactive comparison
+    dom_result = compare_dom_trees(
+        sandbox_name,
+        reference_page_id,
+        candidate_page_id,
+        selector=selector,
+        max_depth=max_depth,
+    )
+
+    diffs = list(dom_result.get("diffs", []))
+
+    # 2. Motion and animation audit
+    motion_audit: dict[str, Any] = {}
+    if check_motion:
+        motion_script = f"""async () => {{
+          const root = document.querySelector({json.dumps(selector)}) || document.body;
+          const elements = [root, ...root.querySelectorAll('*')].slice(0, 200);
+
+          // Web animations API
+          const webAnims = (document.getAnimations ? document.getAnimations() : []).filter(a => {{
+            try {{ return a.effect && a.effect.target && elements.includes(a.effect.target); }} catch(e) {{ return false; }}
+          }}).map(a => {{
+            const el = a.effect.target;
+            const timing = a.effect.getTiming ? a.effect.getTiming() : {{}};
+            return {{
+              tag: el.tagName.toLowerCase(),
+              id: el.id || null,
+              className: (typeof el.className === 'string' ? el.className : '').slice(0, 60),
+              playState: a.playState,
+              duration: timing.duration,
+              delay: timing.delay,
+              isEntrance: (timing.iterations === 1 || timing.iterations === undefined) && (timing.duration > 0)
+            }};
+          }});
+
+          // Framework / Transition metadata (Astro islands, Framer Motion, etc.)
+          const islandTransitions = Array.from(root.querySelectorAll('astro-island, [data-framer-name], [data-transition]')).map(isl => ({{
+            tag: isl.tagName.toLowerCase(),
+            component: isl.getAttribute('component-export') || isl.getAttribute('data-framer-name') || null,
+            props: isl.getAttribute('props') || isl.getAttribute('data-props') || null
+          }}));
+
+          // Inline dynamic styles indicating entrance state (e.g. opacity: 1; transform: none)
+          const motionStyleNodes = elements.filter(el => {{
+            const s = el.getAttribute('style') || '';
+            return s.includes('opacity') && (s.includes('transform') || s.includes('translate'));
+          }}).map(el => ({{
+            tag: el.tagName.toLowerCase(),
+            className: (typeof el.className === 'string' ? el.className : '').slice(0, 60),
+            style: el.getAttribute('style')
+          }}));
+
+          // Time sampling for continuous dynamic motion
+          const getSnapshot = () => elements.map(el => {{
+            const rect = el.getBoundingClientRect();
+            const cs = window.getComputedStyle(el);
+            return {{
+              tag: el.tagName.toLowerCase(),
+              id: el.id || null,
+              className: (typeof el.className === 'string' ? el.className : '').slice(0, 60),
+              rect: {{ x: Math.round(rect.x), y: Math.round(rect.y), width: Math.round(rect.width), height: Math.round(rect.height) }},
+              transform: cs.transform,
+              opacity: cs.opacity,
+              animationName: cs.animationName
+            }};
+          }});
+
+          const t0 = getSnapshot();
+          await new Promise(r => setTimeout(r, {max(100, min(3000, sample_interval_ms))}));
+          const t1 = getSnapshot();
+
+          const movingElements = [];
+          for (let i = 0; i < t0.length; i++) {{
+            const a = t0[i];
+            const b = t1[i];
+            if (!a || !b) continue;
+
+            const dx = b.rect.x - a.rect.x;
+            const dy = b.rect.y - a.rect.y;
+            const dw = b.rect.width - a.rect.width;
+            const dh = b.rect.height - a.rect.height;
+            const transformChanged = a.transform !== b.transform;
+            const opacityChanged = a.opacity !== b.opacity;
+
+            const isMoving = Math.abs(dx) > 1 || Math.abs(dy) > 1 || Math.abs(dw) > 1 || Math.abs(dh) > 1 || transformChanged || opacityChanged;
+            const hasCssAnimation = a.animationName && a.animationName !== 'none';
+
+            if (isMoving || hasCssAnimation) {{
+              movingElements.push({{
+                tag: a.tag,
+                id: a.id,
+                className: a.className,
+                delta: {{ x: dx, y: dy, width: dw, height: dh }},
+                transformBefore: a.transform,
+                transformAfter: b.transform,
+                hasCssAnimation: hasCssAnimation,
+                animationName: a.animationName
+              }});
+            }}
+          }}
+
+          return {{
+            webAnimsCount: webAnims.length,
+            webAnims: webAnims,
+            islandTransitionsCount: islandTransitions.length,
+            islandTransitions: islandTransitions,
+            motionStyleNodesCount: motionStyleNodes.length,
+            motionStyleNodes: motionStyleNodes,
+            movingCount: movingElements.length,
+            movingElements: movingElements.slice(0, 30)
+          }};
+        }}"""
+
+        ref_motion = evaluate(sandbox_name, reference_page_id, motion_script)["result"]
+        cand_motion = evaluate(sandbox_name, candidate_page_id, motion_script)["result"]
+
+        motion_audit = {
+            "reference": ref_motion,
+            "candidate": cand_motion,
+        }
+
+        # Check motion mismatch
+        if ref_motion.get("movingCount", 0) > 0 and cand_motion.get("movingCount", 0) == 0:
+            diffs.append({
+                "category": "continuous_motion_missing",
+                "message": f"Continuous motion detected on reference ({ref_motion['movingCount']} elements moving) but none on candidate",
+                "reference_moving": ref_motion["movingCount"],
+                "candidate_moving": 0,
+            })
+
+        # Check entrance / island transition hints
+        ref_transitions = ref_motion.get("islandTransitionsCount", 0)
+        cand_transitions = cand_motion.get("islandTransitionsCount", 0)
+        if ref_transitions > 0 and cand_transitions == 0 and cand_motion.get("motionStyleNodesCount", 0) == 0:
+            diffs.append({
+                "category": "entrance_transitions_missing",
+                "message": f"Entrance/interactive transitions detected on reference ({ref_transitions} components) but missing on candidate",
+                "reference_transitions": ref_motion.get("islandTransitions"),
+            })
+
+    # 3. Interactive state mutation probing (Generic click & state delta comparison)
+    interaction_audit: dict[str, Any] = {}
+    if check_interactions:
+        probe_script = f"""async () => {{
+          const root = document.querySelector({json.dumps(selector)}) || document.body;
+          const interactiveTargets = Array.from(root.querySelectorAll('button, [role="tab"], [role="button"], input[type="radio"], [data-state], [aria-expanded]')).slice(0, 15);
+
+          const getElementSnapshot = (el) => {{
+            const cs = window.getComputedStyle(el);
+            return {{
+              className: (typeof el.className === 'string' ? el.className : ''),
+              ariaExpanded: el.getAttribute('aria-expanded'),
+              dataState: el.getAttribute('data-state'),
+              active: el.getAttribute('data-active') || el.classList.contains('active'),
+              style: el.getAttribute('style') || ''
+            }};
+          }};
+
+          const getSubtreeMediaSnapshot = () => {{
+            const videos = Array.from(root.querySelectorAll('video')).map(v => ({{ src: v.currentSrc || v.src || '', paused: v.paused }}));
+            const imgs = Array.from(root.querySelectorAll('img')).map(i => ({{ src: i.currentSrc || i.src || '' }}));
+            return {{ videos, imgs }};
+          }};
+
+          const probeResults = [];
+          for (let i = 0; i < interactiveTargets.length; i++) {{
+            const btn = interactiveTargets[i];
+            const beforeBtn = getElementSnapshot(btn);
+            const beforeMedia = getSubtreeMediaSnapshot();
+
+            // Simulate full click lifecycle
+            btn.dispatchEvent(new MouseEvent('mousedown', {{ bubbles: true, cancelable: true }}));
+            btn.dispatchEvent(new MouseEvent('mouseup', {{ bubbles: true, cancelable: true }}));
+            btn.dispatchEvent(new MouseEvent('click', {{ bubbles: true, cancelable: true }}));
+
+            await new Promise(r => setTimeout(r, 150));
+
+            const afterBtn = getElementSnapshot(btn);
+            const afterMedia = getSubtreeMediaSnapshot();
+
+            const btnChanged = beforeBtn.className !== afterBtn.className ||
+                               beforeBtn.ariaExpanded !== afterBtn.ariaExpanded ||
+                               beforeBtn.dataState !== afterBtn.dataState ||
+                               beforeBtn.active !== afterBtn.active;
+
+            const mediaChanged = JSON.stringify(beforeMedia) !== JSON.stringify(afterMedia);
+
+            probeResults.push({{
+              index: i,
+              tag: btn.tagName.toLowerCase(),
+              text: (btn.innerText || '').trim().slice(0, 40),
+              hasMutation: btnChanged || mediaChanged,
+              btnChanged,
+              mediaChanged,
+              beforeMedia,
+              afterMedia
+            }});
+          }}
+
+          return {{
+            targetCount: interactiveTargets.length,
+            mutatedCount: probeResults.filter(p => p.hasMutation).length,
+            probes: probeResults
+          }};
+        }}"""
+
+        ref_probe = evaluate(sandbox_name, reference_page_id, probe_script)["result"]
+        cand_probe = evaluate(sandbox_name, candidate_page_id, probe_script)["result"]
+
+        interaction_audit = {
+            "reference": ref_probe,
+            "candidate": cand_probe,
+        }
+
+        # Compare mutation responsiveness
+        ref_mutations = ref_probe.get("mutatedCount", 0)
+        cand_mutations = cand_probe.get("mutatedCount", 0)
+
+        if ref_mutations > 0 and cand_mutations == 0:
+            diffs.append({
+                "category": "interaction_unresponsive",
+                "message": f"Interactive elements responded to clicks on reference ({ref_mutations} buttons mutated DOM/state) but candidate had 0 mutations (completely static)",
+                "reference_mutated_count": ref_mutations,
+                "candidate_mutated_count": 0,
+                "mutated_elements_sample": [p for p in ref_probe.get("probes", []) if p.get("hasMutation")][:5]
+            })
+
+    return {
+        "status": "pass" if not diffs else "diff_detected",
+        "selector": selector,
+        "diff_count": len(diffs),
+        "diffs": diffs,
+        "dom_analysis": {
+            "reference_node_count": dom_result.get("reference_node_count"),
+            "candidate_node_count": dom_result.get("candidate_node_count"),
+            "reference_rect": dom_result.get("reference_rect"),
+            "candidate_rect": dom_result.get("candidate_rect"),
+        },
+        "motion_audit": motion_audit,
+        "interaction_audit": interaction_audit,
+    }
+
+
+def audit_motion(
+    sandbox_name: str,
+    page_id: int,
+    sample_interval_ms: int = 500,
+    selector: str = "body",
+) -> dict[str, Any]:
+    """Sample elements over time to detect animations, transitions, and dynamic motion (e.g. floating, sliding, pulsing)."""
+    script = f"""async () => {{
+      const root = document.querySelector({json.dumps(selector)}) || document.body;
+      const getSnapshot = () => {{
+        const elements = [root, ...root.querySelectorAll('*')].slice(0, 200);
+        return elements.map(el => {{
+          const rect = el.getBoundingClientRect();
+          const style = window.getComputedStyle(el);
+          return {{
+            tag: el.tagName.toLowerCase(),
+            id: el.id || null,
+            className: (typeof el.className === 'string' ? el.className : '').slice(0, 60),
+            rect: {{ x: Math.round(rect.x), y: Math.round(rect.y), width: Math.round(rect.width), height: Math.round(rect.height) }},
+            transform: style.transform,
+            opacity: style.opacity,
+            animationName: style.animationName,
+            transition: style.transition
+          }};
+        }});
+      }};
+
+      const t0 = getSnapshot();
+      await new Promise(r => setTimeout(r, {max(100, min(3000, sample_interval_ms))}));
+      const t1 = getSnapshot();
+
+      const movingElements = [];
+      for (let i = 0; i < t0.length; i++) {{
+        const a = t0[i];
+        const b = t1[i];
+        if (!a || !b) continue;
+
+        const dx = b.rect.x - a.rect.x;
+        const dy = b.rect.y - a.rect.y;
+        const dw = b.rect.width - a.rect.width;
+        const dh = b.rect.height - a.rect.height;
+        const transformChanged = a.transform !== b.transform;
+        const opacityChanged = a.opacity !== b.opacity;
+
+        const isMoving = Math.abs(dx) > 1 || Math.abs(dy) > 1 || Math.abs(dw) > 1 || Math.abs(dh) > 1 || transformChanged || opacityChanged;
+        const hasCssAnimation = a.animationName && a.animationName !== 'none';
+
+        if (isMoving || hasCssAnimation) {{
+          movingElements.push({{
+            tag: a.tag,
+            id: a.id,
+            className: a.className,
+            delta: {{ x: dx, y: dy, width: dw, height: dh }},
+            transformBefore: a.transform,
+            transformAfter: b.transform,
+            hasCssAnimation: hasCssAnimation,
+            animationName: a.animationName
+          }});
+        }}
+      }}
+
+      return {{
+        totalSampled: t0.length,
+        movingCount: movingElements.length,
+        hasMotion: movingElements.length > 0,
+        movingElements: movingElements.slice(0, 30)
+      }};
+    }}"""
+    return evaluate(sandbox_name, page_id, script)["result"]
+
+
+def compare_dom_trees(
+    sandbox_name: str,
+    reference_page_id: int,
+    candidate_page_id: int,
+    selector: str = "body",
+    max_depth: int = 15,
+) -> dict[str, Any]:
+    """Compare DOM tree structures, node counts, interactive elements, text content, and computed layout between two pages."""
+    extract_script = f"""() => {{
+      const root = document.querySelector({json.dumps(selector)});
+      if (!root) return {{ found: false, selector: {json.dumps(selector)} }};
+
+      function extractNode(el, depth) {{
+        if (!el || depth > {max(1, min(30, max_depth))}) return null;
+        const rect = el.getBoundingClientRect();
+        const cs = window.getComputedStyle(el);
+        const children = [];
+        for (let c of el.children) {{
+          const childNode = extractNode(c, depth + 1);
+          if (childNode) children.push(childNode);
+        }}
+
+        // Direct text
+        let directText = '';
+        for (let n of el.childNodes) {{
+          if (n.nodeType === 3) directText += n.textContent;
+        }}
+        directText = directText.trim().replace(/\\s+/g, ' ');
+
+        return {{
+          tag: el.tagName.toLowerCase(),
+          id: el.id || null,
+          className: (typeof el.className === 'string' ? el.className : '').trim().slice(0, 100),
+          directText: directText.slice(0, 150),
+          fullText: (el.innerText || '').trim().replace(/\\s+/g, ' ').slice(0, 200),
+          rect: {{ x: Math.round(rect.x), y: Math.round(rect.y), width: Math.round(rect.width), height: Math.round(rect.height) }},
+          style: {{
+            display: cs.display,
+            position: cs.position,
+            opacity: cs.opacity,
+            transform: cs.transform,
+            animationName: cs.animationName,
+            transition: cs.transition
+          }},
+          childCount: children.length,
+          children: children
+        }};
+      }}
+
+      // Count interactive and media elements in subtree
+      const images = Array.from(root.querySelectorAll('img')).map(i => ({{
+        src: (i.currentSrc || i.src || '').split('/').pop(),
+        alt: i.alt || '',
+        renderedWidth: Math.round(i.getBoundingClientRect().width),
+        renderedHeight: Math.round(i.getBoundingClientRect().height)
+      }}));
+
+      const links = Array.from(root.querySelectorAll('a')).map(a => ({{
+        text: (a.innerText || '').trim(),
+        href: a.href || ''
+      }}));
+
+      const buttons = Array.from(root.querySelectorAll('button')).map(b => ({{
+        text: (b.innerText || b.getAttribute('aria-label') || '').trim()
+      }}));
+
+      return {{
+        found: true,
+        selector: {json.dumps(selector)},
+        tree: extractNode(root, 0),
+        images: images,
+        links: links,
+        buttons: buttons
+      }};
+    }}"""
+
+    ref_data = evaluate(sandbox_name, reference_page_id, extract_script)["result"]
+    cand_data = evaluate(sandbox_name, candidate_page_id, extract_script)["result"]
+
+    if not ref_data.get("found"):
+        return {"status": "error", "message": f"Selector not found on reference page: {selector}"}
+    if not cand_data.get("found"):
+        return {"status": "error", "message": f"Selector not found on candidate page: {selector}"}
+
+    diffs: list[dict[str, Any]] = []
+
+    # 1. Compare node counts
+    def count_nodes(node: dict[str, Any] | None) -> int:
+        if not node:
+            return 0
+        return 1 + sum(count_nodes(c) for c in node.get("children", []))
+
+    ref_node_count = count_nodes(ref_data.get("tree"))
+    cand_node_count = count_nodes(cand_data.get("tree"))
+    if ref_node_count != cand_node_count:
+        diffs.append({
+            "category": "dom_node_count",
+            "message": f"DOM node count mismatch: reference has {ref_node_count} nodes, candidate has {cand_node_count} nodes",
+            "reference": ref_node_count,
+            "candidate": cand_node_count
+        })
+
+    # 2. Compare interactive elements
+    ref_links = ref_data.get("links", [])
+    cand_links = cand_data.get("links", [])
+    if len(ref_links) != len(cand_links):
+        diffs.append({
+            "category": "links_count",
+            "message": f"Link count mismatch: reference has {len(ref_links)}, candidate has {len(cand_links)}",
+            "reference": ref_links,
+            "candidate": cand_links
+        })
+
+    ref_buttons = ref_data.get("buttons", [])
+    cand_buttons = cand_data.get("buttons", [])
+    if len(ref_buttons) != len(cand_buttons):
+        diffs.append({
+            "category": "buttons_count",
+            "message": f"Button count mismatch: reference has {len(ref_buttons)}, candidate has {len(cand_buttons)}",
+            "reference": ref_buttons,
+            "candidate": cand_buttons
+        })
+
+    # 3. Compare images in selector
+    ref_imgs = [i.get("src") for i in ref_data.get("images", []) if i.get("src")]
+    cand_imgs = [i.get("src") for i in cand_data.get("images", []) if i.get("src")]
+    missing_imgs = set(ref_imgs) - set(cand_imgs)
+    if missing_imgs:
+        diffs.append({
+            "category": "images_missing",
+            "message": f"Images missing in candidate: {sorted(missing_imgs)}",
+            "missing": sorted(missing_imgs)
+        })
+
+    # 4. Compare root dimensions
+    ref_rect = ref_data.get("tree", {}).get("rect", {})
+    cand_rect = cand_data.get("tree", {}).get("rect", {})
+    if (
+        abs(ref_rect.get("width", 0) - cand_rect.get("width", 0)) > 2
+        or abs(ref_rect.get("height", 0) - cand_rect.get("height", 0)) > 2
+    ):
+        diffs.append({
+            "category": "bounding_box",
+            "message": f"Root dimensions mismatch: reference is {ref_rect.get('width')}x{ref_rect.get('height')}, candidate is {cand_rect.get('width')}x{cand_rect.get('height')}",
+            "reference": ref_rect,
+            "candidate": cand_rect
+        })
+
+    # 5. Compare text content
+    ref_text = ref_data.get("tree", {}).get("fullText", "")
+    cand_text = cand_data.get("tree", {}).get("fullText", "")
+    if ref_text != cand_text:
+        diffs.append({
+            "category": "text_mismatch",
+            "message": "Subtree text content differs between reference and candidate",
+            "reference_text": ref_text[:200],
+            "candidate_text": cand_text[:200]
+        })
+
+    return {
+        "status": "pass" if not diffs else "diff_detected",
+        "selector": selector,
+        "diff_count": len(diffs),
+        "diffs": diffs,
+        "reference_node_count": ref_node_count,
+        "candidate_node_count": cand_node_count,
+        "reference_rect": ref_rect,
+        "candidate_rect": cand_rect
+    }
+
+
+def audit_page_spec(
+    sandbox_name: str,
+    page_id: int,
+    *,
+    include_structured_data: bool = True,
+    include_resource_hints: bool = True,
+    include_meta: bool = True,
+) -> dict[str, Any]:
+    """Audit complete page-level shell specification: preloads, preconnects, stylesheets, icons, meta tags, and JSON-LD structured data."""
+    script = f"""() => {{
+      const result = {{}};
+
+      if ({str(include_resource_hints).lower()}) {{
+        const links = Array.from(document.querySelectorAll('link')).map(l => ({{
+          rel: l.rel,
+          href: l.href,
+          as: l.as || null,
+          type: l.type || null,
+          crossorigin: l.crossOrigin || null
+        }}));
+
+        result.totalLinks = links.length;
+        result.preloads = links.filter(h => h.rel === 'preload');
+        result.preloadsCount = result.preloads.length;
+        result.preconnects = links.filter(h => h.rel === 'preconnect');
+        result.preconnectsCount = result.preconnects.length;
+        result.stylesheets = links.filter(h => h.rel === 'stylesheet');
+        result.stylesheetsCount = result.stylesheets.length;
+        result.icons = links.filter(h => h.rel && h.rel.includes('icon'));
+        result.iconsCount = result.icons.length;
+      }}
+
+      if ({str(include_meta).lower()}) {{
+        const metas = Array.from(document.querySelectorAll('meta')).map(m => ({{
+          name: m.getAttribute('name') || m.getAttribute('property') || null,
+          content: m.getAttribute('content') || null
+        }})).filter(m => m.name && m.content);
+        result.metaTags = metas;
+        result.metaCount = metas.length;
+        result.title = document.title;
+      }}
+
+      if ({str(include_structured_data).lower()}) {{
+        const structuredData = Array.from(document.querySelectorAll('script[type="application/ld+json"]')).map(s => {{
+          try {{ return JSON.parse(s.textContent); }} catch (_) {{ return {{ raw: s.textContent.slice(0, 100) }}; }}
+        }});
+        result.structuredData = structuredData;
+        result.structuredDataCount = structuredData.length;
+        result.structuredDataTypes = structuredData.map(d => d['@type'] || 'unknown');
+      }}
+
+      return result;
+    }}"""
+    return evaluate(sandbox_name, page_id, script)["result"]
+
+
+def audit_resource_hints(
+    sandbox_name: str,
+    page_id: int,
+) -> dict[str, Any]:
+    """Backward compatibility wrapper for audit_page_spec."""
+    return audit_page_spec(sandbox_name, page_id)
 
 
 def trace_interactions(sandbox_name: str, page_id: int) -> dict[str, Any]:
@@ -1114,7 +1757,12 @@ const root = fs.realpathSync({root_literal});
 const rootRel = path.relative(allowedRoot, root);
 if (rootRel === '..' || rootRel.startsWith('..' + path.sep) || path.isAbsolute(rootRel) || root === allowedRoot) process.exit(2);
 const port = {port};
-const mime = {{'.html':'text/html; charset=utf-8','.css':'text/css; charset=utf-8','.js':'application/javascript; charset=utf-8','.json':'application/json; charset=utf-8','.png':'image/png','.jpg':'image/jpeg','.jpeg':'image/jpeg','.webp':'image/webp','.gif':'image/gif','.svg':'image/svg+xml','.ico':'image/x-icon','.woff2':'font/woff2'}};
+let originUrl = '';
+try {{
+  const originFile = path.join(root, '.origin');
+  if (fs.existsSync(originFile)) originUrl = fs.readFileSync(originFile, 'utf8').trim().replace(/\\/+$/, '');
+}} catch (_) {{}}
+const mime = {{'.html':'text/html; charset=utf-8','.css':'text/css; charset=utf-8','.js':'application/javascript; charset=utf-8','.json':'application/json; charset=utf-8','.png':'image/png','.jpg':'image/jpeg','.jpeg':'image/jpeg','.webp':'image/webp','.gif':'image/gif','.svg':'image/svg+xml','.ico':'image/x-icon','.woff2':'font/woff2','.mp4':'video/mp4'}};
 const server = http.createServer((req, res) => {{
   let decoded;
   try {{ decoded = decodeURIComponent((req.url || '/').split('?')[0]); }} catch (_) {{ res.writeHead(400); return res.end('Bad Request'); }}
@@ -1129,9 +1777,16 @@ const server = http.createServer((req, res) => {{
     const actualRel = path.relative(root, actual);
     if (actualRel === '..' || actualRel.startsWith('..' + path.sep) || path.isAbsolute(actualRel) || !fs.statSync(actual).isFile()) {{ res.writeHead(403); return res.end('Forbidden'); }}
     const ext = path.extname(actual).toLowerCase();
-    res.writeHead(200, {{'Content-Type': mime[ext] || 'application/octet-stream', 'X-Content-Type-Options':'nosniff', 'Content-Security-Policy': "default-src 'self'; script-src 'none'; object-src 'none'; base-uri 'none'; frame-ancestors 'none'; img-src 'self' https: data:; style-src 'self' https:; font-src 'self' https: data:; connect-src 'self' https:;"}});
+    const contentType = mime[ext] || (actual.includes(path.sep + 'api' + path.sep) ? 'application/json; charset=utf-8' : 'application/octet-stream');
+    res.writeHead(200, {{'Content-Type': contentType, 'X-Content-Type-Options':'nosniff', 'Content-Security-Policy': "default-src 'self'; script-src 'self' 'unsafe-inline'; object-src 'none'; base-uri 'none'; frame-ancestors 'none'; img-src 'self' https: data:; media-src 'self' https: blob: data:; style-src 'self' https: 'unsafe-inline'; font-src 'self' https: data:; connect-src 'self' https:;"}});
     fs.createReadStream(actual).pipe(res);
-  }} catch (_) {{ res.writeHead(404, {{'Content-Type':'text/plain; charset=utf-8','X-Content-Type-Options':'nosniff'}}); res.end('Not Found'); }}
+  }} catch (_) {{
+    if (originUrl && (decoded.startsWith('/images/') || decoded.startsWith('/videos/') || decoded.startsWith('/fonts/') || /\\.(svg|png|jpe?g|webp|gif|mp4|woff2?)$/i.test(decoded))) {{
+      res.writeHead(302, {{'Location': originUrl + (decoded.startsWith('/') ? decoded : '/' + decoded)}});
+      return res.end();
+    }}
+    res.writeHead(404, {{'Content-Type':'text/plain; charset=utf-8','X-Content-Type-Options':'nosniff'}}); res.end('Not Found');
+  }}
 }});
 server.on('error', err => {{ console.error('Server error:', err.message); process.exit(1); }});
 server.listen(port, '0.0.0.0', () => {{ fs.writeFileSync({pid_literal}, String(process.pid), {{mode: 0o600}}); }});

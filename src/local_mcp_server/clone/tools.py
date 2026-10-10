@@ -20,12 +20,23 @@ from .pipeline import (
     run_clone_workflow as run_clone_workflow_impl,
     serve_project as serve_project_impl,
     trace_assets as trace_assets_impl,
+    audit_rendered_assets as audit_rendered_assets_impl,
+    audit_motion as audit_motion_impl,
+    compare_dom_trees as compare_dom_trees_impl,
+    audit_resource_hints as audit_resource_hints_impl,
+    audit_page_spec as audit_page_spec_impl,
+    audit_element_fidelity as audit_element_fidelity_impl,
     trace_interactions as trace_interactions_impl,
     verify_clone as verify_clone_impl,
 )
 from .preserve import (
     capture_raw_snapshot as capture_raw_snapshot_impl,
     convert_raw_snapshot as convert_raw_snapshot_impl,
+)
+from .live_proxy import create_live_proxy_snapshot as create_live_proxy_snapshot_impl
+from .decomposition import (
+    decompose_live_proxy as decompose_live_proxy_impl,
+    audit_decomposition_fidelity as audit_decomposition_fidelity_impl,
 )
 from .visual import (
     capture_screenshot_artifact as capture_screenshot_artifact_impl,
@@ -61,6 +72,81 @@ def register_tools(mcp: MCPServer) -> None:
     def trace_assets(sandbox_name: str, page_id: int) -> dict[str, Any]:
         """Trace images, fonts, stylesheets, scripts, and media used by a page."""
         return trace_assets_impl(sandbox_name, page_id)
+
+    @mcp.tool(annotations=ToolAnnotations(readOnlyHint=True, destructiveHint=False, idempotentHint=True, openWorldHint=True))
+    def audit_rendered_assets(sandbox_name: str, page_id: int) -> dict[str, Any]:
+        """Audit rendered media, SVGs, background images, and out-of-flow absolute/fixed elements on the live DOM."""
+        return audit_rendered_assets_impl(sandbox_name, page_id)
+
+    @mcp.tool(annotations=ToolAnnotations(readOnlyHint=True, destructiveHint=False, idempotentHint=True, openWorldHint=True))
+    def audit_element_fidelity(
+        sandbox_name: str,
+        reference_page_id: int,
+        candidate_page_id: int,
+        selector: str = "body",
+        check_motion: bool = True,
+        check_interactions: bool = True,
+        sample_interval_ms: int = 500,
+        max_depth: int = 15,
+    ) -> dict[str, Any]:
+        """Unified element audit and comparison: verifies DOM hierarchy, layout, text, interactive elements, continuous motion, and entrance transition specs."""
+        return audit_element_fidelity_impl(
+            sandbox_name,
+            reference_page_id,
+            candidate_page_id,
+            selector=selector,
+            check_motion=check_motion,
+            check_interactions=check_interactions,
+            sample_interval_ms=sample_interval_ms,
+            max_depth=max_depth,
+        )
+
+    @mcp.tool(annotations=ToolAnnotations(readOnlyHint=True, destructiveHint=False, idempotentHint=True, openWorldHint=True))
+    def audit_page_spec(
+        sandbox_name: str,
+        page_id: int,
+        include_structured_data: bool = True,
+        include_resource_hints: bool = True,
+        include_meta: bool = True,
+    ) -> dict[str, Any]:
+        """Audit complete page-level shell specification: preloads, preconnects, stylesheets, icons, meta tags, and JSON-LD structured data."""
+        return audit_page_spec_impl(
+            sandbox_name,
+            page_id,
+            include_structured_data=include_structured_data,
+            include_resource_hints=include_resource_hints,
+            include_meta=include_meta,
+        )
+
+    @mcp.tool(annotations=ToolAnnotations(readOnlyHint=True, destructiveHint=False, idempotentHint=True, openWorldHint=True))
+    def audit_motion(
+        sandbox_name: str,
+        page_id: int,
+        sample_interval_ms: int = 500,
+        selector: str = "body",
+    ) -> dict[str, Any]:
+        """Sample elements over time to detect animations, transitions, and dynamic motion (e.g. floating, sliding, pulsing)."""
+        return audit_motion_impl(
+            sandbox_name, page_id, sample_interval_ms=sample_interval_ms, selector=selector
+        )
+
+    @mcp.tool(annotations=ToolAnnotations(readOnlyHint=True, destructiveHint=False, idempotentHint=True, openWorldHint=True))
+    def compare_dom_trees(
+        sandbox_name: str,
+        reference_page_id: int,
+        candidate_page_id: int,
+        selector: str = "body",
+        max_depth: int = 15,
+    ) -> dict[str, Any]:
+        """Compare DOM tree structures, node counts, interactive elements, text content, and computed layout between two pages."""
+        return compare_dom_trees_impl(
+            sandbox_name, reference_page_id, candidate_page_id, selector=selector, max_depth=max_depth
+        )
+
+    @mcp.tool(annotations=ToolAnnotations(readOnlyHint=True, destructiveHint=False, idempotentHint=True, openWorldHint=True))
+    def audit_resource_hints(sandbox_name: str, page_id: int) -> dict[str, Any]:
+        """Audit resource hints (preload, preconnect, prefetch, stylesheet, icon, meta) in document head."""
+        return audit_resource_hints_impl(sandbox_name, page_id)
 
     @mcp.tool(annotations=ToolAnnotations(readOnlyHint=True, destructiveHint=False, idempotentHint=True, openWorldHint=True))
     def trace_interactions(sandbox_name: str, page_id: int) -> dict[str, Any]:
@@ -193,4 +279,83 @@ def register_tools(mcp: MCPServer) -> None:
             pixel_threshold=pixel_threshold,
             max_changed_pixel_ratio=max_changed_pixel_ratio,
             max_mean_absolute_error=max_mean_absolute_error,
+        )
+
+    @mcp.tool(annotations=ToolAnnotations(readOnlyHint=False, destructiveHint=True, idempotentHint=False, openWorldHint=True))
+    def create_live_proxy_snapshot(
+        sandbox_name: str,
+        page_id: int,
+        output_dir: str,
+        prepare_scroll: bool = True,
+        warmup_wait_ms: int = 1500,
+        download_module_chunks: bool = True,
+        max_chunk_downloads: int = 40,
+        max_image_downloads: int = 150,
+    ) -> dict[str, Any]:
+        """Capture a universal high-fidelity Live-Proxy Snapshot (Stage 1).
+
+        Auto-scrolls to trigger observers, extracts hydrated DOM, normalizes assets to origin URLs,
+        downloads dynamic module chunks, auto-mocks active API endpoints, and injects runtime shims
+        for instant local preview.
+        """
+        return create_live_proxy_snapshot_impl(
+            sandbox_name,
+            page_id,
+            output_dir,
+            prepare_scroll=prepare_scroll,
+            warmup_wait_ms=warmup_wait_ms,
+            download_module_chunks=download_module_chunks,
+            max_chunk_downloads=max_chunk_downloads,
+            max_image_downloads=max_image_downloads,
+        )
+
+    @mcp.tool(annotations=ToolAnnotations(readOnlyHint=False, destructiveHint=True, idempotentHint=False, openWorldHint=True))
+    def decompose_live_proxy(
+        sandbox_name: str,
+        source_dir: str,
+        output_dir: str,
+        format_code: bool = True,
+        print_width: int = 120,
+        tab_width: int = 2,
+        serve_port: int | None = None,
+    ) -> dict[str, Any]:
+        """Execute Stage 2 Component Decomposition with balanced code formatting.
+
+        Extracts semantic components, decouples inline CSS into src/css/inline-head.css,
+        generates master template src/page.html with component slots, formats components
+        using balanced vertical rules, and builds index.html.
+        """
+        return decompose_live_proxy_impl(
+            sandbox_name,
+            source_dir,
+            output_dir,
+            format_code=format_code,
+            print_width=print_width,
+            tab_width=tab_width,
+            serve_port=serve_port,
+        )
+
+    @mcp.tool(annotations=ToolAnnotations(readOnlyHint=True, destructiveHint=False, idempotentHint=True, openWorldHint=True))
+    def audit_decomposition_fidelity(
+        sandbox_name: str,
+        source_dir: str,
+        decomposition_dir: str,
+        check_dom_parity: bool = True,
+        check_assets: bool = True,
+        check_formatting_metrics: bool = True,
+        max_line_length_threshold: int = 500,
+    ) -> dict[str, Any]:
+        """Audit Stage 2 Decomposition fidelity, code formatting, and asset integrity.
+
+        Verifies that components exist and are non-empty, formatting is balanced (no minified
+        single-line files), local assets like phone frames are present, and DOM landmarks match.
+        """
+        return audit_decomposition_fidelity_impl(
+            sandbox_name,
+            source_dir,
+            decomposition_dir,
+            check_dom_parity=check_dom_parity,
+            check_assets=check_assets,
+            check_formatting_metrics=check_formatting_metrics,
+            max_line_length_threshold=max_line_length_threshold,
         )
