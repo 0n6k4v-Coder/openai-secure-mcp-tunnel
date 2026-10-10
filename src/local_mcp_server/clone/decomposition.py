@@ -2,7 +2,6 @@ from __future__ import annotations
 
 import json
 import posixpath
-import re
 from typing import Any
 
 from ..infrastructure.openshell.sandbox import execute_sandbox_argv
@@ -526,29 +525,6 @@ http.createServer((req, res) => {{
 
     return report
 
-
-def audit_decomposition_fidelity(
-    sandbox_name: str,
-    source_dir: str,
-    decomposition_dir: str,
-    *,
-    check_dom_parity: bool = True,
-    check_assets: bool = True,
-    check_formatting_metrics: bool = True,
-    max_line_length_threshold: int = 500,
-) -> dict[str, Any]:
-    """Audit Stage 2 Decomposition fidelity, code formatting, and asset integrity.
-
-    Verifies that all components exist and are non-empty, code formatting adheres to
-    balanced vertical standards (no 1-line minified files), local assets (such as
-    phone frames and videos) are present, and DOM landmarks match the source live-proxy.
-    """
-    name = validate_name(sandbox_name)
-    norm_source = _normalize_relative_path(source_dir)
-    norm_decomp = _normalize_relative_path(decomposition_dir)
-
-    remote_source = posixpath.join(_PROJECT_ROOT, norm_source)
-    remote_decomp = posixpath.join(_PROJECT_ROOT, norm_decomp)
 
 _AUDIT_RUNNER = r"""
 const fs = require('fs');

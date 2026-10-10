@@ -6,6 +6,7 @@ import hashlib
 import json
 import posixpath
 import re
+import shlex
 import uuid
 import urllib.parse
 from datetime import datetime, timezone
@@ -89,12 +90,30 @@ def _write_new_file(sandbox_name: str, relative_path: str, content: bytes) -> No
     if str(resolved_parent.get("stdout", "")).strip() != parent:
         raise ValueError("Artifact parent resolves through a symlink.")
 
+    quoted = shlex.quote(remote_path)
     # Shell noclobber prevents replacing an existing regular file or following a symlink.
+    chunk_size = 512 * 1024
+    if len(content) <= chunk_size:
+        _command(
+            sandbox_name,
+            ["sh", "-c", f"set -C; cat > {quoted}"],
+            stdin=content,
+        )
+        return
+
+    # For larger payloads exceeding gRPC message size, create first with noclobber then stream remaining
     _command(
         sandbox_name,
-        ["sh", "-c", 'set -C; cat > "$1"', "sh", remote_path],
-        stdin=content,
+        ["sh", "-c", f"set -C; cat > {quoted}"],
+        stdin=content[:chunk_size],
     )
+    for i in range(chunk_size, len(content), chunk_size):
+        chunk = content[i : i + chunk_size]
+        _command(
+            sandbox_name,
+            ["sh", "-c", f"cat >> {quoted}"],
+            stdin=chunk,
+        )
 
 
 def _evaluate(sandbox_name: str, page_id: int, script: str) -> dict[str, Any]:

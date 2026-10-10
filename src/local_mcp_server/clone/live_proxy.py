@@ -2,7 +2,9 @@ from __future__ import annotations
 
 import posixpath
 import re
+import shlex
 import urllib.parse
+import uuid
 from typing import Any
 
 from ..infrastructure.openshell.sandbox import execute_sandbox_argv
@@ -96,6 +98,43 @@ def _normalize_relative_path(path: str) -> str:
     if normalized != path:
         raise ValueError("Target directory must be canonical.")
     return normalized
+
+
+def _write_sandbox_file(
+    sandbox_name: str,
+    remote_path: str,
+    data: bytes | str,
+    chunk_size: int = 512 * 1024,
+) -> None:
+    """Write data to sandbox path, streaming in chunks if data exceeds gRPC size limit."""
+    data_bytes = data.encode("utf-8") if isinstance(data, str) else data
+    quoted_path = shlex.quote(remote_path)
+    if not data_bytes:
+        execute_sandbox_argv(sandbox_name, ["sh", "-c", f": > {quoted_path}"])
+        return
+
+    if len(data_bytes) <= chunk_size:
+        execute_sandbox_argv(
+            sandbox_name,
+            ["sh", "-c", f"cat > {quoted_path}"],
+            stdin=data_bytes,
+        )
+        return
+
+    tmp_path = f"{remote_path}.tmp.{uuid.uuid4().hex[:8]}"
+    quoted_tmp = shlex.quote(tmp_path)
+    for i in range(0, len(data_bytes), chunk_size):
+        chunk = data_bytes[i : i + chunk_size]
+        redir = ">" if i == 0 else ">>"
+        res = execute_sandbox_argv(
+            sandbox_name,
+            ["sh", "-c", f"cat {redir} {quoted_tmp}"],
+            stdin=chunk,
+        )
+        if int(res.get("return_code", 1)) != 0:
+            execute_sandbox_argv(sandbox_name, ["rm", "-f", quoted_tmp])
+            raise RuntimeError(f"Failed to write file chunk to sandbox: {res.get('stderr')}")
+    execute_sandbox_argv(sandbox_name, ["mv", "-f", quoted_tmp, quoted_path])
 
 
 def create_live_proxy_snapshot(
@@ -268,19 +307,11 @@ def create_live_proxy_snapshot(
 
     # Store upstream origin for server-side fallback proxying
     if origin:
-        execute_sandbox_argv(
-            name,
-            ["sh", "-c", 'cat > "$1"', "sh", f"{remote_output}/.origin"],
-            stdin=origin.strip().encode("utf-8"),
-        )
+        _write_sandbox_file(name, f"{remote_output}/.origin", origin.strip().encode("utf-8"))
 
     # Write index.html
     formatted_html, _ = format_text_in_sandbox(name, f"{norm_output}/index.html", processed_html)
-    execute_sandbox_argv(
-        name,
-        ["sh", "-c", 'cat > "$1"', "sh", f"{remote_output}/index.html"],
-        stdin=formatted_html.encode("utf-8"),
-    )
+    _write_sandbox_file(name, f"{remote_output}/index.html", formatted_html.encode("utf-8"))
 
     # 5. Download Client Module Chunks (to bypass CORS on local ES Module imports)
     downloaded_chunks: list[str] = []
