@@ -325,10 +325,15 @@ def test_script_replace_file_content(tmp_path: Path) -> None:
     ws = tmp_path / "ws"
     ws.mkdir()
     file_path = ws / "code.py"
-    file_path.write_text("def hello():\n    return 1\n")
+    file_path.write_text("line 1\nreturn 1\nline 3\nreturn 1\n")
 
-    # Replace single occurrence
-    payload = json.dumps({"target_content": "return 1", "replacement_content": "return 42"})
+    # Replace single occurrence within line range [1, 2]
+    payload = json.dumps({
+        "target_content": "return 1",
+        "replacement_content": "return 42",
+        "start_line": 1,
+        "end_line": 2,
+    })
     res = _run_script_in_test_workspace(
         sandbox_files._REPLACE_FILE_CONTENT_SCRIPT,
         ws,
@@ -336,9 +341,25 @@ def test_script_replace_file_content(tmp_path: Path) -> None:
         stdin=payload.encode("utf-8"),
     )
     assert res.returncode == 0
-    assert file_path.read_text() == "def hello():\n    return 42\n"
+    assert file_path.read_text() == "line 1\nreturn 42\nline 3\nreturn 1\n"
 
-    # Reject when target not found
+    # Reject when target not found within specified window, reporting diagnostic
+    payload_window_mismatch = json.dumps({
+        "target_content": "return 42",
+        "replacement_content": "return 99",
+        "start_line": 3,
+        "end_line": 4,
+    })
+    res_window_mismatch = _run_script_in_test_workspace(
+        sandbox_files._REPLACE_FILE_CONTENT_SCRIPT,
+        ws,
+        ["code.py", "false"],
+        stdin=payload_window_mismatch.encode("utf-8"),
+    )
+    assert res_window_mismatch.returncode != 0
+    assert "not found in lines 3 to 4" in res_window_mismatch.stderr
+
+    # Reject when target not found at all
     payload_missing = json.dumps({"target_content": "missing_func()", "replacement_content": "noop"})
     res_missing = _run_script_in_test_workspace(
         sandbox_files._REPLACE_FILE_CONTENT_SCRIPT,
@@ -348,6 +369,23 @@ def test_script_replace_file_content(tmp_path: Path) -> None:
     )
     assert res_missing.returncode != 0
     assert "not found" in res_missing.stderr
+
+
+def test_replace_and_write_file_content_rejects_nul_bytes() -> None:
+    with pytest.raises(ValueError, match="literal NUL byte"):
+        sandbox_files.replace_sandbox_file_content(
+            "focused", "test.py", "target", "repl" + chr(0)
+        )
+
+    with pytest.raises(ValueError, match="literal NUL byte"):
+        sandbox_files.replace_sandbox_file_content(
+            "focused", "test.py", "target" + chr(0), "repl"
+        )
+
+    with pytest.raises(ValueError, match="literal NUL byte"):
+        sandbox_files.write_sandbox_file(
+            "focused", "test.py", "content" + chr(0)
+        )
 
 
 def test_script_rename_path(tmp_path: Path) -> None:

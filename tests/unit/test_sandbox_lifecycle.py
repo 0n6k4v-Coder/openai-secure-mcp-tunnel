@@ -386,7 +386,7 @@ def test_recreate_preserves_workspace_and_profile(
     monkeypatch.setattr(
         sandbox,
         "create_sandbox",
-        lambda *, name, workspace_id, profile: (
+        lambda *, name, workspace_id, profile, description=None: (
             calls.append(
                 (
                     "create",
@@ -452,7 +452,7 @@ def test_recreate_preserves_standalone_workspace(
     monkeypatch.setattr(
         sandbox,
         "create_sandbox",
-        lambda name, workspace_id=None, profile="default": calls.append(
+        lambda name, workspace_id=None, profile="default", description=None: calls.append(
             (
                 "create",
                 {
@@ -541,7 +541,7 @@ def test_recreate_preserves_attached_credentials(
     monkeypatch.setattr(
         sandbox,
         "create_sandbox",
-        lambda name, workspace_id, profile: calls.append(("create", name)) or json.dumps({"name": name}),
+        lambda name, workspace_id, profile, description=None: calls.append(("create", name)) or json.dumps({"name": name}),
     )
 
     from local_mcp_server.infrastructure.openshell import credentials
@@ -568,6 +568,70 @@ def test_recreate_preserves_attached_credentials(
     ]
 
 
+def test_recreate_preserves_description(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    calls: list[tuple[str, object]] = []
+
+    monkeypatch.setattr(
+        sandbox,
+        "sandbox_status",
+        lambda name: json.dumps(
+            {
+                "name": name,
+                "profile": "default",
+                "host_workspace_id": None,
+                "description": "Custom sandbox purpose",
+            }
+        ),
+    )
+    monkeypatch.setattr(
+        sandbox,
+        "delete_sandbox",
+        lambda name: calls.append(("delete", name)) or json.dumps({"name": name}),
+    )
+    monkeypatch.setattr(
+        sandbox,
+        "create_sandbox",
+        lambda name, workspace_id=None, profile="default", description=None: calls.append(
+            (
+                "create",
+                {
+                    "name": name,
+                    "workspace_id": workspace_id,
+                    "profile": profile,
+                    "description": description,
+                },
+            )
+        )
+        or json.dumps(
+            {
+                "name": name,
+                "profile": profile,
+                "host_workspace_id": workspace_id,
+                "description": description,
+            }
+        ),
+    )
+
+    result = sandbox.recreate_sandbox("project-api")
+    data = json.loads(result)
+
+    assert data["description"] == "Custom sandbox purpose"
+    assert calls == [
+        ("delete", "project-api"),
+        (
+            "create",
+            {
+                "name": "project-api",
+                "workspace_id": None,
+                "profile": "default",
+                "description": "Custom sandbox purpose",
+            },
+        ),
+    ]
+
+
 def test_mcp_registers_complete_sandbox_lifecycle_surface() -> None:
     mcp = MCPServer("sandbox-test")
 
@@ -579,6 +643,7 @@ def test_mcp_registers_complete_sandbox_lifecycle_surface() -> None:
     expected = {
         "get_system_info",
         "create_sandbox",
+        "update_sandbox_description",
         "list_sandboxes",
         "sandbox_status",
         "sandbox_logs",
@@ -588,10 +653,13 @@ def test_mcp_registers_complete_sandbox_lifecycle_surface() -> None:
         "repair_sandbox",
         "recreate_sandbox",
         "delete_sandbox",
-        "execute_sandbox_command",
+        "run_command",
     }
 
     assert expected <= set(tool_map)
+
+    assert tool_map["update_sandbox_description"].annotations.destructive_hint is False
+    assert tool_map["update_sandbox_description"].annotations.idempotent_hint is True
 
     assert tool_map["sandbox_logs"].annotations.read_only_hint is True
     assert tool_map["sandbox_logs"].annotations.idempotent_hint is True

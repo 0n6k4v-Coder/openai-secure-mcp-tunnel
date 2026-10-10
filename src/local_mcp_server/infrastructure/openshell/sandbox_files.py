@@ -455,8 +455,15 @@ if len(content) > 1_000_000:
 parent = os.path.dirname(resolved)
 os.makedirs(parent, exist_ok=True)
 
-with open(resolved, "wb") as handle:
-    handle.write(content)
+tmp_resolved = resolved + f".tmp.{os.getpid()}"
+try:
+    with open(tmp_resolved, "wb") as handle:
+        handle.write(content)
+    os.replace(tmp_resolved, resolved)
+except Exception:
+    if os.path.exists(tmp_resolved):
+        os.remove(tmp_resolved)
+    raise
 
 sys.stdout.write(json.dumps({"path": os.path.relpath(resolved, root), "formatting": format_status}))
 """.strip()
@@ -495,6 +502,8 @@ raw_payload = sys.stdin.buffer.read().decode("utf-8")
 payload = json.loads(raw_payload)
 target_content = payload["target_content"]
 replacement_content = payload["replacement_content"]
+start_line = payload.get("start_line")
+end_line = payload.get("end_line")
 
 if not target_content:
     raise SystemExit("target_content must not be empty.")
@@ -505,20 +514,56 @@ try:
 except UnicodeDecodeError as exc:
     raise SystemExit("Target file is not valid UTF-8 text.") from exc
 
-count = original.count(target_content)
-if count == 0:
-    raise SystemExit("target_content not found in file.")
-if count > 1 and not allow_multiple:
-    raise SystemExit(f"target_content occurred {count} times in file. Provide more context or set allow_multiple=True.")
+if start_line is not None or end_line is not None:
+    lines = original.splitlines(keepends=True)
+    total_lines = len(lines)
+    s_idx = (start_line - 1) if (start_line is not None and start_line >= 1) else 0
+    e_idx = end_line if (end_line is not None and end_line >= 1) else total_lines
 
-updated = original.replace(target_content, replacement_content) if allow_multiple else original.replace(target_content, replacement_content, 1)
+    if s_idx >= total_lines and total_lines > 0:
+        raise SystemExit(f"start_line ({start_line}) exceeds total lines in file ({total_lines}).")
+    e_idx = min(e_idx, total_lines)
+    if s_idx > e_idx:
+        raise SystemExit("start_line must be less than or equal to end_line.")
+
+    prefix = "".join(lines[:s_idx])
+    window = "".join(lines[s_idx:e_idx])
+    suffix = "".join(lines[e_idx:])
+
+    count = window.count(target_content)
+    line_range_str = f"lines {start_line or 1} to {end_line or total_lines}"
+    if count == 0:
+        total_count = original.count(target_content)
+        if total_count > 0:
+            raise SystemExit(f"target_content not found in {line_range_str}, but found {total_count} occurrence(s) elsewhere in file.")
+        raise SystemExit(f"target_content not found in file (searched in {line_range_str}).")
+    if count > 1 and not allow_multiple:
+        raise SystemExit(f"target_content occurred {count} times within {line_range_str}. Provide more context or set allow_multiple=True.")
+
+    replaced_window = window.replace(target_content, replacement_content) if allow_multiple else window.replace(target_content, replacement_content, 1)
+    updated = prefix + replaced_window + suffix
+else:
+    count = original.count(target_content)
+    if count == 0:
+        raise SystemExit("target_content not found in file.")
+    if count > 1 and not allow_multiple:
+        raise SystemExit(f"target_content occurred {count} times in file. Provide more context or set allow_multiple=True.")
+    updated = original.replace(target_content, replacement_content) if allow_multiple else original.replace(target_content, replacement_content, 1)
+
 updated, format_status = _format_text(relative_path, updated)
 
 if len(updated.encode("utf-8")) > 1_000_000:
     raise SystemExit("Updated content exceeds maximum allowed size.")
 
-with open(resolved, "w", encoding="utf-8") as handle:
-    handle.write(updated)
+tmp_resolved = resolved + f".tmp.{os.getpid()}"
+try:
+    with open(tmp_resolved, "w", encoding="utf-8") as handle:
+        handle.write(updated)
+    os.replace(tmp_resolved, resolved)
+except Exception:
+    if os.path.exists(tmp_resolved):
+        os.remove(tmp_resolved)
+    raise
 
 sys.stdout.write(json.dumps({"path": os.path.relpath(resolved, root), "formatting": format_status}))
 """.strip()
@@ -671,6 +716,11 @@ def _validate_relative_path(relative_path: str) -> None:
 def _validate_content(content: str) -> bytes:
     if not isinstance(content, str):
         raise ValueError("Content must be a string.")
+    if "\x00" in content:
+        raise ValueError(
+            "Text content contains a literal NUL byte (0x00). "
+            "If you intended an escape sequence like '\\x00', please double-escape the backslash."
+        )
     encoded = content.encode("utf-8")
     if len(encoded) > MAX_WRITE_BYTES:
         raise ValueError("Content is too large.")
@@ -811,6 +861,8 @@ def replace_sandbox_file_content(
     relative_path: str,
     target_content: str,
     replacement_content: str,
+    start_line: int | None = None,
+    end_line: int | None = None,
     allow_multiple: bool = False,
 ) -> str:
     _validate_relative_path(relative_path)
@@ -820,11 +872,26 @@ def replace_sandbox_file_content(
         raise ValueError("replacement_content must be a string.")
     if not target_content:
         raise ValueError("target_content must not be empty.")
+    if "\x00" in target_content or "\x00" in replacement_content:
+        raise ValueError(
+            "Text content contains a literal NUL byte (0x00). "
+            "If you intended an escape sequence like '\\x00', please double-escape the backslash."
+        )
+    if start_line is not None:
+        if not isinstance(start_line, int) or start_line < 1:
+            raise ValueError("start_line must be an integer >= 1.")
+    if end_line is not None:
+        if not isinstance(end_line, int) or end_line < 1:
+            raise ValueError("end_line must be an integer >= 1.")
+    if start_line is not None and end_line is not None and start_line > end_line:
+        raise ValueError("start_line must be less than or equal to end_line.")
 
     payload = json.dumps(
         {
             "target_content": target_content,
             "replacement_content": replacement_content,
+            "start_line": start_line,
+            "end_line": end_line,
         }
     ).encode("utf-8")
 

@@ -10,13 +10,16 @@ from ..infrastructure.openshell.sandbox import (
     recreate_sandbox,
     repair_sandbox,
     restart_sandbox,
+    run_command,
     sandbox_logs,
     sandbox_status,
     start_sandbox,
     stop_sandbox,
+    update_sandbox_overlay_description as update_sandbox_description,
 )
 from .policy import (
     validate_command,
+    validate_description,
     validate_name,
     validate_profile,
 )
@@ -31,11 +34,14 @@ __all__ = [
     "recreate_sandbox",
     "repair_sandbox",
     "restart_sandbox",
+    "run_command",
     "sandbox_logs",
     "sandbox_status",
     "start_sandbox",
     "stop_sandbox",
+    "update_sandbox_description",
     "validate_command",
+    "validate_description",
     "validate_name",
     "validate_profile",
 ]

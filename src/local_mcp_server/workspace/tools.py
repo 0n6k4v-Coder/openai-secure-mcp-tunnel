@@ -129,6 +129,8 @@ def register_tools(mcp: MCPServer) -> None:
         relative_path: str,
         target_content: str,
         replacement_content: str,
+        start_line: int | None = None,
+        end_line: int | None = None,
         allow_multiple: bool = False,
     ) -> str:
         """
@@ -140,12 +142,17 @@ def register_tools(mcp: MCPServer) -> None:
         target_content must match existing text in the file.
         By default (allow_multiple=False), replaces exactly one unique occurrence.
         Set allow_multiple=True to replace all occurrences.
+
+        Specify start_line and end_line (1-indexed, inclusive) to restrict the search and replacement
+        to a specific range of lines.
         """
         return replace_file_content_impl(
             sandbox_name=sandbox_name,
             relative_path=relative_path,
             target_content=target_content,
             replacement_content=replacement_content,
+            start_line=start_line,
+            end_line=end_line,
             allow_multiple=allow_multiple,
         )
 

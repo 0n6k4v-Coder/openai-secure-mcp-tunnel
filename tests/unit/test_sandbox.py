@@ -171,3 +171,23 @@ def test_browser_profile_is_validated() -> None:
 
     with pytest.raises(ValueError):
         policy.validate_profile("unknown")
+
+
+def test_validate_description() -> None:
+    assert policy.validate_description(None) is None
+    assert policy.validate_description("") is None
+    assert policy.validate_description("   ") is None
+    assert policy.validate_description("A sandbox description") == "A sandbox description"
+    assert policy.validate_description("  padded description  ") == "padded description"
+
+    valid_desc = "a" * policy.MAX_SANDBOX_DESCRIPTION_LENGTH
+    assert policy.validate_description(valid_desc) == valid_desc
+
+    with pytest.raises(ValueError, match="must not exceed 250 characters"):
+        policy.validate_description("a" * (policy.MAX_SANDBOX_DESCRIPTION_LENGTH + 1))
+
+    with pytest.raises(ValueError, match="string or None"):
+        policy.validate_description(123)  # type: ignore
+
+    with pytest.raises(ValueError, match="must not contain NUL bytes"):
+        policy.validate_description("invalid" + chr(0) + "description")

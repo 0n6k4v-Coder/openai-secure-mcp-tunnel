@@ -113,17 +113,35 @@ def make_request_logging_middleware(mcp, instance_id: str):
         )
         try:
             result = await call_next(ctx)
-            logger.info(
-                "MCP RESPONSE instance_id=%s pid=%s method=%s request_id=%s tool=%s status=success",
-                instance_id,
-                os.getpid(),
-                method,
-                request_id,
-                tool_name,
-            )
+            if method == "tools/call" and isinstance(result, CallToolResult) and result.is_error:
+                error_text = (
+                    result.content[0].text
+                    if result.content and hasattr(result.content[0], "text")
+                    else "Tool execution failed"
+                )
+                logger.info(
+                    "MCP RESPONSE instance_id=%s pid=%s method=%s request_id=%s tool=%s status=error error=%s",
+                    instance_id,
+                    os.getpid(),
+                    method,
+                    request_id,
+                    tool_name,
+                    error_text,
+                )
+            else:
+                logger.info(
+                    "MCP RESPONSE instance_id=%s pid=%s method=%s request_id=%s tool=%s status=success",
+                    instance_id,
+                    os.getpid(),
+                    method,
+                    request_id,
+                    tool_name,
+                )
             return result
         except Exception as exc:
-            logger.exception(
+            root_cause = getattr(exc, "__cause__", None) or exc
+            error_message = str(root_cause) or str(exc)
+            logger.info(
                 "MCP RESPONSE instance_id=%s pid=%s method=%s request_id=%s tool=%s "
                 "status=error error_type=%s error=%s",
                 instance_id,
@@ -131,9 +149,14 @@ def make_request_logging_middleware(mcp, instance_id: str):
                 method,
                 request_id,
                 tool_name,
-                type(exc).__name__,
-                str(exc),
+                type(root_cause).__name__,
+                error_message,
             )
+            if method == "tools/call":
+                return CallToolResult(
+                    content=[TextContent(type="text", text=error_message)],
+                    isError=True,
+                )
             raise
 
     return request_logging_middleware

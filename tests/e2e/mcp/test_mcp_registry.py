@@ -8,7 +8,8 @@ import pytest
 
 EXPECTED_ARGUMENTS: dict[str, tuple[set[str], set[str]]] = {
     "get_system_info": (set(), set()),
-    "create_sandbox": ({"name"}, {"host_workspace_id", "profile"}),
+    "create_sandbox": ({"name"}, {"host_workspace_id", "profile", "description"}),
+    "update_sandbox_description": ({"name"}, {"description"}),
     "list_sandboxes": (set(), set()),
     "sandbox_status": ({"name"}, set()),
     "sandbox_logs": ({"name"}, {"since"}),
@@ -18,7 +19,7 @@ EXPECTED_ARGUMENTS: dict[str, tuple[set[str], set[str]]] = {
     "repair_sandbox": ({"name"}, set()),
     "recreate_sandbox": ({"name"}, set()),
     "delete_sandbox": ({"name"}, set()),
-    "execute_sandbox_command": ({"name", "command"}, set()),
+    "run_command": ({"sandbox_name", "command"}, {"cwd", "timeout_seconds"}),
     "list_files": ({"sandbox_name"}, {"path", "directory"}),
     "view_file": (
         {"sandbox_name", "relative_path"},
@@ -30,7 +31,7 @@ EXPECTED_ARGUMENTS: dict[str, tuple[set[str], set[str]]] = {
     ),
     "replace_file_content": (
         {"sandbox_name", "relative_path", "target_content", "replacement_content"},
-        {"allow_multiple"},
+        {"allow_multiple", "start_line", "end_line"},
     ),
     "create_directory": ({"sandbox_name", "relative_path"}, set()),
     "rename_path": (
@@ -63,16 +64,19 @@ EXPECTED_ARGUMENTS: dict[str, tuple[set[str], set[str]]] = {
 }
 
 EXPECTED_DEFAULTS: dict[str, dict[str, Any]] = {
-    "create_sandbox": {"host_workspace_id": None, "profile": "default"},
+    "create_sandbox": {"host_workspace_id": None, "profile": "default", "description": None},
+    "update_sandbox_description": {"description": None},
     "sandbox_logs": {"since": "5m"},
     "execute_chrome_devtools_command": {"arguments": None},
     "write_to_file": {"overwrite": True},
-    "replace_file_content": {"allow_multiple": False},
+    "replace_file_content": {"allow_multiple": False, "start_line": None, "end_line": None},
+    "run_command": {"cwd": None, "timeout_seconds": 120},
 }
 
 EXPECTED_DESCRIPTION_FRAGMENTS = {
     "get_system_info": "return basic information",
     "create_sandbox": "create an openshell sandbox",
+    "update_sandbox_description": "update the description", 
     "list_sandboxes": "list openshell sandboxes",
     "sandbox_status": "return the status",
     "sandbox_logs": "return recent openshell logs",
@@ -82,7 +86,7 @@ EXPECTED_DESCRIPTION_FRAGMENTS = {
     "repair_sandbox": "retry startup",
     "recreate_sandbox": "delete and recreate",
     "delete_sandbox": "permanently delete",
-    "execute_sandbox_command": "execute a normal command",
+    "run_command": "execute a shell command",
     "list_files": "list regular files",
     "view_file": "view the contents of a file",
     "write_to_file": "create a new file or overwrite",
@@ -100,6 +104,7 @@ DEFAULT_ANNOTATIONS = (False, False, False, False)
 EXPECTED_ANNOTATIONS: dict[str, tuple[bool, bool, bool, bool]] = {
     "get_system_info": (True, False, True, False),
     "create_sandbox": DEFAULT_ANNOTATIONS,
+    "update_sandbox_description": (False, False, True, False),
     "list_sandboxes": (True, False, True, False),
     "sandbox_status": (True, False, True, False),
     "sandbox_logs": (True, False, True, False),
@@ -109,7 +114,7 @@ EXPECTED_ANNOTATIONS: dict[str, tuple[bool, bool, bool, bool]] = {
     "repair_sandbox": (False, False, True, False),
     "recreate_sandbox": (False, True, False, False),
     "delete_sandbox": (False, True, False, False),
-    "execute_sandbox_command": (False, True, False, False),
+    "run_command": (False, True, False, False),
     "list_files": (True, False, True, False),
     "view_file": (True, False, True, False),
     "write_to_file": (False, False, True, False),
@@ -286,4 +291,4 @@ def test_MCP_REG_012_verify_unsupported_capabilities(mcp_client) -> None:
 def test_MCP_REG_013_package_installation_tool_is_not_exposed(mcp_client) -> None:
     names = {tool.name for tool in _list_tools(mcp_client)}
     assert "request_tool_installation" not in names
-    assert "execute_sandbox_command" in names
+    assert "run_command" in names

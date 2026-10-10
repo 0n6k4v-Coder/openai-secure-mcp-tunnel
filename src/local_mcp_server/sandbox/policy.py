@@ -33,6 +33,7 @@ DEFAULT_MEMORY = os.environ.get(
 
 MAX_COMMAND_BYTES = 32 * 1024
 MAX_SANDBOX_NAME_LENGTH = 19
+MAX_SANDBOX_DESCRIPTION_LENGTH = 250
 
 SandboxProfile = Literal["default", "browser"]
 
@@ -106,6 +107,27 @@ def validate_command(command: str) -> str:
         raise ValueError(f"command exceeds {MAX_COMMAND_BYTES} bytes")
 
     return command
+
+
+def validate_description(description: str | None) -> str | None:
+    """Validate and normalise an optional sandbox description."""
+    if description is None:
+        return None
+
+    if not isinstance(description, str):
+        raise ValueError("sandbox description must be a string or None")
+
+    if "\x00" in description:
+        raise ValueError("sandbox description must not contain NUL bytes")
+
+    cleaned = description.strip()
+
+    if len(cleaned) > MAX_SANDBOX_DESCRIPTION_LENGTH:
+        raise ValueError(
+            f"sandbox description must not exceed {MAX_SANDBOX_DESCRIPTION_LENGTH} characters"
+        )
+
+    return cleaned or None
 
 
 def _browser_endpoints() -> tuple[tuple[str, int], ...]:

@@ -2,8 +2,11 @@ from __future__ import annotations
 
 import json
 import os
+import shlex
 import shutil
 import subprocess
+import threading
+from pathlib import Path
 
 from openshell import SandboxClient
 
@@ -13,6 +16,7 @@ from ...sandbox.policy import (
     SANDBOX_WORKSPACE_ROOT,
     build_sandbox_spec,
     validate_command,
+    validate_description,
     validate_name,
     validate_profile,
 )
@@ -30,6 +34,15 @@ OPENSHELL_WORKSPACE = (
 
 HOST_WORKSPACE_LABEL = "mcp_host_workspace_id"
 SANDBOX_PROFILE_LABEL = "mcp_sandbox_profile"
+SANDBOX_DESCRIPTION_LABEL = "mcp_sandbox_description"
+
+_SANDBOX_METADATA_OVERLAY_PATH = Path(
+    os.environ.get(
+        "SANDBOX_METADATA_OVERLAY_FILE",
+        "/var/lib/local-mcp-server/state/sandbox-metadata.json",
+    )
+)
+_overlay_lock = threading.Lock()
 
 
 class SandboxError(RuntimeError):
@@ -130,6 +143,88 @@ def _sandbox_profile_from_labels(
     return "default"
 
 
+def _sandbox_description_from_labels(
+    labels,
+) -> str | None:
+    if not isinstance(labels, dict):
+        return None
+
+    value = labels.get(SANDBOX_DESCRIPTION_LABEL)
+
+    if isinstance(value, str) and value.strip():
+        return value.strip()
+
+    return None
+
+
+def _sandbox_description_from_overlay(
+    name: str,
+) -> tuple[bool, str | None]:
+    """Read sandbox description from persistent overlay file (hybrid storage)."""
+    try:
+        overlay_path = _SANDBOX_METADATA_OVERLAY_PATH
+        if not overlay_path.exists():
+            return False, None
+        data = json.loads(overlay_path.read_text(encoding="utf-8"))
+        if isinstance(data, dict) and name in data and "description" in data[name]:
+            return True, data[name]["description"]
+    except Exception:
+        pass
+    return False, None
+
+
+def _resolve_sandbox_description(
+    name: str,
+    labels,
+) -> str | None:
+    """Resolve description: overlay (runtime update) wins over label (create time)."""
+    has_overlay, overlay_desc = _sandbox_description_from_overlay(name)
+    if has_overlay:
+        return overlay_desc
+    return _sandbox_description_from_labels(labels)
+
+
+def update_sandbox_overlay_description(
+    name: str,
+    description: str | None,
+) -> str:
+    """Update sandbox description in persistent overlay (hybrid storage)."""
+    name = validate_name(name)
+    description = validate_description(description)
+
+    # Verify sandbox exists
+    sandbox_status(name)
+
+    overlay_path = _SANDBOX_METADATA_OVERLAY_PATH
+    with _overlay_lock:
+        try:
+            overlay_path.parent.mkdir(parents=True, exist_ok=True)
+            data: dict[str, dict[str, object]] = {}
+            if overlay_path.exists():
+                try:
+                    loaded = json.loads(overlay_path.read_text(encoding="utf-8"))
+                    if isinstance(loaded, dict):
+                        data = loaded
+                except Exception:
+                    data = {}
+
+            entry = data.setdefault(name, {})
+            entry["description"] = description
+
+            tmp_path = overlay_path.with_suffix(f".tmp.{os.getpid()}")
+            tmp_path.write_text(
+                json.dumps(data, indent=2, ensure_ascii=False),
+                encoding="utf-8",
+            )
+            tmp_path.replace(overlay_path)
+        except OSError as exc:
+            raise SandboxError(
+                f"Failed to update sandbox metadata overlay: {exc}"
+            ) from exc
+
+    return sandbox_status(name)
+
+
 def _browser_devtools_readiness(
     sandbox_name: str,
 ) -> dict[str, object]:
@@ -228,6 +323,7 @@ def _sandbox_to_dict(
 
     host_workspace_id = _host_workspace_id_from_labels(labels)
     profile = _sandbox_profile_from_labels(labels)
+    description = _resolve_sandbox_description(name or "", labels)
 
     if host_workspace_id:
         workspace = _host_workspace_metadata(host_workspace_id)
@@ -244,6 +340,7 @@ def _sandbox_to_dict(
             None,
         ),
         "name": name,
+        "description": description,
         "openshell_workspace": OPENSHELL_WORKSPACE,
         "phase": getattr(
             sandbox,
@@ -280,6 +377,7 @@ def create_sandbox(
     name: str,
     workspace_id: str | None = None,
     profile: str = "default",
+    description: str | None = None,
 ) -> str:
     """
     Create and wait for an OpenShell sandbox.
@@ -291,6 +389,7 @@ def create_sandbox(
     """
     name = validate_name(name)
     profile = validate_profile(profile)
+    description = validate_description(description)
 
     grant: dict[str, object] | None = None
 
@@ -309,6 +408,9 @@ def create_sandbox(
     labels = {
         SANDBOX_PROFILE_LABEL: profile,
     }
+
+    if description is not None:
+        labels[SANDBOX_DESCRIPTION_LABEL] = description
 
     if workspace_id is not None:
         labels[HOST_WORKSPACE_LABEL] = workspace_id
@@ -552,30 +654,52 @@ def execute_sandbox_argv(
         ) from exc
 
 
-def execute_sandbox(
-    name: str,
+def run_command(
+    sandbox_name: str,
     command: str,
+    cwd: str | None = None,
+    timeout_seconds: int = 120,
     *,
     stdin: bytes | str | None = None,
 ) -> str:
     """
-    Execute a normal command inside an existing sandbox.
+    Execute a shell command inside an OpenShell sandbox workspace.
 
     Software installation is deliberately NOT implemented through this
     function. Installation must go through the approval-gated installation
     broker.
     """
-    name = validate_name(name)
-
+    name = validate_name(sandbox_name)
     command = validate_command(command)
 
-    stdin_bytes: bytes | None = None
+    workdir = SANDBOX_WORKSPACE_ROOT
+    if cwd is not None:
+        if not isinstance(cwd, str) or not cwd.strip():
+            raise ValueError("cwd must not be empty.")
+        if "\x00" in cwd:
+            raise ValueError("cwd must not contain NUL bytes.")
+        clean_cwd = cwd.strip()
+        if os.path.isabs(clean_cwd):
+            resolved_cwd = os.path.realpath(clean_cwd)
+        else:
+            resolved_cwd = os.path.realpath(os.path.join(SANDBOX_WORKSPACE_ROOT, clean_cwd))
+        if not (resolved_cwd == SANDBOX_WORKSPACE_ROOT or resolved_cwd.startswith(SANDBOX_WORKSPACE_ROOT + "/")):
+            raise ValueError(f"cwd '{cwd}' is outside the sandbox workspace.")
+        workdir = resolved_cwd
 
+    stdin_bytes: bytes | None = None
     if isinstance(stdin, str):
         stdin_bytes = stdin.encode("utf-8")
-
     elif isinstance(stdin, (bytes, bytearray)):
         stdin_bytes = bytes(stdin)
+
+    cmd_env = {
+        "PAGER": "cat",
+        "CI": "1",
+        "TERM": "dumb",
+        "NO_COLOR": "1",
+        "PYTHONUNBUFFERED": "1",
+    }
 
     try:
         with _client() as client:
@@ -588,6 +712,9 @@ def execute_sandbox(
                 ],
                 workspace=OPENSHELL_WORKSPACE,
                 stdin=stdin_bytes,
+                timeout_seconds=timeout_seconds,
+                workdir=workdir,
+                env=cmd_env,
             )
 
             return json.dumps(
@@ -595,6 +722,7 @@ def execute_sandbox(
                     "stdout": result.stdout,
                     "stderr": result.stderr,
                     "return_code": result.exit_code,
+                    "cwd": workdir,
                 },
                 ensure_ascii=False,
                 indent=2,
@@ -608,6 +736,16 @@ def execute_sandbox(
             f"Failed to execute command in sandbox '{name}': "
             f"{type(exc).__name__}: {exc}"
         ) from exc
+
+
+def execute_sandbox(
+    name: str,
+    command: str,
+    *,
+    stdin: bytes | str | None = None,
+) -> str:
+    """Internal compatibility helper for execute_sandbox."""
+    return run_command(sandbox_name=name, command=command, stdin=stdin)
 
 
 def delete_sandbox(
@@ -687,6 +825,8 @@ def recreate_sandbox(
         if profile not in {"default", "browser"}:
             raise SandboxError(f"Sandbox '{name}' has unsupported profile '{profile}'.")
 
+        description = current.get("description")
+
         # Capture attached credentials before deleting the sandbox
         from .credentials import grant_credential, list_sandbox_credentials
         attached_credentials = []
@@ -705,6 +845,7 @@ def recreate_sandbox(
             name=name,
             workspace_id=workspace_id,
             profile=profile,
+            description=description,
         )
 
         # Restore previously granted credentials

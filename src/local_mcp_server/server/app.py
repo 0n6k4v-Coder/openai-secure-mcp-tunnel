@@ -8,6 +8,7 @@ import uuid
 
 from mcp.server import MCPServer
 from mcp.server.apps import Apps
+from mcp.server.mcpserver.exceptions import ToolError, UnexpectedToolError
 from mcp.server.transport_security import TransportSecuritySettings
 from starlette.requests import Request
 from starlette.responses import PlainTextResponse
@@ -27,10 +28,24 @@ HEALTH_ALLOWED_HOSTS = {
     "localhost:8000",
 }
 
+def _wrap_call_tool(server: MCPServer) -> None:
+    orig_call_tool = server.call_tool
+
+    async def call_tool_with_diagnostics(*args, **kwargs):
+        try:
+            return await orig_call_tool(*args, **kwargs)
+        except UnexpectedToolError as exc:
+            root_cause = getattr(exc, "__cause__", None) or exc
+            raise ToolError(str(root_cause)) from exc
+
+    server.call_tool = call_tool_with_diagnostics
+
+
 apps = Apps()
 register_all_apps(apps)
 
 mcp = MCPServer(SERVICE_NAME, version=SERVICE_VERSION, extensions=[apps])
+_wrap_call_tool(mcp)
 mcp.middleware.append(make_request_logging_middleware(mcp, INSTANCE_ID))
 
 

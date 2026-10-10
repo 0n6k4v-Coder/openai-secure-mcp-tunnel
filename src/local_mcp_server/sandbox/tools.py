@@ -16,10 +16,12 @@ from .service import (
     recreate_sandbox as recreate_sandbox_impl,
     repair_sandbox as repair_sandbox_impl,
     restart_sandbox as restart_sandbox_impl,
+    run_command as run_command_impl,
     sandbox_logs as sandbox_logs_impl,
     sandbox_status as sandbox_status_impl,
     start_sandbox as start_sandbox_impl,
     stop_sandbox as stop_sandbox_impl,
+    update_sandbox_description as update_sandbox_description_impl,
 )
 
 
@@ -55,6 +57,7 @@ def register_tools(mcp: MCPServer) -> None:
         name: str,
         host_workspace_id: str | None = None,
         profile: str = "default",
+        description: str | None = None,
     ) -> str:
         """
         Create an OpenShell sandbox.
@@ -70,6 +73,8 @@ def register_tools(mcp: MCPServer) -> None:
             - 'default': General development environment (Python/Node/Linux utilities).
             - 'browser': Includes headless Chrome and DevTools daemon (required for
               `execute_chrome_devtools_command`).
+        :param description: Optional description of the sandbox's purpose or workload
+            (max 250 characters).
         """
         profile = validate_profile(profile)
 
@@ -77,6 +82,31 @@ def register_tools(mcp: MCPServer) -> None:
             name=name,
             workspace_id=host_workspace_id,
             profile=profile,
+            description=description,
+        )
+
+    @mcp.tool(
+        annotations=ToolAnnotations(
+            readOnlyHint=False,
+            destructiveHint=False,
+            idempotentHint=True,
+            openWorldHint=False,
+        )
+    )
+    def update_sandbox_description(
+        name: str,
+        description: str | None = None,
+    ) -> str:
+        """
+        Update the description of an existing OpenShell sandbox.
+
+        :param name: Unique identifier of the sandbox.
+        :param description: Optional description of the sandbox's purpose or workload
+            (max 250 characters). Pass null or empty string to clear.
+        """
+        return update_sandbox_description_impl(
+            name=name,
+            description=description,
         )
 
     @mcp.tool(
@@ -219,14 +249,25 @@ def register_tools(mcp: MCPServer) -> None:
             openWorldHint=False,
         )
     )
-    def execute_sandbox_command(
-        name: str,
+    def run_command(
+        sandbox_name: str,
         command: str,
+        cwd: str | None = None,
+        timeout_seconds: int = 120,
     ) -> str:
-        """Execute a normal command inside an OpenShell sandbox."""
-        return execute_sandbox_impl(
-            name=name,
+        """
+        Execute a shell command inside an OpenShell sandbox workspace.
+
+        :param sandbox_name: Unique identifier of the sandbox.
+        :param command: Shell command to execute.
+        :param cwd: Optional working directory relative to /workspace/project (defaults to workspace root).
+        :param timeout_seconds: Maximum execution time in seconds (default: 120).
+        """
+        return run_command_impl(
+            sandbox_name=sandbox_name,
             command=command,
+            cwd=cwd,
+            timeout_seconds=timeout_seconds,
         )
 
     @mcp.tool(
