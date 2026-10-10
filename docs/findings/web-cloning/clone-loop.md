@@ -1,0 +1,1 @@
+Human Give Target -> AI Use Live Proxy Tools -> Human Validate -> Human ask AI to decompose -> AI Use Decompose Tools -> Human Validate
