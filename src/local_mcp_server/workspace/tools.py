@@ -9,9 +9,9 @@ from .service import (
     delete_file as delete_file_impl,
     list_files as list_files_impl,
     list_workspace_grants,
-    read_file as read_file_impl,
     rename_path as rename_path_impl,
     replace_file_content as replace_file_content_impl,
+    view_file as view_file_impl,
     write_to_file as write_to_file_impl,
 )
 
@@ -29,13 +29,21 @@ def register_tools(mcp: MCPServer) -> None:
     )
     def list_files(
         sandbox_name: str,
+        path: str | None = None,
+        directory: str | None = None,
     ) -> list[str]:
         """
         List regular files inside the selected OpenShell sandbox workspace.
 
         The sandbox name explicitly identifies the target sandbox.
+        Optionally filter results by a relative directory path (e.g. 'apps/wise/live-proxy').
         """
-        return list_files_impl(sandbox_name)
+        all_files = list_files_impl(sandbox_name)
+        filter_path = path or directory
+        if filter_path:
+            clean = filter_path.strip().strip("/")
+            return [f for f in all_files if f == clean or f.startswith(f"{clean}/")]
+        return all_files
 
     @mcp.tool(
         annotations=ToolAnnotations(
@@ -45,16 +53,37 @@ def register_tools(mcp: MCPServer) -> None:
             openWorldHint=False,
         )
     )
-    def read_file(
+    def view_file(
         sandbox_name: str,
         relative_path: str,
+        start_line: int | None = None,
+        end_line: int | None = None,
+        content_offset: int | None = None,
+        path: str | None = None,
     ) -> str:
         """
-        Read a UTF-8 text file from the selected OpenShell sandbox workspace.
+        View the contents of a file in the selected OpenShell sandbox workspace.
+        This tool supports text files and binary files.
+
+        Text file usage:
+        - The lines of the file are 1-indexed
+        - You can view at most 800 lines at a time
+        - Specify start_line and end_line to view the lines of the file using slice notation:
+          - Omit both to view the entire file, or the first 800 lines of the file, whichever is smaller.
+          - Specify start_line only to view the remaining lines of the file, or the next 800 lines, whichever is smaller.
+          - Specify end_line only to view the remaining preceding lines of the file, or the previous 800 lines, whichever is smaller.
+          - Specify both to view a precise line range. This range must be smaller than 800 lines or only the first 800 lines of the range will be shown.
+        - Content is limited to 46,080 bytes per view. If content is truncated, use the content_offset parameter to view the remaining content.
+        Binary file usage:
+        - Do not provide start_line or end_line arguments.
         """
-        return read_file_impl(
+        target_path = relative_path or path or ""
+        return view_file_impl(
             sandbox_name,
-            relative_path,
+            target_path,
+            start_line=start_line,
+            end_line=end_line,
+            content_offset=content_offset,
         )
 
     @mcp.tool(

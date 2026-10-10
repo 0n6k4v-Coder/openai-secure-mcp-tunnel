@@ -29,6 +29,8 @@ function checkRelative(rel) {
 const op = process.argv[1];
 const arg1 = process.argv[2];
 const arg2 = process.argv[3];
+const arg3 = process.argv[4];
+const arg4 = process.argv[5];
 
 if (op === 'list') {
     let results = [];
@@ -50,12 +52,88 @@ if (op === 'list') {
     }
     walk(root);
     console.log(JSON.stringify(Array.from(new Set(results)).sort()));
+} else if (op === 'view') {
+    const resolved = checkRelative(arg1);
+    let stat;
+    try { stat = fs.statSync(resolved); } catch (_) { console.error('Requested path is not a regular file.'); process.exit(1); }
+    if (!stat.isFile()) { console.error('Requested path is not a regular file.'); process.exit(1); }
+    const totalBytes = stat.size;
+    let offset = 0;
+    if (arg4 && !isNaN(parseInt(arg4, 10))) {
+        offset = Math.max(0, parseInt(arg4, 10));
+    }
+    const fd = fs.openSync(resolved, 'r');
+    const maxReadBytes = Math.min(2000000, Math.max(0, totalBytes - offset));
+    const buf = Buffer.alloc(maxReadBytes);
+    const bytesRead = fs.readSync(fd, buf, 0, maxReadBytes, offset);
+    fs.closeSync(fd);
+
+    const relPath = path.relative(root, resolved);
+    const isBinary = buf.slice(0, Math.min(8000, bytesRead)).includes(0);
+    if (isBinary) {
+        process.stdout.write(`File Path: \`file:///workspace/project/${relPath}\`\nTotal Bytes: ${totalBytes}\n[Binary file]\n`);
+        process.exit(0);
+    }
+
+    const text = buf.subarray(0, bytesRead).toString('utf8');
+    const allLines = text.split(/\r?\n/);
+    const totalLines = allLines.length;
+
+    let sLine = 1;
+    let eLine = Math.min(totalLines, 800);
+    const parsedStart = arg2 ? parseInt(arg2, 10) : NaN;
+    const parsedEnd = arg3 ? parseInt(arg3, 10) : NaN;
+
+    if (!isNaN(parsedStart) && !isNaN(parsedEnd)) {
+        sLine = Math.max(1, parsedStart);
+        eLine = Math.min(totalLines, Math.max(sLine, parsedEnd));
+        if (eLine - sLine + 1 > 800) eLine = sLine + 799;
+    } else if (!isNaN(parsedStart)) {
+        sLine = Math.max(1, parsedStart);
+        eLine = Math.min(totalLines, sLine + 799);
+    } else if (!isNaN(parsedEnd)) {
+        eLine = Math.min(totalLines, Math.max(1, parsedEnd));
+        sLine = Math.max(1, eLine - 799);
+    }
+
+    const header = `File Path: \`file:///workspace/project/${relPath}\`\nTotal Lines: ${totalLines}\nTotal Bytes: ${totalBytes}\nShowing lines ${sLine} to ${eLine}\nThe following code has been modified to include a line number before every line, in the format: <line_number>: <original_line>. Please note that any changes targeting the original code should remove the line number, colon, and leading space.\n`;
+
+    let out = header;
+    let currentBytes = Buffer.byteLength(header, 'utf8');
+    let truncatedByBytes = false;
+    let actualEnd = sLine - 1;
+
+    for (let i = sLine - 1; i < eLine; i++) {
+        const lineNum = i + 1;
+        const lineContent = allLines[i] !== undefined ? allLines[i] : '';
+        const lineStr = `${lineNum}: ${lineContent}\n`;
+        const lineByteLen = Buffer.byteLength(lineStr, 'utf8');
+        if (currentBytes + lineByteLen > 46080 && (i > sLine - 1)) {
+            truncatedByBytes = true;
+            break;
+        }
+        out += lineStr;
+        currentBytes += lineByteLen;
+        actualEnd = lineNum;
+    }
+
+    if (actualEnd < totalLines || truncatedByBytes) {
+        out += '\nThe above content does NOT show the entire file contents. If you need to view any lines of the file which were not shown to complete your task, call this tool again to view those lines.';
+    }
+    process.stdout.write(out);
 } else if (op === 'read') {
     const resolved = checkRelative(arg1);
     let stat;
     try { stat = fs.statSync(resolved); } catch (_) { console.error('Requested path is not a regular file.'); process.exit(1); }
     if (!stat.isFile()) { console.error('Requested path is not a regular file.'); process.exit(1); }
-    if (stat.size > 1000000) { console.error('Requested file is too large.'); process.exit(1); }
+    if (stat.size > 1000000) {
+        const fd = fs.openSync(resolved, 'r');
+        const buf = Buffer.alloc(200000);
+        const bytesRead = fs.readSync(fd, buf, 0, 200000, 0);
+        fs.closeSync(fd);
+        process.stdout.write(buf.subarray(0, bytesRead).toString('utf8') + `\n\n[Content truncated: showing first ${bytesRead} bytes of ${stat.size} bytes]`);
+        process.exit(0);
+    }
     try {
         const content = fs.readFileSync(resolved, 'utf8');
         process.stdout.write(content);
@@ -202,7 +280,10 @@ if not os.path.isfile(resolved):
     raise SystemExit("Requested path is not a regular file.")
 
 if os.path.getsize(resolved) > 1_000_000:
-    raise SystemExit("Requested file is too large.")
+    with open(resolved, "r", encoding="utf-8", errors="replace") as handle:
+        content = handle.read(200_000)
+    sys.stdout.write(content + f"\n\n[Content truncated: showing first 200,000 characters of {os.path.getsize(resolved)} bytes]")
+    raise SystemExit(0)
 
 try:
     with open(resolved, "r", encoding="utf-8") as handle:
@@ -211,6 +292,119 @@ except UnicodeDecodeError as exc:
     raise SystemExit("Requested file is not valid UTF-8 text.") from exc
 
 sys.stdout.write(content)
+""".strip()
+
+_VIEW_FILE_SCRIPT = r"""
+import os
+import sys
+
+root = os.path.realpath("/workspace/project")
+relative_path = sys.argv[1] if len(sys.argv) > 1 else ""
+
+if not relative_path:
+    raise SystemExit("Path must not be empty.")
+if os.path.isabs(relative_path):
+    raise SystemExit("Requested path must be relative.")
+
+resolved = os.path.realpath(os.path.join(root, relative_path))
+try:
+    common = os.path.commonpath([root, resolved])
+except ValueError as exc:
+    raise SystemExit("Requested path is outside the workspace.") from exc
+
+if common != root:
+    raise SystemExit("Requested path is outside the workspace.")
+
+if not os.path.isfile(resolved):
+    raise SystemExit("Requested path is not a regular file.")
+
+total_bytes = os.path.getsize(resolved)
+
+content_offset = 0
+if len(sys.argv) > 4 and sys.argv[4]:
+    try:
+        content_offset = max(0, int(sys.argv[4]))
+    except ValueError:
+        content_offset = 0
+
+with open(resolved, "rb") as f:
+    if content_offset > 0:
+        f.seek(content_offset)
+    max_read_bytes = min(2_000_000, max(0, total_bytes - content_offset))
+    raw_bytes = f.read(max_read_bytes)
+
+rel_path = os.path.relpath(resolved, root)
+is_binary = b"\x00" in raw_bytes[:min(8000, len(raw_bytes))]
+if is_binary:
+    sys.stdout.write(f"File Path: `file:///workspace/project/{rel_path}`\nTotal Bytes: {total_bytes}\n[Binary file]\n")
+    sys.exit(0)
+
+try:
+    text = raw_bytes.decode("utf-8")
+except UnicodeDecodeError:
+    text = raw_bytes.decode("utf-8", errors="replace")
+
+all_lines = text.splitlines(keepends=False)
+total_lines = len(all_lines)
+
+parsed_start = None
+if len(sys.argv) > 2 and sys.argv[2]:
+    try:
+        parsed_start = int(sys.argv[2])
+    except ValueError:
+        pass
+
+parsed_end = None
+if len(sys.argv) > 3 and sys.argv[3]:
+    try:
+        parsed_end = int(sys.argv[3])
+    except ValueError:
+        pass
+
+s_line = 1
+e_line = min(total_lines, 800)
+
+if parsed_start is not None and parsed_end is not None:
+    s_line = max(1, parsed_start)
+    e_line = min(total_lines, max(s_line, parsed_end))
+    if e_line - s_line + 1 > 800:
+        e_line = s_line + 799
+elif parsed_start is not None:
+    s_line = max(1, parsed_start)
+    e_line = min(total_lines, s_line + 799)
+elif parsed_end is not None:
+    e_line = min(total_lines, max(1, parsed_end))
+    s_line = max(1, e_line - 799)
+
+header = (
+    f"File Path: `file:///workspace/project/{rel_path}`\n"
+    f"Total Lines: {total_lines}\n"
+    f"Total Bytes: {total_bytes}\n"
+    f"Showing lines {s_line} to {e_line}\n"
+    "The following code has been modified to include a line number before every line, in the format: <line_number>: <original_line>. Please note that any changes targeting the original code should remove the line number, colon, and leading space.\n"
+)
+
+out = [header]
+current_bytes = len(header.encode("utf-8"))
+truncated_by_bytes = False
+actual_end = s_line - 1
+
+for i in range(s_line - 1, e_line):
+    line_num = i + 1
+    line_content = all_lines[i] if i < len(all_lines) else ""
+    line_str = f"{line_num}: {line_content}\n"
+    line_byte_len = len(line_str.encode("utf-8"))
+    if current_bytes + line_byte_len > 46080 and i > (s_line - 1):
+        truncated_by_bytes = True
+        break
+    out.append(line_str)
+    current_bytes += line_byte_len
+    actual_end = line_num
+
+if actual_end < total_lines or truncated_by_bytes:
+    out.append("\nThe above content does NOT show the entire file contents. If you need to view any lines of the file which were not shown to complete your task, call this tool again to view those lines.")
+
+sys.stdout.write("".join(out))
 """.strip()
 
 _WRITE_TO_FILE_SCRIPT = _FORMATTER_HELPER + r"""
@@ -577,6 +771,25 @@ def read_sandbox_workspace_text_file(sandbox_name: str, relative_path: str) -> s
     _validate_relative_path(relative_path)
     command = _wrap_polyglot_command(_READ_FILE_SCRIPT, "read", [relative_path])
     return _execute_workspace_command(sandbox_name, command)
+
+
+def view_sandbox_workspace_file(
+    sandbox_name: str,
+    relative_path: str,
+    start_line: int | None = None,
+    end_line: int | None = None,
+    content_offset: int | None = None,
+) -> str:
+    _validate_relative_path(relative_path)
+    args = [
+        relative_path,
+        str(start_line) if start_line is not None else "",
+        str(end_line) if end_line is not None else "",
+        str(content_offset) if content_offset is not None else "",
+    ]
+    command = _wrap_polyglot_command(_VIEW_FILE_SCRIPT, "view", args)
+    return _execute_workspace_command(sandbox_name, command)
+
 
 
 def write_sandbox_file(

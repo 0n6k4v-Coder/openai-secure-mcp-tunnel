@@ -65,6 +65,18 @@ def inspect_page(
     except Exception:
         pass
 
+    if "html" in res and isinstance(res["html"], str) and len(res["html"]) > 20_000:
+        total_len = len(res["html"])
+        res["html"] = res["html"][:20_000] + f"\n\n[... HTML preview truncated: showing 20,000 of {total_len} characters. Inspect specific elements with selector or view workspace files]"
+
+    if "css" in res and isinstance(res["css"], str) and len(res["css"]) > 20_000:
+        total_len = len(res["css"])
+        res["css"] = res["css"][:20_000] + f"\n\n[... CSS preview truncated: showing 20,000 of {total_len} characters]"
+
+    if "snapshot" in res and isinstance(res["snapshot"], str) and len(res["snapshot"]) > 30_000:
+        total_len = len(res["snapshot"])
+        res["snapshot"] = res["snapshot"][:30_000] + f"\n\n[... Snapshot preview truncated: showing 30,000 of {total_len} characters]"
+
     return res
 
 

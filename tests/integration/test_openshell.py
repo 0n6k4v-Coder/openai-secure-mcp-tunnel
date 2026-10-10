@@ -118,14 +118,14 @@ def test_standalone_sandbox_lifecycle_and_workspace(
         )
 
         content = mcp_client.call_tool(
-            "read_file",
+            "view_file",
             {
                 "sandbox_name": sandbox_name,
                 "relative_path": relative_path,
             },
         )
 
-        assert content == "before-recreate"
+        assert "before-recreate" in content
 
         stopped = _sandbox_payload(
             mcp_client.call_tool(
@@ -186,15 +186,14 @@ def test_standalone_sandbox_lifecycle_and_workspace(
         )
 
         recreated_content = mcp_client.call_tool(
-            "read_file",
+            "view_file",
             {
-
                 "sandbox_name": sandbox_name,
                 "relative_path": recreated_path,
             },
         )
 
-        assert recreated_content == "after-recreate"
+        assert "after-recreate" in recreated_content
 
         status = _sandbox_payload(
             mcp_client.call_tool(

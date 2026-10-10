@@ -128,14 +128,14 @@ def test_host_backed_workspace_round_trip(
         )
 
         content = mcp_client.call_tool(
-            "read_file",
+            "view_file",
             {
                 "sandbox_name": sandbox_name,
                 "relative_path": relative_path,
             },
         )
 
-        assert content == "written-by-host"
+        assert "written-by-host" in content
 
         mcp_client.call_tool(
             "write_to_file",

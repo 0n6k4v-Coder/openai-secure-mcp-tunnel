@@ -5,9 +5,9 @@ from ..infrastructure.openshell.sandbox_files import (
     delete_sandbox_workspace_directory as delete_directory,
     delete_sandbox_workspace_file as delete_file,
     list_sandbox_workspace_files as list_files,
-    read_sandbox_workspace_text_file as read_file,
     rename_sandbox_workspace_path as rename_path,
     replace_sandbox_file_content as replace_file_content,
+    view_sandbox_workspace_file as view_file,
     write_sandbox_file as write_to_file,
 )
 from .repository import list_workspace_grants
@@ -18,9 +18,9 @@ __all__ = [
     "delete_file",
     "list_files",
     "list_workspace_grants",
-    "read_file",
     "rename_path",
     "replace_file_content",
+    "view_file",
     "write_to_file",
 ]
 

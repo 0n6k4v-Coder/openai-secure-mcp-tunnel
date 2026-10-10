@@ -365,3 +365,76 @@ def test_script_rename_path(tmp_path: Path) -> None:
     assert not src.exists()
     assert (ws / "target.txt").read_text() == "data"
 
+
+def test_view_uses_selected_sandbox(monkeypatch: pytest.MonkeyPatch) -> None:
+    calls = []
+
+    def fake_execute_sandbox(*, name: str, command: str, **kwargs) -> str:
+        calls.append((name, command))
+        return json.dumps({"stdout": "header\n1: hello\n", "stderr": "", "return_code": 0})
+
+    monkeypatch.setattr(sandbox_files, "execute_sandbox", fake_execute_sandbox)
+    result = sandbox_files.view_sandbox_workspace_file(
+        "focused", "README.md", start_line=1, end_line=10
+    )
+    assert "1: hello" in result
+    assert calls[0][0] == "focused"
+    assert "README.md" in calls[0][1]
+
+
+def test_view_rejects_invalid_path() -> None:
+    with pytest.raises(ValueError, match="Path must not be empty"):
+        sandbox_files.view_sandbox_workspace_file("focused", "")
+
+    with pytest.raises(ValueError, match="NUL"):
+        sandbox_files.view_sandbox_workspace_file("focused", "test.txt\x00")
+
+    with pytest.raises(ValueError, match="too long"):
+        sandbox_files.view_sandbox_workspace_file("focused", "a" * 4097)
+
+
+def test_script_view_file_slice_and_formatting(tmp_path: Path) -> None:
+    ws = tmp_path / "ws"
+    ws.mkdir()
+    sample = ws / "sample.txt"
+    lines = [f"line {i}" for i in range(1, 101)]
+    sample.write_text("\n".join(lines))
+
+    # View default (all 100 lines)
+    res = _run_script_in_test_workspace(
+        sandbox_files._VIEW_FILE_SCRIPT,
+        ws,
+        ["sample.txt"],
+    )
+    assert res.returncode == 0
+    assert "Total Lines: 100" in res.stdout
+    assert "Showing lines 1 to 100" in res.stdout
+    assert "1: line 1" in res.stdout
+    assert "100: line 100" in res.stdout
+    assert "The above content does NOT show the entire file contents" not in res.stdout
+
+    # View slice (lines 10 to 20)
+    res_slice = _run_script_in_test_workspace(
+        sandbox_files._VIEW_FILE_SCRIPT,
+        ws,
+        ["sample.txt", "10", "20"],
+    )
+    assert res_slice.returncode == 0
+    assert "Showing lines 10 to 20" in res_slice.stdout
+    assert "10: line 10\n" in res_slice.stdout
+    assert "20: line 20\n" in res_slice.stdout
+    assert "\n1: line 1\n" not in res_slice.stdout
+    assert "The above content does NOT show the entire file contents" in res_slice.stdout
+
+    # Binary file detection
+    bin_file = ws / "binary.bin"
+    bin_file.write_bytes(b"hello\x00world")
+    res_bin = _run_script_in_test_workspace(
+        sandbox_files._VIEW_FILE_SCRIPT,
+        ws,
+        ["binary.bin"],
+    )
+    assert res_bin.returncode == 0
+    assert "[Binary file]" in res_bin.stdout
+
+

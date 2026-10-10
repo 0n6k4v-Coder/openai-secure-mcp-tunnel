@@ -23,7 +23,7 @@ EXPECTED_TOOLS = {
     "delete_sandbox",
     "execute_sandbox_command",
     "list_files",
-    "read_file",
+    "view_file",
     "write_to_file",
     "replace_file_content",
     "create_directory",
