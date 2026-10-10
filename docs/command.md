@@ -453,26 +453,40 @@ These values can be changed through the project's environment configuration.
 
 Package configuration is stored under the effective `MCP_STATE_DIR`; when unset,
 the default is `${XDG_STATE_HOME:-$HOME/.local/state}/local-mcp-server/mcp`.
-The initial registry enables npm only, on the default sandbox profile's existing
-npm registry network policy. Package creation does not implicitly install.
+The registry supports npm and Python (`uv`) on the default sandbox profile.
+Package configuration does not implicitly install dependencies. Python installs
+into a dedicated managed virtual environment and uses hash-pinned wheel locks.
 
 ```bash
-uv run mcpctl sandbox create my-sandbox --standalone --packages npm
-uv run mcpctl sandbox packages list my-sandbox
-uv run mcpctl sandbox packages add my-sandbox express@^5 --ecosystem npm
-uv run mcpctl sandbox packages remove my-sandbox express --ecosystem npm
-uv run mcpctl sandbox packages lock my-sandbox --ecosystem npm
-uv run mcpctl sandbox packages install my-sandbox --ecosystem npm --yes
-uv run mcpctl sandbox packages show my-sandbox
-uv run mcpctl sandbox packages reset my-sandbox --ecosystem npm --yes
+# npm
+uv run mcpctl sandbox create my-npm-sandbox --standalone --packages npm
+uv run mcpctl sandbox packages list my-npm-sandbox --ecosystem npm
+uv run mcpctl sandbox packages add my-npm-sandbox express@^5 --ecosystem npm
+uv run mcpctl sandbox packages lock my-npm-sandbox --ecosystem npm
+uv run mcpctl sandbox packages install my-npm-sandbox --ecosystem npm --yes
+
+# Python
+uv run mcpctl sandbox create my-python-sandbox --standalone --packages python
+uv run mcpctl sandbox packages list my-python-sandbox --ecosystem python
+uv run mcpctl sandbox packages add my-python-sandbox 'requests>=2.31,<3' --ecosystem python
+uv run mcpctl sandbox packages lock my-python-sandbox --ecosystem python
+uv run mcpctl sandbox packages install my-python-sandbox --ecosystem python --yes
+
+# Inspect/reset/delete
+uv run mcpctl sandbox packages show my-python-sandbox
+uv run mcpctl sandbox packages reset my-python-sandbox --ecosystem python --yes
 uv run mcpctl runtime show
-uv run mcpctl sandbox delete my-sandbox --yes
-uv run mcpctl sandbox delete my-sandbox --yes --purge-packages
+uv run mcpctl sandbox delete my-python-sandbox --yes
+uv run mcpctl sandbox delete my-python-sandbox --yes --purge-packages
 ```
 
 Deletion preserves manifests and lockfiles by default. `--purge-packages` removes
 only registered ecosystem package state; unregistered entries are preserved.
-npm resolution and installation disable lifecycle scripts. See
+The default sandbox profile permits the npm registry and PyPI's package-index
+hosts; the browser profile does not receive either package-index policy. npm
+resolution and installation disable lifecycle scripts. Python uses `uv`, rejects
+source distributions, and requires hashes during installation. These controls
+reduce risk but do not guarantee dependency trust. See
 [package-management.md](package-management.md) for state semantics, security
 constraints, and recovery guidance.
 
