@@ -8,14 +8,15 @@ import pytest
 from local_mcp_server.packages import manager
 
 
-def test_registry_exposes_registered_ecosystem() -> None:
-    assert manager.registered_ecosystems() == ("npm",)
+def test_registry_exposes_registered_ecosystems() -> None:
+    assert manager.registered_ecosystems() == ("npm", "python")
     assert manager.get_adapter("npm").manifest_name == "package.json"
+    assert manager.get_adapter("python").manifest_name == "requirements.json"
 
 
 def test_unregistered_ecosystem_is_rejected() -> None:
     with pytest.raises(manager.PackageManagerError, match="not registered"):
-        manager.get_adapter("python")
+        manager.get_adapter("ruby")
 
 
 @pytest.mark.parametrize(

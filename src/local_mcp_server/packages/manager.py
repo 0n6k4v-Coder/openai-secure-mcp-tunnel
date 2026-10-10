@@ -157,9 +157,9 @@ class NpmAdapter:
         from ..infrastructure.openshell.sandbox import execute_sandbox_argv, sandbox_status
         from ..infrastructure.openshell.sandbox_files import (
             create_sandbox_workspace_directory,
-            create_sandbox_workspace_file,
             read_sandbox_workspace_text_file,
             delete_sandbox_workspace_directory,
+            write_sandbox_file,
         )
         metadata = json.loads(sandbox_status(sandbox))
         if not isinstance(metadata, dict) or metadata.get("profile", "default") != self.network_profile:
@@ -169,7 +169,12 @@ class NpmAdapter:
         create_sandbox_workspace_directory(sandbox, stage)
         cleanup_error: Exception | None = None
         try:
-            create_sandbox_workspace_file(sandbox, f"{stage}/package.json", json.dumps(manifest, indent=2) + "\n")
+            write_sandbox_file(
+                sandbox,
+                f"{stage}/package.json",
+                json.dumps(manifest, indent=2) + "\n",
+                overwrite=False,
+            )
             result = execute_sandbox_argv(sandbox, ["npm", "install", "--package-lock-only", "--ignore-scripts", "--no-audit", "--no-fund", "--prefix", f"/workspace/project/{stage}"], timeout_seconds=120)
             if int(result.get("return_code", 1)) != 0:
                 detail = str(result.get("stderr") or result.get("stdout") or "npm resolution failed").strip()
@@ -235,14 +240,19 @@ class NpmAdapter:
             if marker != {"schema_version": 1, "managed_by": "mcpctl", "ecosystem": self.ecosystem_id}:
                 raise PackageManagerError(f"Install path marker is invalid; refusing to modify {install_root}.")
         try:
-            from ..infrastructure.openshell.sandbox_files import create_sandbox_workspace_file as create_file, write_sandbox_workspace_file as write_file
+            from ..infrastructure.openshell.sandbox_files import write_sandbox_file
             if created_install_root:
-                create_file(sandbox, marker_path, json.dumps({"schema_version": 1, "managed_by": "mcpctl", "ecosystem": self.ecosystem_id}) + "\n")
-            for rel, payload in ((manifest_relative, json.dumps(manifest, indent=2) + "\n"), (lock_relative, json.dumps(lock_data, indent=2) + "\n")):
-                try:
-                    write_file(sandbox, rel, payload)
-                except Exception:
-                    create_file(sandbox, rel, payload)
+                write_sandbox_file(
+                    sandbox,
+                    marker_path,
+                    json.dumps({"schema_version": 1, "managed_by": "mcpctl", "ecosystem": self.ecosystem_id}) + "\n",
+                    overwrite=False,
+                )
+            for rel, payload in (
+                (manifest_relative, json.dumps(manifest, indent=2) + "\n"),
+                (lock_relative, json.dumps(lock_data, indent=2) + "\n"),
+            ):
+                write_sandbox_file(sandbox, rel, payload, overwrite=True)
             result = execute_sandbox_argv(sandbox, ["npm", "ci", "--ignore-scripts", "--no-audit", "--no-fund", "--prefix", f"/workspace/project/{install_root}"], timeout_seconds=300)
             if int(result.get("return_code", 1)) != 0:
                 detail = _sanitize_diagnostic(str(result.get("stderr") or result.get("stdout") or "npm install failed").strip())
@@ -288,11 +298,21 @@ class NpmAdapter:
 _ADAPTERS: dict[str, EcosystemAdapter] = {"npm": NpmAdapter()}
 
 
+def _ensure_python_adapter() -> None:
+    """Load optional built-in adapters only after this module is initialized."""
+    if "python" not in _ADAPTERS:
+        from .adapters.python_uv import PythonUvAdapter
+
+        _ADAPTERS["python"] = PythonUvAdapter()
+
+
 def registered_ecosystems() -> tuple[str, ...]:
+    _ensure_python_adapter()
     return tuple(sorted(_ADAPTERS))
 
 
 def get_adapter(ecosystem: str) -> EcosystemAdapter:
+    _ensure_python_adapter()
     adapter = _ADAPTERS.get(ecosystem)
     if adapter is None:
         raise PackageManagerError(
@@ -504,17 +524,46 @@ def add_package(sandbox: str, ecosystem: str, package_spec: str) -> PackageResul
     validate_name(sandbox)
     adapter = get_adapter(ecosystem)
     name, version = adapter.validate_spec(package_spec)
+
     manifest_path = _manifest_path(sandbox, ecosystem)
+    initialized = False
     if not manifest_path.exists():
-        raise PackageManagerError(f"Package configuration is not initialized: {manifest_path}. Create the sandbox with --packages {ecosystem} or initialize it first.", exit_code=3)
+        # Reuse the same safe, idempotent initializer used by sandbox creation.
+        # This makes first-time package addition work for existing sandboxes
+        # without duplicating manifest creation or bypassing path validation.
+        initialize_sandbox_packages(sandbox, ecosystem)
+        manifest_path = _manifest_path(sandbox, ecosystem)
+        initialized = True
+
     manifest = adapter.validate_manifest(_read_json(manifest_path))
     dependencies = adapter.dependencies(manifest)
     if name in dependencies:
-        raise PackageManagerError(f"Package {name!r} is already configured for ecosystem {ecosystem!r}.")
+        raise PackageManagerError(
+            f"Package {name!r} is already configured for ecosystem {ecosystem!r}."
+        )
     dependencies[name] = version
     manifest["dependencies"] = dict(sorted(dependencies.items()))
     _atomic_json(manifest_path, manifest)
-    return PackageResult("add", sandbox, ecosystem, f"Added {name} to package configuration. Lock is OUT OF DATE; installation is NOT VERIFIED.", manifest_path, _lock_path(sandbox, ecosystem), "configured")
+
+    if initialized:
+        message = (
+            f"Initialized package configuration and added {name}. "
+            "Lock is OUT OF DATE; installation is NOT VERIFIED."
+        )
+    else:
+        message = (
+            f"Added {name} to package configuration. "
+            "Lock is OUT OF DATE; installation is NOT VERIFIED."
+        )
+    return PackageResult(
+        "add",
+        sandbox,
+        ecosystem,
+        message,
+        manifest_path,
+        _lock_path(sandbox, ecosystem),
+        "configured",
+    )
 
 
 def remove_package(sandbox: str, ecosystem: str, package_name: str) -> PackageResult:
