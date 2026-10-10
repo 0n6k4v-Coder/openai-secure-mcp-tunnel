@@ -3,6 +3,8 @@ from __future__ import annotations
 import json
 import socket
 from concurrent.futures import ThreadPoolExecutor
+from dataclasses import dataclass
+from typing import Any
 from urllib.error import HTTPError, URLError
 from urllib.request import Request, urlopen
 
@@ -10,6 +12,13 @@ import pytest
 
 
 PROTOCOL_VERSION = "2026-07-28"
+
+
+@dataclass(frozen=True)
+class HTTPResult:
+    status: int
+    headers: Any
+    body: bytes
 
 
 def _jsonrpc_request(
@@ -33,27 +42,112 @@ def _jsonrpc_request(
     ).encode("utf-8")
 
 
-def _assert_protocol_response(result) -> dict:
-    assert 200 <= result.status < 300, (
-        f"Expected a successful MCP response; HTTP {result.status}: {result.body[:500]!r}"
-    )
+def _response_messages(result: HTTPResult) -> list[dict]:
+    content_type = result.headers.get("Content-Type", "").lower()
+
+    if "text/event-stream" in content_type:
+        messages = []
+        for line in result.body.decode("utf-8").splitlines():
+            if not line.startswith("data:"):
+                continue
+            data = line[len("data:"):].strip()
+            if not data:
+                continue
+            try:
+                payload = json.loads(data)
+            except json.JSONDecodeError:
+                continue
+            if isinstance(payload, dict):
+                messages.append(payload)
+        return messages
+
     payload = json.loads(result.body)
     assert isinstance(payload, dict)
+    return [payload]
+
+
+def _response_payload(result: HTTPResult) -> dict:
+    messages = _response_messages(result)
+    responses = [
+        payload
+        for payload in messages
+        if "result" in payload or "error" in payload
+    ]
+    if not responses:
+        pytest.fail(
+            "Response contained no JSON-RPC result or error: "
+            f"{result.body[:500]!r}"
+        )
+    return responses[-1]
+
+
+def _assert_protocol_response(result: HTTPResult) -> dict:
+    assert 200 <= result.status < 300, (
+        f"Expected a successful MCP response; HTTP {result.status}: "
+        f"{result.body[:500]!r}"
+    )
+    payload = _response_payload(result)
     assert payload.get("jsonrpc") == "2.0"
     assert "result" in payload or "error" in payload
     return payload
 
 
-def _assert_rejected(result) -> None:
+def _assert_rejected(result: HTTPResult) -> None:
     if result.status >= 400:
         return
-    try:
-        payload = json.loads(result.body)
-    except (UnicodeDecodeError, json.JSONDecodeError):
-        pytest.fail("Invalid request returned success with a non-JSON response.")
-    assert isinstance(payload, dict) and "error" in payload, (
-        f"Invalid request was not rejected: HTTP {result.status}, response={payload!r}"
+
+    payload = _response_payload(result)
+    assert "error" in payload, (
+        f"Invalid request was not rejected: HTTP {result.status}, "
+        f"response={payload!r}"
     )
+
+
+@pytest.fixture
+def raw_mcp_request(mcp_settings):
+    def send(
+        body: bytes,
+        *,
+        host: str | None = None,
+        origin: str | None = None,
+        timeout: float = 10.0,
+    ) -> HTTPResult:
+        headers = {
+            "Content-Type": "application/json",
+            "Accept": "application/json, text/event-stream",
+            "Host": host or mcp_settings.host_header,
+            "MCP-Protocol-Version": PROTOCOL_VERSION,
+        }
+
+        try:
+            payload = json.loads(body)
+        except (UnicodeDecodeError, json.JSONDecodeError):
+            payload = None
+
+        if isinstance(payload, dict) and isinstance(payload.get("method"), str):
+            headers["Mcp-Method"] = payload["method"]
+
+        if origin is not None:
+            headers["Origin"] = origin
+
+        request = Request(
+            mcp_settings.url,
+            data=body,
+            headers=headers,
+            method="POST",
+        )
+
+        try:
+            with urlopen(request, timeout=timeout) as response:
+                return HTTPResult(
+                    response.status,
+                    response.headers,
+                    response.read(),
+                )
+        except HTTPError as exc:
+            return HTTPResult(exc.code, exc.headers, exc.read())
+
+    return send
 
 
 def test_MCP_TRANSPORT_001_connect_to_configured_endpoint(mcp_client) -> None:
@@ -99,12 +193,32 @@ def test_MCP_TRANSPORT_006_valid_tool_list(mcp_client) -> None:
     assert len(names) == len(set(names))
 
 
-def test_MCP_TRANSPORT_007_valid_tool_call(mcp_client) -> None:
-    result = mcp_client.call_tool("get_system_info")
-    assert isinstance(result, dict)
-    assert result["operating_system"]
-    assert result["python_version"]
-    assert result["python_implementation"]
+def test_MCP_TRANSPORT_007_valid_tool_call(raw_mcp_request) -> None:
+    params = {
+        "name": "get_system_info",
+        "arguments": {},
+        "_meta": {
+            "progressToken": 7,
+            "io.modelcontextprotocol/protocolVersion": PROTOCOL_VERSION,
+            "io.modelcontextprotocol/clientCapabilities": {},
+        },
+    }
+    response = raw_mcp_request(_jsonrpc_request("tools/call", params=params))
+    payload = _assert_protocol_response(response)
+    assert "result" in payload
+
+    progress_notifications = [
+        message
+        for message in _response_messages(response)
+        if message.get("method") == "notifications/progress"
+    ]
+    assert progress_notifications, (
+        "Tool call did not emit an MCP progress notification despite a progressToken."
+    )
+    assert all(
+        message.get("params", {}).get("progressToken") == 7
+        for message in progress_notifications
+    )
 
 
 def test_MCP_TRANSPORT_008_malformed_protocol_request(raw_mcp_request) -> None:
@@ -135,7 +249,8 @@ def test_MCP_TRANSPORT_012_oversized_request_body(raw_mcp_request) -> None:
     )
     result = raw_mcp_request(body, timeout=30.0)
     assert result.status == 413, (
-        f"Expected HTTP 413 for oversized body, received HTTP {result.status}: {result.body[:300]!r}"
+        f"Expected HTTP 413 for oversized body, received HTTP {result.status}: "
+        f"{result.body[:300]!r}"
     )
 
 
@@ -146,18 +261,24 @@ def test_MCP_TRANSPORT_013_allowed_host(raw_mcp_request) -> None:
 
 
 def test_MCP_TRANSPORT_014_unapproved_host_rejected(raw_mcp_request) -> None:
-    result = raw_mcp_request(_jsonrpc_request("tools/list"), host="unapproved.invalid")
+    result = raw_mcp_request(
+        _jsonrpc_request("tools/list"),
+        host="unapproved.invalid",
+    )
     assert result.status >= 400, (
-        f"Unapproved Host was not rejected: HTTP {result.status}, {result.body[:300]!r}"
+        f"Unapproved Host was not rejected: HTTP {result.status}, "
+        f"{result.body[:300]!r}"
     )
 
 
 def test_MCP_TRANSPORT_015_dns_rebinding_origin_rejected(raw_mcp_request) -> None:
     result = raw_mcp_request(
-        _jsonrpc_request("tools/list"), origin="https://unapproved.invalid"
+        _jsonrpc_request("tools/list"),
+        origin="https://unapproved.invalid",
     )
     assert result.status >= 400, (
-        f"Unapproved Origin was not rejected: HTTP {result.status}, {result.body[:300]!r}"
+        f"Unapproved Origin was not rejected: HTTP {result.status}, "
+        f"{result.body[:300]!r}"
     )
 
 
@@ -174,6 +295,7 @@ def test_MCP_TRANSPORT_017_concurrent_requests(mcp_client_factory) -> None:
 
     with ThreadPoolExecutor(max_workers=4) as executor:
         results = list(executor.map(lambda _: call_system_info(), range(4)))
+
     assert len(results) == 4
     assert all(result["operating_system"] for result in results)
     assert all(result["python_version"] for result in results)
@@ -196,7 +318,7 @@ def test_MCP_TRANSPORT_019_restart_and_reconnect() -> None:
 
 
 def test_MCP_TRANSPORT_020_server_unavailable_returns_connection_failure() -> None:
-    with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as listener:
+    with socket.socket() as listener:
         listener.bind(("127.0.0.1", 0))
         unused_port = listener.getsockname()[1]
 
@@ -205,15 +327,18 @@ def test_MCP_TRANSPORT_020_server_unavailable_returns_connection_failure() -> No
         data=_jsonrpc_request("tools/list"),
         headers={
             "Content-Type": "application/json",
-            "Accept": "application/json",
+            "Accept": "application/json, text/event-stream",
             "Host": "mcp-server:8000",
             "MCP-Protocol-Version": PROTOCOL_VERSION,
+            "Mcp-Method": "tools/list",
         },
         method="POST",
     )
+
     with pytest.raises(URLError) as error:
         with urlopen(request, timeout=3.0):
             pass
+
     assert not isinstance(error.value, HTTPError), (
         "Expected connection failure, not HTTP response."
     )

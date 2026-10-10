@@ -28,6 +28,7 @@ HEALTH_ALLOWED_HOSTS = {
     "localhost:8000",
 }
 
+
 def _wrap_call_tool(server: MCPServer) -> None:
     orig_call_tool = server.call_tool
 
@@ -92,7 +93,7 @@ def main() -> None:
         port=8000,
         streamable_http_path="/mcp",
         stateless_http=True,
-        json_response=True,
+        json_response=False,
         max_request_body_size=1 * 1024 * 1024,
         transport_security=transport_security,
     )
